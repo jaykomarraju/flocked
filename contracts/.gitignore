@@ -4,3 +4,5 @@ dependencies/
 broadcast/
 lcov.info
 coverage/
+# Local deployments (anvil) are redeployed with every stack; tests write 31337.test.json.
+deployments/31337*.json
