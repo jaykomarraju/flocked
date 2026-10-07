@@ -46,3 +46,5 @@ line_length = 120
 [lint]
 # Every deadline in the escrow is timestamp-based by design (spec "Smart contract").
 exclude_lints = ["block-timestamp"]
+# Tests cast already-bounded fuzz inputs; lint the production sources only.
+ignore = ["test/**/*.sol"]
