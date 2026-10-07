@@ -35,6 +35,8 @@ contract EscrowRevertsTest is EscrowBase {
     function test_constructor_setsRolesAndParams() public view {
         assertTrue(escrow.hasRole(escrow.DEFAULT_ADMIN_ROLE(), admin));
         assertTrue(escrow.hasRole(escrow.GUARDIAN_ROLE(), guardian));
+        assertEq(escrow.guardian(), guardian);
+        assertEq(escrow.getRoleMemberCount(escrow.GUARDIAN_ROLE()), 1);
         assertTrue(escrow.hasRole(escrow.OPERATOR_ROLE(), operator));
         assertTrue(escrow.hasRole(escrow.PAUSER_ROLE(), pauser));
         assertEq(escrow.getRoleAdmin(escrow.GUARDIAN_ROLE()), escrow.GUARDIAN_ROLE());
@@ -147,8 +149,9 @@ contract EscrowRevertsTest is EscrowBase {
         );
         vm.prank(stranger);
         escrow.pause();
+        bytes32 aRole = escrow.DEFAULT_ADMIN_ROLE();
         vm.expectRevert(
-            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, stranger, pRole)
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, stranger, aRole)
         );
         vm.prank(stranger);
         escrow.unpause();

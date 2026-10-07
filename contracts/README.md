@@ -12,7 +12,7 @@ specified in `Product_Spec.md`, section "Smart contract"; the pinned interface i
 | `src/lib/StakesMath.sol` | Stakes closed form (pure), mirrors the TypeScript `settleStakesClosedForm` |
 | `test/Escrow.*.t.sol` | Unit tests by area (traceability CON-1..7, CON-10) |
 | `test/fuzz/` | Fuzz `enter`, `propose`, `claim` and the closed form (CON-11) |
-| `test/invariant/` | Handler + invariants: solvency, no settled-and-refunded round (CON-8, CON-12) |
+| `test/invariant/` | Handler + invariants: solvency, no settled-and-refunded round, exactly one guardian (CON-7, CON-8, CON-12) |
 | `test/Vectors.t.sol` | Recorded closed-form vectors through `StakesMath` and a real `propose` |
 | `test/fixtures/` | Hand-computed seed vectors and their arithmetic |
 | `test/mocks/` | `MockUSDC` (6 decimals, EIP-2612, blocklist), a fee-on-transfer token |
@@ -45,7 +45,7 @@ constructor(IERC20 usdc, address admin, address guardian, address operator, addr
 | --- | --- |
 | `usdc` | The only accepted token (Base USDC in production) |
 | `admin` | `DEFAULT_ADMIN_ROLE`, the admin multisig |
-| `guardian` | `GUARDIAN_ROLE`, the guardian multisig; the role is its own admin |
+| `guardian` | `GUARDIAN_ROLE`, the guardian multisig and the role's only holder |
 | `operator` | `OPERATOR_ROLE`, the backend key |
 | `pauser` | `PAUSER_ROLE` |
 | `ticketSigner` | May be zero (entries disabled until a signer is set through the timelock) |
@@ -64,10 +64,13 @@ EIP-712 domain: name `Flocked`, version `1`, `block.chainid`, verifying contract
 | --- | --- | --- |
 | `DEFAULT_ADMIN_ROLE` | schedule/execute/cancel timelocked changes; revoke `OPERATOR_ROLE` and `PAUSER_ROLE`; disable the ticket signer | admin |
 | `OPERATOR_ROLE` | `createRound`, `propose`, `voidRound` (before close) | admin, only through the 72 h timelock |
-| `GUARDIAN_ROLE` | `veto`, `voidRound` (before close), grant/revoke guardian members | itself; replaced by the admin only through the 7-day timelock |
-| `PAUSER_ROLE` | `pause`, `unpause` (blocks `enter`/`enterWithPermit` only) | admin, immediately |
+| `GUARDIAN_ROLE` | `veto`, `voidRound` (before close), `transferGuardian` | exactly one holder: handed on by the guardian with `transferGuardian` (immediate), or replaced by the admin through the 7-day timelock |
+| `PAUSER_ROLE` | `pause` (blocks `enter`/`enterWithPermit` only) | admin, immediately |
 
-`grantRole(OPERATOR_ROLE, …)` reverts with `TimelockRequired`.
+Only `DEFAULT_ADMIN_ROLE` can `unpause` (immediately), so a stolen pauser key can't undo a pause.
+`grantRole(OPERATOR_ROLE, …)` reverts with `TimelockRequired`. `grantRole`, `revokeRole` and `renounceRole` revert with
+`SingleGuardian` for `GUARDIAN_ROLE`, whoever calls them; `guardian()` returns the holder, and `transferGuardian` emits
+`GuardianTransferred(previous, current)`.
 
 ## Timelocks
 
@@ -81,14 +84,15 @@ Each change is `schedule*` → wait → `execute*` (or `cancel*`), all `DEFAULT_
 | Treasury | `scheduleTreasury` / `executeTreasury` / `cancelTreasury` | 72 h |
 | Operator grant | `scheduleOperatorGrant` / `executeOperatorGrant` / `cancelOperatorGrant` | 72 h |
 | Rescue | `scheduleRescue` / `executeRescue` / `cancelRescue` (USDC only above `totalObligations`, checked at execution) | 72 h |
-| Guardian replacement | `scheduleGuardianReplacement` / `executeGuardianReplacement` / `cancelGuardianReplacement` (revokes every current guardian) | 7 days |
+| Guardian replacement | `scheduleGuardianReplacement` / `executeGuardianReplacement` / `cancelGuardianReplacement` (a single write: revokes the one holder, whoever it is by then, and grants the new guardian; constant gas) | 7 days |
 
-Immediate: `revokeRole` (operator, pauser), `setTicketSigner(address(0))`, `pause`.
+Immediate: `revokeRole` (operator, pauser), `setTicketSigner(address(0))`, `pause`, `unpause` (admin), `transferGuardian`
+(guardian).
 
 ## Views used off-chain
 
 `getRound(id)` (config, status, counters, proposal, derived amounts and claim counts), `beaconTime(r)`,
-`ticketSigner()`, `treasury()`, `hasEntered(id, account)`, `personTagUsed(id, tag)`, `hasClaimed(id, account)`,
+`ticketSigner()`, `treasury()`, `guardian()`, `hasEntered(id, account)`, `personTagUsed(id, tag)`, `hasClaimed(id, account)`,
 `withdrawable(account)`, `roundCount()`, `totalObligations()`, `ticketDigest(ticket)`, `domainSeparator()`,
 `operationId(action, data)`, `timelockReadyAt(id)`.
 

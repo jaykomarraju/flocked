@@ -8,15 +8,16 @@ import {IFlockedEscrow} from "../../src/interfaces/IFlockedEscrow.sol";
 import {EscrowBase} from "../utils/EscrowBase.sol";
 import {EscrowHandler} from "./EscrowHandler.sol";
 
-/// @notice CON-8 (no round both settled and refunded) and CON-12 (USDC held >= outstanding obligations).
+/// @notice CON-8 (no round both settled and refunded), CON-12 (USDC held >= outstanding obligations) and CON-7's
+///         single guardian (GUARDIAN_ROLE always has exactly one holder).
 contract EscrowInvariantTest is StdInvariant, EscrowBase {
     EscrowHandler internal handler;
 
     function setUp() public override {
         super.setUp();
-        handler = new EscrowHandler(escrow, usdc, signerPk, operator, guardian, pauser, treasury);
+        handler = new EscrowHandler(escrow, usdc, signerPk, admin, operator, pauser, treasury);
         targetContract(address(handler));
-        bytes4[] memory selectors = new bytes4[](15);
+        bytes4[] memory selectors = new bytes4[](18);
         selectors[0] = EscrowHandler.createRound.selector;
         selectors[1] = EscrowHandler.enter.selector;
         selectors[2] = EscrowHandler.propose.selector;
@@ -32,6 +33,9 @@ contract EscrowInvariantTest is StdInvariant, EscrowBase {
         selectors[12] = EscrowHandler.donate.selector;
         selectors[13] = EscrowHandler.warp.selector;
         selectors[14] = EscrowHandler.claimAll.selector;
+        selectors[15] = EscrowHandler.transferGuardian.selector;
+        selectors[16] = EscrowHandler.tryGuardianRoleChange.selector;
+        selectors[17] = EscrowHandler.replaceGuardian.selector;
         targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
     }
 
@@ -94,6 +98,14 @@ contract EscrowInvariantTest is StdInvariant, EscrowBase {
         }
     }
 
+    /// @notice CON-7: GUARDIAN_ROLE always has exactly one holder, the one the handler last handed it to.
+    function invariant_exactlyOneGuardian() public view {
+        bytes32 role = escrow.GUARDIAN_ROLE();
+        assertEq(escrow.getRoleMemberCount(role), 1, "guardian holders");
+        assertEq(escrow.guardian(), handler.expectedGuardian(), "guardian");
+        assertTrue(escrow.hasRole(role, escrow.guardian()));
+    }
+
     /// @dev Debug aid: `forge test --mt invariant -vv` prints how far runs get.
     function afterInvariant() external view {
         uint256 settled;
@@ -104,5 +116,8 @@ contract EscrowInvariantTest is StdInvariant, EscrowBase {
         }
         console.log("rounds", escrow.roundCount(), "settled", settled);
         console.log("refunded", refunded, "claims", handler.calls("claim"));
+        console.log(
+            "guardian transfers", handler.calls("transferGuardian"), "replacements", handler.calls("replaceGuardian")
+        );
     }
 }
