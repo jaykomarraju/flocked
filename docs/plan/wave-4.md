@@ -34,7 +34,7 @@
 - **Objective.** Harden and freeze both contracts for audit. Run slither and aderyn and triage every finding. Extend the invariant handlers (both contracts). Complete NatSpec. Write the audit package: scope, architecture, roles and timelocks, trust model and residual risks (from the spec), known issues, test instructions, and the commit hash to audit.
 - **Read first.** `plan.md` §2. `docs/sessions/W3-Z.md`. `contracts/README.md`. Spec: "Smart contract" (all), "Settlement and payout math" (only "Stakes closed form", "Invariant").
 - **Owns.** `contracts/**` (except `deployments/` and `script/`), `docs/audit/**`. Add CI steps for slither/aderyn to the handoff's notes for D.
-- **Required tests.** `forge test --profile ci`; coverage ≥ 95% lines on both contracts; slither/aderyn reports with no unexplained high or medium.
+- **Required tests.** `FOUNDRY_PROFILE=ci forge test`; coverage ≥ 95% lines on both contracts; slither/aderyn reports with no unexplained high or medium.
 - **Deliverables.** `docs/audit/package.md`, `docs/audit/threat-model.md`, `docs/audit/static-analysis.md`. Tag `audit-candidate-1` is created by Z at merge, not by C.
 - **Risks.** Any contract change needed beyond hardening is raised as a spec issue, not made silently.
 

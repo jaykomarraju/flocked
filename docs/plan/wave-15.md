@@ -10,7 +10,7 @@
 - **Objective.** Fix every audit finding in `contracts/` (or record the owner's formal acceptance), with a regression test per finding. Update the audit package with a fix log for the auditor's fix review. If a fix changes the closed form or a leaf format, regenerate the vectors and update `@flocked/settle`/`@flocked/verify` in lockstep. Raise any behaviour change as a spec issue first.
 - **Read first.** `plan.md` §2. `docs/sessions/W14-Z.md`. The audit report (path given by the owner, saved under `docs/audit/report-<date>.pdf`). `docs/audit/package.md`.
 - **Owns.** `contracts/**`, `docs/audit/**`, and `packages/settle/**` only if the vectors must change.
-- **Required tests.** `forge test --profile ci`; CON-1..13 still green; new regression tests.
+- **Required tests.** `FOUNDRY_PROFILE=ci forge test`; CON-1..13 still green; new regression tests.
 
 ## W15-B: Security and soak fixes
 

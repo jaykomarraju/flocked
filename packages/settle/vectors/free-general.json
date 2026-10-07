@@ -1,0 +1,5733 @@
+{
+  "formulaVersion": "1",
+  "kind": "free-general",
+  "vectors": [
+    {
+      "id": "all-void-reasons",
+      "roundId": "0x529cb68812544d1af0a8b82d303f1b5a",
+      "params": {
+        "feeBps": "0",
+        "creatorBps": "0",
+        "capMultiple": "10",
+        "minEntrants": "1",
+        "creatorAwardBps": "100",
+        "countQualifyingOnly": false
+      },
+      "entries": [
+        {
+          "account": "0x0dee954c8bf16c62c272fd25cf48f7f6458e863e1197f72fa6bccc76f26a1bf5",
+          "stake": "70",
+          "option": "0",
+          "voidReason": null
+        },
+        {
+          "account": "0x0df5887b4f7f7427c3610acc426e017a9e1d116761442ed02d7b3248dfcac969",
+          "stake": "100",
+          "option": null,
+          "voidReason": "decrypt_failed"
+        },
+        {
+          "account": "0x0fbb57a33b8615ec7a8a3dfc6e9b40cc91c9ca655793cb47e89306d046c15c7a",
+          "stake": "105",
+          "option": null,
+          "voidReason": "not_anchored"
+        },
+        {
+          "account": "0x28614f7f800ce29b3871008a356184bfe1ba745df727610523142f6efa560dd9",
+          "stake": "104",
+          "option": null,
+          "voidReason": "bad_option"
+        },
+        {
+          "account": "0x2f2933aa909a2e33f39dbfde13caab27f3b0d65828e34dabcdcf141cbf2fb49e",
+          "stake": "101",
+          "option": null,
+          "voidReason": "non_canonical_header"
+        },
+        {
+          "account": "0x3e48f9eb7abb700ec969a1c7c9a93ab8452c8afdbfc06cc61b45e67611d1b43c",
+          "stake": "103",
+          "option": null,
+          "voidReason": "bad_plaintext"
+        },
+        {
+          "account": "0x510b126fec76bdca1cf260da67231b1e5b9d945d3040d6525f444b45c8f94706",
+          "stake": "102",
+          "option": null,
+          "voidReason": "wrong_target"
+        },
+        {
+          "account": "0xb311633e6e9a85fac241938a151c945ffdbecd06c915f42c7a47f79dbd677f13",
+          "stake": "30",
+          "option": "1",
+          "voidReason": null
+        },
+        {
+          "account": "0xd100b3c579580763432507907cdc6c617658ad5a40c5c14faccd7ac6fe3c2c7f",
+          "stake": "106",
+          "option": null,
+          "voidReason": "stake_out_of_range"
+        },
+        {
+          "account": "0xe67bc8d5e37eabd35a4c6b9688c42dd420f81797a47a5a3a6419cc0211d1a05d",
+          "stake": "20",
+          "option": "1",
+          "voidReason": null
+        }
+      ],
+      "expected": {
+        "record": {
+          "outcome": "settled",
+          "refundReason": null,
+          "n": [
+            "1",
+            "2"
+          ],
+          "w": [
+            "70",
+            "50"
+          ],
+          "winner": "0",
+          "lossPool": "50",
+          "fee": "0",
+          "creatorFee": "0",
+          "distributable": "50",
+          "rebatePool": "0",
+          "dust": "0",
+          "voidCount": "7",
+          "voidStake": "721",
+          "total": "120",
+          "creatorAward": "0"
+        },
+        "payouts": [
+          {
+            "account": "0x0dee954c8bf16c62c272fd25cf48f7f6458e863e1197f72fa6bccc76f26a1bf5",
+            "kind": "win",
+            "amount": "120"
+          },
+          {
+            "account": "0x0df5887b4f7f7427c3610acc426e017a9e1d116761442ed02d7b3248dfcac969",
+            "kind": "void_refund",
+            "amount": "100"
+          },
+          {
+            "account": "0x0fbb57a33b8615ec7a8a3dfc6e9b40cc91c9ca655793cb47e89306d046c15c7a",
+            "kind": "void_refund",
+            "amount": "105"
+          },
+          {
+            "account": "0x28614f7f800ce29b3871008a356184bfe1ba745df727610523142f6efa560dd9",
+            "kind": "void_refund",
+            "amount": "104"
+          },
+          {
+            "account": "0x2f2933aa909a2e33f39dbfde13caab27f3b0d65828e34dabcdcf141cbf2fb49e",
+            "kind": "void_refund",
+            "amount": "101"
+          },
+          {
+            "account": "0x3e48f9eb7abb700ec969a1c7c9a93ab8452c8afdbfc06cc61b45e67611d1b43c",
+            "kind": "void_refund",
+            "amount": "103"
+          },
+          {
+            "account": "0x510b126fec76bdca1cf260da67231b1e5b9d945d3040d6525f444b45c8f94706",
+            "kind": "void_refund",
+            "amount": "102"
+          },
+          {
+            "account": "0xd100b3c579580763432507907cdc6c617658ad5a40c5c14faccd7ac6fe3c2c7f",
+            "kind": "void_refund",
+            "amount": "106"
+          }
+        ],
+        "payoutRoot": "0x6699868f68f756bc465907251b64f9fd513d4cf866e752d13eeb2a1830b8a593"
+      }
+    },
+    {
+      "id": "cap-binding-single-whale-loser",
+      "roundId": "0xc3b68b8f7a332787d036b02860febe66",
+      "params": {
+        "feeBps": "0",
+        "creatorBps": "0",
+        "capMultiple": "10",
+        "minEntrants": "1",
+        "creatorAwardBps": "100",
+        "countQualifyingOnly": false
+      },
+      "entries": [
+        {
+          "account": "0x3c2a08ae27fce2eed0b0303b10f367a89f2f39b579a7f90c754e4d3d96370291",
+          "stake": "10",
+          "option": "0",
+          "voidReason": null
+        },
+        {
+          "account": "0x9c8355b536abd298981c59fb1fd07a93ccb490f43df026a4a57b264249ac3c56",
+          "stake": "1",
+          "option": "1",
+          "voidReason": null
+        },
+        {
+          "account": "0xfc9ea8f5c02abf2fb3b38407a7d1de407efd361bbea678cf5201e5f89c296660",
+          "stake": "1000000",
+          "option": "1",
+          "voidReason": null
+        }
+      ],
+      "expected": {
+        "record": {
+          "outcome": "settled",
+          "refundReason": null,
+          "n": [
+            "1",
+            "2"
+          ],
+          "w": [
+            "10",
+            "1000001"
+          ],
+          "winner": "0",
+          "lossPool": "1000001",
+          "fee": "0",
+          "creatorFee": "0",
+          "distributable": "1000001",
+          "rebatePool": "999901",
+          "dust": "1",
+          "voidCount": "0",
+          "voidStake": "0",
+          "total": "1000011",
+          "creatorAward": "10000"
+        },
+        "payouts": [
+          {
+            "account": "0x3c2a08ae27fce2eed0b0303b10f367a89f2f39b579a7f90c754e4d3d96370291",
+            "kind": "win",
+            "amount": "110"
+          },
+          {
+            "account": "0xfc9ea8f5c02abf2fb3b38407a7d1de407efd361bbea678cf5201e5f89c296660",
+            "kind": "rebate",
+            "amount": "999900"
+          }
+        ],
+        "payoutRoot": "0x4e49aea975937b870426138e213dbdbe66f1d9073a3ade62b75fff676627285a"
+      }
+    },
+    {
+      "id": "cap-binding-uneven-stakes",
+      "roundId": "0xebcaf5704f5d3166f30016ea94a3cab8",
+      "params": {
+        "feeBps": "0",
+        "creatorBps": "0",
+        "capMultiple": "10",
+        "minEntrants": "1",
+        "creatorAwardBps": "100",
+        "countQualifyingOnly": false
+      },
+      "entries": [
+        {
+          "account": "0x076fdf23ea6700fced434ff2d79cd6f3134e8a62e3c4aaec6aba930506a5cbfd",
+          "stake": "100",
+          "option": "1",
+          "voidReason": null
+        },
+        {
+          "account": "0x3ab84d840394d5095e48cfd28e6c1f56e7293f32152ed41bed0b216334a6ff2a",
+          "stake": "30",
+          "option": "1",
+          "voidReason": null
+        },
+        {
+          "account": "0x746923394381fef4aa65f1580d96af3be964ef06a54d334df7f327348e6c0dcb",
+          "stake": "1",
+          "option": "0",
+          "voidReason": null
+        },
+        {
+          "account": "0xc434e185b5953290ae24cadc5fc5343e945c3a77f290f3433c16609d1a3c849e",
+          "stake": "50",
+          "option": "1",
+          "voidReason": null
+        },
+        {
+          "account": "0xd2b9511abaec4834d6e5e1a85591b8c77ae5bcbb0439f758e0719470d64499ae",
+          "stake": "1",
+          "option": "0",
+          "voidReason": null
+        }
+      ],
+      "expected": {
+        "record": {
+          "outcome": "settled",
+          "refundReason": null,
+          "n": [
+            "2",
+            "3"
+          ],
+          "w": [
+            "2",
+            "180"
+          ],
+          "winner": "0",
+          "lossPool": "180",
+          "fee": "0",
+          "creatorFee": "0",
+          "distributable": "180",
+          "rebatePool": "160",
+          "dust": "2",
+          "voidCount": "0",
+          "voidStake": "0",
+          "total": "182",
+          "creatorAward": "1"
+        },
+        "payouts": [
+          {
+            "account": "0x076fdf23ea6700fced434ff2d79cd6f3134e8a62e3c4aaec6aba930506a5cbfd",
+            "kind": "rebate",
+            "amount": "88"
+          },
+          {
+            "account": "0x3ab84d840394d5095e48cfd28e6c1f56e7293f32152ed41bed0b216334a6ff2a",
+            "kind": "rebate",
+            "amount": "26"
+          },
+          {
+            "account": "0x746923394381fef4aa65f1580d96af3be964ef06a54d334df7f327348e6c0dcb",
+            "kind": "win",
+            "amount": "11"
+          },
+          {
+            "account": "0xc434e185b5953290ae24cadc5fc5343e945c3a77f290f3433c16609d1a3c849e",
+            "kind": "rebate",
+            "amount": "44"
+          },
+          {
+            "account": "0xd2b9511abaec4834d6e5e1a85591b8c77ae5bcbb0439f758e0719470d64499ae",
+            "kind": "win",
+            "amount": "11"
+          }
+        ],
+        "payoutRoot": "0x5a3870e7c8692c3018505916880b038a1542e6e6c5631105168b32eb2cdc6706"
+      }
+    },
+    {
+      "id": "general-with-fees",
+      "roundId": "0xac93fb893ce62b856a74cf5656f91bd5",
+      "params": {
+        "feeBps": "500",
+        "creatorBps": "100",
+        "capMultiple": "10",
+        "minEntrants": "1",
+        "creatorAwardBps": "100",
+        "countQualifyingOnly": false
+      },
+      "entries": [
+        {
+          "account": "0x0088b5466aa6131f9d057fb9457c79ffc0da3d6ca93ee8fe6bda00ed29c20dde",
+          "stake": "1234",
+          "option": "1",
+          "voidReason": null
+        },
+        {
+          "account": "0x15bce402b7e22788960989ae771d070950bfc9e6e0a1760ad2ac5f377abe1171",
+          "stake": "700",
+          "option": "0",
+          "voidReason": null
+        },
+        {
+          "account": "0x3bd68387a9bdc8d728f6f75d431e863fc643b99214323963809c651f63ce2bd9",
+          "stake": "2500",
+          "option": "1",
+          "voidReason": null
+        },
+        {
+          "account": "0xc79b5138a9a8d796005bd5b9833a0e92d88f6848667d0ab75b115e31a977ee20",
+          "stake": "5000",
+          "option": "1",
+          "voidReason": null
+        },
+        {
+          "account": "0xcbf50980a5abee7180b06bec0660ef07952e60456129be9f38f9ea83e6ea6b50",
+          "stake": "300",
+          "option": "0",
+          "voidReason": null
+        }
+      ],
+      "expected": {
+        "record": {
+          "outcome": "settled",
+          "refundReason": null,
+          "n": [
+            "2",
+            "3"
+          ],
+          "w": [
+            "1000",
+            "8734"
+          ],
+          "winner": "0",
+          "lossPool": "8734",
+          "fee": "436",
+          "creatorFee": "87",
+          "distributable": "8211",
+          "rebatePool": "1",
+          "dust": "1",
+          "voidCount": "0",
+          "voidStake": "0",
+          "total": "9734",
+          "creatorAward": "87"
+        },
+        "payouts": [
+          {
+            "account": "0x15bce402b7e22788960989ae771d070950bfc9e6e0a1760ad2ac5f377abe1171",
+            "kind": "win",
+            "amount": "6447"
+          },
+          {
+            "account": "0xcbf50980a5abee7180b06bec0660ef07952e60456129be9f38f9ea83e6ea6b50",
+            "kind": "win",
+            "amount": "2763"
+          }
+        ],
+        "payoutRoot": "0x14d349dd8e909a6ee6933a2c0e8b311937f97bd6ef7a0abef063c7f6eacbb29e"
+      }
+    },
+    {
+      "id": "huge-stakes",
+      "roundId": "0xb2f3325e111dc386e1e96366f9cbb1ce",
+      "params": {
+        "feeBps": "0",
+        "creatorBps": "0",
+        "capMultiple": "10",
+        "minEntrants": "1",
+        "creatorAwardBps": "100",
+        "countQualifyingOnly": false
+      },
+      "entries": [
+        {
+          "account": "0x29d6812c825575357bb3e9b6cca1fcb66be7bafcb23c19050f42cb41f8e6d9d2",
+          "stake": "3000000000000000000000000000007",
+          "option": "1",
+          "voidReason": null
+        },
+        {
+          "account": "0x4656c61de0107784d590abf671e8b4f4aaf4bded3eda35d9071913e13dbd087e",
+          "stake": "1000000000000000000000000000000",
+          "option": "0",
+          "voidReason": null
+        },
+        {
+          "account": "0x4a5cfab7668e7da8d3cc6dae8de8c3822e6eaf83ee1acec9820a9b36ee6fc34f",
+          "stake": "100000000000000000000000000000",
+          "option": "1",
+          "voidReason": null
+        }
+      ],
+      "expected": {
+        "record": {
+          "outcome": "settled",
+          "refundReason": null,
+          "n": [
+            "1",
+            "2"
+          ],
+          "w": [
+            "1000000000000000000000000000000",
+            "3100000000000000000000000000007"
+          ],
+          "winner": "0",
+          "lossPool": "3100000000000000000000000000007",
+          "fee": "0",
+          "creatorFee": "0",
+          "distributable": "3100000000000000000000000000007",
+          "rebatePool": "0",
+          "dust": "0",
+          "voidCount": "0",
+          "voidStake": "0",
+          "total": "4100000000000000000000000000007",
+          "creatorAward": "31000000000000000000000000000"
+        },
+        "payouts": [
+          {
+            "account": "0x4656c61de0107784d590abf671e8b4f4aaf4bded3eda35d9071913e13dbd087e",
+            "kind": "win",
+            "amount": "4100000000000000000000000000007"
+          }
+        ],
+        "payoutRoot": "0x9eb3147f4d303365c959ff3bb3786cc4271757bd93dad9c14fe61434e202618c"
+      }
+    },
+    {
+      "id": "minority-holds-more-stake",
+      "roundId": "0x46e9ec7321fe06149d93bfc4a1b3c0ed",
+      "params": {
+        "feeBps": "0",
+        "creatorBps": "0",
+        "capMultiple": "10",
+        "minEntrants": "1",
+        "creatorAwardBps": "100",
+        "countQualifyingOnly": false
+      },
+      "entries": [
+        {
+          "account": "0x169f44e8b6c987460de15633eddb35662d07a0f916a2a13aeb50d1f1e2803440",
+          "stake": "1000",
+          "option": "1",
+          "voidReason": null
+        },
+        {
+          "account": "0x1e51ed61506902e1dfaef05edf6813d993a1bca3ad0cf0b7a6d493baaf014c6e",
+          "stake": "1000",
+          "option": "1",
+          "voidReason": null
+        },
+        {
+          "account": "0x2cc2bacc6ee2f6375d15b454145dcb40205cc1f1744758195333711e011c0b39",
+          "stake": "1000",
+          "option": "1",
+          "voidReason": null
+        },
+        {
+          "account": "0x2fe3efb62b6791f4e6d7aac548251a07bdcf4951c1302e240800f811487cffb2",
+          "stake": "500",
+          "option": "0",
+          "voidReason": null
+        },
+        {
+          "account": "0x344ac2ecc18c593b4695bf926bea77b0ca9415b9d54d1ca8e2996c141689c803",
+          "stake": "1000",
+          "option": "1",
+          "voidReason": null
+        },
+        {
+          "account": "0x9d0b50548733e118f011e28aacb3d45619c0eae28e4f4109f7fb28655bb606f2",
+          "stake": "1000",
+          "option": "1",
+          "voidReason": null
+        },
+        {
+          "account": "0x9ebe2845ec4bfdc183452a956d4742f12440cba6cc9dcca87591b00de48ce800",
+          "stake": "1000",
+          "option": "0",
+          "voidReason": null
+        }
+      ],
+      "expected": {
+        "record": {
+          "outcome": "settled",
+          "refundReason": null,
+          "n": [
+            "2",
+            "5"
+          ],
+          "w": [
+            "1500",
+            "5000"
+          ],
+          "winner": "0",
+          "lossPool": "5000",
+          "fee": "0",
+          "creatorFee": "0",
+          "distributable": "5000",
+          "rebatePool": "1",
+          "dust": "1",
+          "voidCount": "0",
+          "voidStake": "0",
+          "total": "6500",
+          "creatorAward": "50"
+        },
+        "payouts": [
+          {
+            "account": "0x2fe3efb62b6791f4e6d7aac548251a07bdcf4951c1302e240800f811487cffb2",
+            "kind": "win",
+            "amount": "2166"
+          },
+          {
+            "account": "0x9ebe2845ec4bfdc183452a956d4742f12440cba6cc9dcca87591b00de48ce800",
+            "kind": "win",
+            "amount": "4333"
+          }
+        ],
+        "payoutRoot": "0xf840f46e0f4c050d3bb2d198f4f519db68ae49aa22872ed452787144b271bf1d"
+      }
+    },
+    {
+      "id": "random-00",
+      "roundId": "0x778b8e79b29b73a03ae3ae2fde0e3c02",
+      "params": {
+        "feeBps": "0",
+        "creatorBps": "0",
+        "capMultiple": "10",
+        "minEntrants": "1",
+        "creatorAwardBps": "250",
+        "countQualifyingOnly": false
+      },
+      "entries": [
+        {
+          "account": "0x11f1a85df87137a5c406be27ac4721ada07490d26d96578683f5189ed7c0feaf",
+          "stake": "41",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x18a1d7c34e89acbb0795b99f326e34fa9b95762dc59bfdaac93f41767d36a247",
+          "stake": "19",
+          "option": null,
+          "voidReason": "bad_option"
+        },
+        {
+          "account": "0x18bd2a8e2f46c49f4340fba8e1051330537510ea8ac1d9ebd8e6ba738f2dde29",
+          "stake": "59",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x1aa790cec88fb689c72db8d4f080f8213909827833bb67d9dba6e00f1f3f1b45",
+          "stake": "707415355889",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0x274e39e96c5eaa8601568c14da23ed9a87bcf61f48744eb0e19ce2cfe6c80b90",
+          "stake": "96892",
+          "option": null,
+          "voidReason": "not_anchored"
+        },
+        {
+          "account": "0x2ae66d71a9b2618316dad09a385856269c525f6dc7921d64b47ab30fc1d0d77d",
+          "stake": "46968",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x36ce14eae55e69d6c5c58dea63cfe4638a6e834317db2a25419b9b42cf236f60",
+          "stake": "597332278335",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x3b1b12ad0b9fb8dc11a2db771cc8ee7471741a3720d7b00bfd9308bbf4960c95",
+          "stake": "49744",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x50e608d829d7e8a7d53df704382abc8b606614e07179908e872d0983ce1ae7f9",
+          "stake": "532755882962",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x5b7b47a728bde55f9b28b7168360f1d4d9eab3e949f6bd0f9f5d559fffd51b68",
+          "stake": "125005304118",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x652b184b0d62292acf2ceb6ec9b87d243c7d40f444f0c6aabd16b5cd33f19679",
+          "stake": "75559",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x65ad76341fa045ad727333493a20fcc23625449e56458bd99470b537fa1fe5dd",
+          "stake": "818504421575",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x69883a37b68a0f0b4600551cb586b59dab13fb5520fb05ecac29b47a8b7f017c",
+          "stake": "121037828843",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x782f843634529f3e99a9a41e70ba809ea4eda4fedacfa32b6618b80719b22281",
+          "stake": "31",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x7e0cb614cdc813644135a49d62493d5cd67d305d01be096372ee03940ce8eff0",
+          "stake": "4",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x7f9140e27da53630ba11ee9958980362dd6fe984383ba1b71d7eccf57ddb68fe",
+          "stake": "19716",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x835110b8e8346aeaaf67d2af72750481231ecaf9ff4b9dcef48131fa0fdc27ed",
+          "stake": "50097",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x86ce1da09737ec34a950f840c00f68ee475b8d8a19f6428ac564bfcf9efe2873",
+          "stake": "71",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x93213cfdf6f2adcaa1873173a35be1a5bcf47fdd153f17a9d24cf67cc0b66805",
+          "stake": "810522625496",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x9a53ea0052fc52f7af96f212d2b0fd830af60bbcfcc0ff947b4b9a6d5b46e295",
+          "stake": "16870",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xa4f1d55d9d63f2d655220169e405918684ea53526d60d9ba340f95e6c11e2dae",
+          "stake": "66279",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xa536556ff6d033892f9655afa76871915761032e777d65ac19372fc608b37152",
+          "stake": "463089564085",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xaafcd522ac40758d6f471a07d79bd42314d4a8d01f0b5ee516d883b20043d50e",
+          "stake": "606816954996",
+          "option": null,
+          "voidReason": "bad_option"
+        },
+        {
+          "account": "0xaf54d62d53f3051f54a28b689a632da8f7df07872ef96112bdf633feb4b3c981",
+          "stake": "23984",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xb52a82f98a7d67e0606edd14b30322b3ac15b44aea946a90e2f11b108b67cd40",
+          "stake": "26",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xb8ec1178a7d9a7f8eed7be4a1517f9a3e248a2fa8d217b16ee1024571af85a56",
+          "stake": "93604",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xd7f7a881f58cbebc15e81856d2cf845c77c2db77624f085b20d0139838fe5779",
+          "stake": "11188",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xdb784d49a87ad6586628c94678eb5326cbd90ead2cd5c63098588f38752743c2",
+          "stake": "51",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xde205cb8aeba3d42c870653d298800634cb88b05ba169b7d5cffafebee49b8f9",
+          "stake": "289687046157",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xe19ff07bcae483c75d52be31cac8fe8bdb2e5d1b8a8dfc96d227f38a43a269d4",
+          "stake": "35",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0xe42737e12ab78ae129a9bb4e89e5f8cef18cae96fc759595ff7af08273aec7d8",
+          "stake": "33",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0xec2927fb505b0419fe736d764238707b26c2f625ee9fb83382c4871c785aae32",
+          "stake": "37",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xfc735e7c3d487d664671893889c7343821257e41a856a49bc2bc3c385dd6d0a1",
+          "stake": "9",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": false
+        }
+      ],
+      "expected": {
+        "record": {
+          "outcome": "refunded",
+          "refundReason": "3",
+          "n": [
+            "15",
+            "15"
+          ],
+          "w": [
+            "3244102967527",
+            "1221247794339"
+          ],
+          "winner": null,
+          "lossPool": "0",
+          "fee": "0",
+          "creatorFee": "0",
+          "distributable": "0",
+          "rebatePool": "0",
+          "dust": "0",
+          "voidCount": "3",
+          "voidStake": "606817051907",
+          "total": "4465350761866",
+          "creatorAward": "0"
+        },
+        "payouts": [
+          {
+            "account": "0x11f1a85df87137a5c406be27ac4721ada07490d26d96578683f5189ed7c0feaf",
+            "kind": "refund",
+            "amount": "41"
+          },
+          {
+            "account": "0x18a1d7c34e89acbb0795b99f326e34fa9b95762dc59bfdaac93f41767d36a247",
+            "kind": "refund",
+            "amount": "19"
+          },
+          {
+            "account": "0x18bd2a8e2f46c49f4340fba8e1051330537510ea8ac1d9ebd8e6ba738f2dde29",
+            "kind": "refund",
+            "amount": "59"
+          },
+          {
+            "account": "0x1aa790cec88fb689c72db8d4f080f8213909827833bb67d9dba6e00f1f3f1b45",
+            "kind": "refund",
+            "amount": "707415355889"
+          },
+          {
+            "account": "0x274e39e96c5eaa8601568c14da23ed9a87bcf61f48744eb0e19ce2cfe6c80b90",
+            "kind": "refund",
+            "amount": "96892"
+          },
+          {
+            "account": "0x2ae66d71a9b2618316dad09a385856269c525f6dc7921d64b47ab30fc1d0d77d",
+            "kind": "refund",
+            "amount": "46968"
+          },
+          {
+            "account": "0x36ce14eae55e69d6c5c58dea63cfe4638a6e834317db2a25419b9b42cf236f60",
+            "kind": "refund",
+            "amount": "597332278335"
+          },
+          {
+            "account": "0x3b1b12ad0b9fb8dc11a2db771cc8ee7471741a3720d7b00bfd9308bbf4960c95",
+            "kind": "refund",
+            "amount": "49744"
+          },
+          {
+            "account": "0x50e608d829d7e8a7d53df704382abc8b606614e07179908e872d0983ce1ae7f9",
+            "kind": "refund",
+            "amount": "532755882962"
+          },
+          {
+            "account": "0x5b7b47a728bde55f9b28b7168360f1d4d9eab3e949f6bd0f9f5d559fffd51b68",
+            "kind": "refund",
+            "amount": "125005304118"
+          },
+          {
+            "account": "0x652b184b0d62292acf2ceb6ec9b87d243c7d40f444f0c6aabd16b5cd33f19679",
+            "kind": "refund",
+            "amount": "75559"
+          },
+          {
+            "account": "0x65ad76341fa045ad727333493a20fcc23625449e56458bd99470b537fa1fe5dd",
+            "kind": "refund",
+            "amount": "818504421575"
+          },
+          {
+            "account": "0x69883a37b68a0f0b4600551cb586b59dab13fb5520fb05ecac29b47a8b7f017c",
+            "kind": "refund",
+            "amount": "121037828843"
+          },
+          {
+            "account": "0x782f843634529f3e99a9a41e70ba809ea4eda4fedacfa32b6618b80719b22281",
+            "kind": "refund",
+            "amount": "31"
+          },
+          {
+            "account": "0x7e0cb614cdc813644135a49d62493d5cd67d305d01be096372ee03940ce8eff0",
+            "kind": "refund",
+            "amount": "4"
+          },
+          {
+            "account": "0x7f9140e27da53630ba11ee9958980362dd6fe984383ba1b71d7eccf57ddb68fe",
+            "kind": "refund",
+            "amount": "19716"
+          },
+          {
+            "account": "0x835110b8e8346aeaaf67d2af72750481231ecaf9ff4b9dcef48131fa0fdc27ed",
+            "kind": "refund",
+            "amount": "50097"
+          },
+          {
+            "account": "0x86ce1da09737ec34a950f840c00f68ee475b8d8a19f6428ac564bfcf9efe2873",
+            "kind": "refund",
+            "amount": "71"
+          },
+          {
+            "account": "0x93213cfdf6f2adcaa1873173a35be1a5bcf47fdd153f17a9d24cf67cc0b66805",
+            "kind": "refund",
+            "amount": "810522625496"
+          },
+          {
+            "account": "0x9a53ea0052fc52f7af96f212d2b0fd830af60bbcfcc0ff947b4b9a6d5b46e295",
+            "kind": "refund",
+            "amount": "16870"
+          },
+          {
+            "account": "0xa4f1d55d9d63f2d655220169e405918684ea53526d60d9ba340f95e6c11e2dae",
+            "kind": "refund",
+            "amount": "66279"
+          },
+          {
+            "account": "0xa536556ff6d033892f9655afa76871915761032e777d65ac19372fc608b37152",
+            "kind": "refund",
+            "amount": "463089564085"
+          },
+          {
+            "account": "0xaafcd522ac40758d6f471a07d79bd42314d4a8d01f0b5ee516d883b20043d50e",
+            "kind": "refund",
+            "amount": "606816954996"
+          },
+          {
+            "account": "0xaf54d62d53f3051f54a28b689a632da8f7df07872ef96112bdf633feb4b3c981",
+            "kind": "refund",
+            "amount": "23984"
+          },
+          {
+            "account": "0xb52a82f98a7d67e0606edd14b30322b3ac15b44aea946a90e2f11b108b67cd40",
+            "kind": "refund",
+            "amount": "26"
+          },
+          {
+            "account": "0xb8ec1178a7d9a7f8eed7be4a1517f9a3e248a2fa8d217b16ee1024571af85a56",
+            "kind": "refund",
+            "amount": "93604"
+          },
+          {
+            "account": "0xd7f7a881f58cbebc15e81856d2cf845c77c2db77624f085b20d0139838fe5779",
+            "kind": "refund",
+            "amount": "11188"
+          },
+          {
+            "account": "0xdb784d49a87ad6586628c94678eb5326cbd90ead2cd5c63098588f38752743c2",
+            "kind": "refund",
+            "amount": "51"
+          },
+          {
+            "account": "0xde205cb8aeba3d42c870653d298800634cb88b05ba169b7d5cffafebee49b8f9",
+            "kind": "refund",
+            "amount": "289687046157"
+          },
+          {
+            "account": "0xe19ff07bcae483c75d52be31cac8fe8bdb2e5d1b8a8dfc96d227f38a43a269d4",
+            "kind": "refund",
+            "amount": "35"
+          },
+          {
+            "account": "0xe42737e12ab78ae129a9bb4e89e5f8cef18cae96fc759595ff7af08273aec7d8",
+            "kind": "refund",
+            "amount": "33"
+          },
+          {
+            "account": "0xec2927fb505b0419fe736d764238707b26c2f625ee9fb83382c4871c785aae32",
+            "kind": "refund",
+            "amount": "37"
+          },
+          {
+            "account": "0xfc735e7c3d487d664671893889c7343821257e41a856a49bc2bc3c385dd6d0a1",
+            "kind": "refund",
+            "amount": "9"
+          }
+        ],
+        "payoutRoot": "0xb4b6536c13ae973cd2c0d9a3484cdda77e7f611999c42b443482fc478de9c522"
+      }
+    },
+    {
+      "id": "random-01",
+      "roundId": "0xec5adece876bb913b4a66e223747d125",
+      "params": {
+        "feeBps": "0",
+        "creatorBps": "0",
+        "capMultiple": "10",
+        "minEntrants": "1",
+        "creatorAwardBps": "0",
+        "countQualifyingOnly": false
+      },
+      "entries": [
+        {
+          "account": "0x05281d44887cbc70b9f40cd185b2c79cf9c609e2f814993708e2e6d892fd4db9",
+          "stake": "733057282370",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x1cb8cd7d2ce7fcc22ca1f9569d514cd62152b87f5234177c4da2c28e8a61cd15",
+          "stake": "636239521901",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x1d3cc922cf7fc344a8baeac15884fe380aa9cdf2a41d4484f7856d699d91e3e1",
+          "stake": "16161998597",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x265f5843b3e8b4b5c7f1eccd7514b4f6abc1067d89fb8186c909db54f6c233da",
+          "stake": "186461170825",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x337aa381a8504ee397e9bcee58354544023a989d3abf7b880a47cf77d0f96c45",
+          "stake": "543446513467",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x513cd4bd068f0b6b30a899a486e6a835b8a33aee76c283436869b5751f163270",
+          "stake": "44799",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x70daa9ea999390665aee31a450eb7bc54bf9a7aef12a82a1d36f07b7dd202f82",
+          "stake": "14370",
+          "option": null,
+          "voidReason": "decrypt_failed"
+        },
+        {
+          "account": "0x7c7ec95a31740b574ef00e0590cf144a3d3f631e0510f0a6e996cdc9795dadf8",
+          "stake": "59",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0x8a88ba12d03b5f68a359b452a51b24a34d206bc67f51d34ccb881802c6dd413d",
+          "stake": "53",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x9b2072a1fcbdfbfce03eed364ca5052b22244ce9b1772a30172bda335c43f264",
+          "stake": "71",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xac376bef0a8146ef4161d5eb289cd88649a16047ad35e5b190e9a1a59de05476",
+          "stake": "80",
+          "option": null,
+          "voidReason": "non_canonical_header"
+        },
+        {
+          "account": "0xb1f2e0bd769e86fcd7843db08d0a6325ccd049f74a0562ee33d7eedf2e577bff",
+          "stake": "77",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xb7ea1bfeb060494ff87a66da9a95ff2c20cf4d0a0ae0fc0d19f770534ba0a41d",
+          "stake": "231543643536",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0xc168930b0586a9f1b15b00da6a0884a37ff2974c131c842608f5497c3f748548",
+          "stake": "246565117700",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        }
+      ],
+      "expected": {
+        "record": {
+          "outcome": "settled",
+          "refundReason": null,
+          "n": [
+            "10",
+            "2"
+          ],
+          "w": [
+            "1224178489184",
+            "1369296804271"
+          ],
+          "winner": "1",
+          "lossPool": "1224178489184",
+          "fee": "0",
+          "creatorFee": "0",
+          "distributable": "1224178489184",
+          "rebatePool": "1",
+          "dust": "1",
+          "voidCount": "2",
+          "voidStake": "14450",
+          "total": "2593475293455",
+          "creatorAward": "0"
+        },
+        "payouts": [
+          {
+            "account": "0x05281d44887cbc70b9f40cd185b2c79cf9c609e2f814993708e2e6d892fd4db9",
+            "kind": "win",
+            "amount": "1388425025592"
+          },
+          {
+            "account": "0x1cb8cd7d2ce7fcc22ca1f9569d514cd62152b87f5234177c4da2c28e8a61cd15",
+            "kind": "win",
+            "amount": "1205050267862"
+          },
+          {
+            "account": "0x70daa9ea999390665aee31a450eb7bc54bf9a7aef12a82a1d36f07b7dd202f82",
+            "kind": "void_refund",
+            "amount": "14370"
+          },
+          {
+            "account": "0xac376bef0a8146ef4161d5eb289cd88649a16047ad35e5b190e9a1a59de05476",
+            "kind": "void_refund",
+            "amount": "80"
+          }
+        ],
+        "payoutRoot": "0xb2f091939e394ce942c093400d432d49b3906a222881ffc572388dedc9cdb804"
+      }
+    },
+    {
+      "id": "random-02",
+      "roundId": "0xbe32fe65a919d96015e8892ac454b360",
+      "params": {
+        "feeBps": "0",
+        "creatorBps": "0",
+        "capMultiple": "3",
+        "minEntrants": "5",
+        "creatorAwardBps": "100",
+        "countQualifyingOnly": false
+      },
+      "entries": [
+        {
+          "account": "0x092ab73cba3874f4249abcbf8eda0f4b5eb255ea9c23bc2e1378d523adea97e2",
+          "stake": "53858",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x0bda69907f27ff7b75a12b37a01f883f2be7ab731587c686a7e5a1413d4e4f88",
+          "stake": "63",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x0ef86ffae84e1c9a0c16b879d6d296ee4d11e8c667d9c27547936416cb1a21cd",
+          "stake": "151566160741",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x18e893b700e6661998fc0154a0cce24af96e5ab44e48bbc86cf0dba51c3add03",
+          "stake": "33",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x1906cd7f8fa95a0060cdf92aa463b25ceed2742881c9e721db38aba3ba76834d",
+          "stake": "299665982732",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x20db1f1b7c1b760db133f365e18190531e460f90e6a47f8ae577e2d096fbee0f",
+          "stake": "43",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x2715578a1e086489297fdeca0515356a4543c984021608f8752241de179b6063",
+          "stake": "44",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x3020124fe96e9eb4ff70673205b0eae7d78c1ed49c0b45cb13622dcd0184254c",
+          "stake": "60442",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x30306cdfc3abf14b937e2446d940ef3624983f31cd6c74d4c4f23f0449bfe914",
+          "stake": "977336398112",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0x338d431e104f31a385e269649529445e15774484514af4da184a43860cd91fab",
+          "stake": "17322",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x35faf145ca64d937485c510a9430cf0925716798c12e9df773d7eefaa7f8c055",
+          "stake": "12530",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x3747694fcc35134f1f09c8f1dd08d4a56a87f136e16f42da329cab316126e171",
+          "stake": "477200471753",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x3872b8a0a7fd80b987e4e76ec168418ac14bf0e313e99e2eaf3ee4cccddc180c",
+          "stake": "327904476545",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0x4a8d40c55085e35126b5fa132e8d8d92207a1a922348482421365fa36d07e2fb",
+          "stake": "45",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0x4bff89c3aa4264832727dbca2bc866e37c4fcb689e1953558aad5ab5b9ecee60",
+          "stake": "18176",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x4dec84946a4755bfc8a53991efcad332fccf3e00c721e1da387434fd7bf97074",
+          "stake": "17",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x5274c7ba0c720af768898a38ea1d8be4c60099e29250d97d7218aebf372ae429",
+          "stake": "67",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x62f3c8c4808ecd4f144a4570862f027d2d0a0121d4e9626dd230eaedf98a5651",
+          "stake": "38921",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x635315726bb0274c1035034b48f3e99b7ec6e097e61c1214578f1bf117682682",
+          "stake": "91093",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0x77825909486e4f2ec948c6a8ebc49c0ffbe24712f481c5ef7e91a3543cf395eb",
+          "stake": "94",
+          "option": null,
+          "voidReason": "non_canonical_header"
+        },
+        {
+          "account": "0x88ef7fe44de80f1cff6ace4b86aec5fc1b68544223ab164b1a694ae4839fa8b8",
+          "stake": "52",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0x8d832f81dd6f4360b762f0af90ccbd9eeef15e1b3d639dac6dc0a854a186c2b4",
+          "stake": "77",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x9108051c549904cf10d4a5215496d9a150db5dabe5f7445039f4bd4f51555719",
+          "stake": "72",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0x9ac753b98970f782a66c3f4a075f5eb95bd49905fd04b819e44c793ec559cc17",
+          "stake": "86531",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0xa4bcd828971bf848ee980ac378cdee0bbf69edaa2c3d665a29a97f3d6464efc1",
+          "stake": "90",
+          "option": null,
+          "voidReason": "non_canonical_header"
+        },
+        {
+          "account": "0xa65ecc53795d1d42dcebcc0b4a15048596656964b034bf39723071abf7da1b95",
+          "stake": "58994",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0xa7dc6be9d62076115f5c433f7b6d6df53acb65f97276848e7db946c2ce17067f",
+          "stake": "20450",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xaea4c46cd8b6a630e9273afee0b24ccaa1a70ad63b99fb99abe5c99a41468efe",
+          "stake": "24",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xbc4e54d9db4fc17765bcf1bb08e9f7d73a6ba8c64c4a31263ad3719f7edd23f4",
+          "stake": "51534",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xd4e7de5bc39d07a2dc927fe2fb8e750d75f43ebf9357c7eb6c036785cd11fc4e",
+          "stake": "89",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0xe2247d9d985295944ee11cfaf25e2cc2d125185dffff7e6d842d255567d9256c",
+          "stake": "802082274996",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xed036756b8ddf815777fc7762ff4fe0aafb4d92e4028e4e788b7acd089741719",
+          "stake": "138038777977",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xee17d8640db320b0d07fbc9d68093c4e6cfe57acfc79b830ff86d1972e741fdc",
+          "stake": "89395",
+          "option": null,
+          "voidReason": "decrypt_failed"
+        },
+        {
+          "account": "0xf2fb18faf3f0dec60890e7f271337212b6952e1ae5f1c810712b247f96a5dca3",
+          "stake": "362698002275",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xf6d64261009542662f0c32da7349cfd89841bff62fbe206201a637e9d0ac62b7",
+          "stake": "45",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        }
+      ],
+      "expected": {
+        "record": {
+          "outcome": "settled",
+          "refundReason": null,
+          "n": [
+            "29",
+            "3"
+          ],
+          "w": [
+            "3536492968990",
+            "86663"
+          ],
+          "winner": "1",
+          "lossPool": "3536492968990",
+          "fee": "0",
+          "creatorFee": "0",
+          "distributable": "3536492968990",
+          "rebatePool": "3536492709001",
+          "dust": "25",
+          "voidCount": "3",
+          "voidStake": "89579",
+          "total": "3536493055653",
+          "creatorAward": "35364929689"
+        },
+        "payouts": [
+          {
+            "account": "0x092ab73cba3874f4249abcbf8eda0f4b5eb255ea9c23bc2e1378d523adea97e2",
+            "kind": "rebate",
+            "amount": "53857"
+          },
+          {
+            "account": "0x0bda69907f27ff7b75a12b37a01f883f2be7ab731587c686a7e5a1413d4e4f88",
+            "kind": "rebate",
+            "amount": "62"
+          },
+          {
+            "account": "0x0ef86ffae84e1c9a0c16b879d6d296ee4d11e8c667d9c27547936416cb1a21cd",
+            "kind": "rebate",
+            "amount": "151566149598"
+          },
+          {
+            "account": "0x18e893b700e6661998fc0154a0cce24af96e5ab44e48bbc86cf0dba51c3add03",
+            "kind": "rebate",
+            "amount": "32"
+          },
+          {
+            "account": "0x1906cd7f8fa95a0060cdf92aa463b25ceed2742881c9e721db38aba3ba76834d",
+            "kind": "rebate",
+            "amount": "299665960701"
+          },
+          {
+            "account": "0x20db1f1b7c1b760db133f365e18190531e460f90e6a47f8ae577e2d096fbee0f",
+            "kind": "win",
+            "amount": "172"
+          },
+          {
+            "account": "0x2715578a1e086489297fdeca0515356a4543c984021608f8752241de179b6063",
+            "kind": "rebate",
+            "amount": "43"
+          },
+          {
+            "account": "0x3020124fe96e9eb4ff70673205b0eae7d78c1ed49c0b45cb13622dcd0184254c",
+            "kind": "rebate",
+            "amount": "60441"
+          },
+          {
+            "account": "0x30306cdfc3abf14b937e2446d940ef3624983f31cd6c74d4c4f23f0449bfe914",
+            "kind": "rebate",
+            "amount": "977336326262"
+          },
+          {
+            "account": "0x338d431e104f31a385e269649529445e15774484514af4da184a43860cd91fab",
+            "kind": "rebate",
+            "amount": "17321"
+          },
+          {
+            "account": "0x35faf145ca64d937485c510a9430cf0925716798c12e9df773d7eefaa7f8c055",
+            "kind": "rebate",
+            "amount": "12529"
+          },
+          {
+            "account": "0x3747694fcc35134f1f09c8f1dd08d4a56a87f136e16f42da329cab316126e171",
+            "kind": "rebate",
+            "amount": "477200436671"
+          },
+          {
+            "account": "0x3872b8a0a7fd80b987e4e76ec168418ac14bf0e313e99e2eaf3ee4cccddc180c",
+            "kind": "rebate",
+            "amount": "327904452438"
+          },
+          {
+            "account": "0x4a8d40c55085e35126b5fa132e8d8d92207a1a922348482421365fa36d07e2fb",
+            "kind": "rebate",
+            "amount": "44"
+          },
+          {
+            "account": "0x4bff89c3aa4264832727dbca2bc866e37c4fcb689e1953558aad5ab5b9ecee60",
+            "kind": "rebate",
+            "amount": "18175"
+          },
+          {
+            "account": "0x4dec84946a4755bfc8a53991efcad332fccf3e00c721e1da387434fd7bf97074",
+            "kind": "rebate",
+            "amount": "16"
+          },
+          {
+            "account": "0x5274c7ba0c720af768898a38ea1d8be4c60099e29250d97d7218aebf372ae429",
+            "kind": "rebate",
+            "amount": "66"
+          },
+          {
+            "account": "0x62f3c8c4808ecd4f144a4570862f027d2d0a0121d4e9626dd230eaedf98a5651",
+            "kind": "rebate",
+            "amount": "38920"
+          },
+          {
+            "account": "0x635315726bb0274c1035034b48f3e99b7ec6e097e61c1214578f1bf117682682",
+            "kind": "rebate",
+            "amount": "91092"
+          },
+          {
+            "account": "0x77825909486e4f2ec948c6a8ebc49c0ffbe24712f481c5ef7e91a3543cf395eb",
+            "kind": "void_refund",
+            "amount": "94"
+          },
+          {
+            "account": "0x88ef7fe44de80f1cff6ace4b86aec5fc1b68544223ab164b1a694ae4839fa8b8",
+            "kind": "rebate",
+            "amount": "51"
+          },
+          {
+            "account": "0x8d832f81dd6f4360b762f0af90ccbd9eeef15e1b3d639dac6dc0a854a186c2b4",
+            "kind": "rebate",
+            "amount": "76"
+          },
+          {
+            "account": "0x9108051c549904cf10d4a5215496d9a150db5dabe5f7445039f4bd4f51555719",
+            "kind": "rebate",
+            "amount": "71"
+          },
+          {
+            "account": "0x9ac753b98970f782a66c3f4a075f5eb95bd49905fd04b819e44c793ec559cc17",
+            "kind": "win",
+            "amount": "346124"
+          },
+          {
+            "account": "0xa4bcd828971bf848ee980ac378cdee0bbf69edaa2c3d665a29a97f3d6464efc1",
+            "kind": "void_refund",
+            "amount": "90"
+          },
+          {
+            "account": "0xa65ecc53795d1d42dcebcc0b4a15048596656964b034bf39723071abf7da1b95",
+            "kind": "rebate",
+            "amount": "58993"
+          },
+          {
+            "account": "0xa7dc6be9d62076115f5c433f7b6d6df53acb65f97276848e7db946c2ce17067f",
+            "kind": "rebate",
+            "amount": "20449"
+          },
+          {
+            "account": "0xaea4c46cd8b6a630e9273afee0b24ccaa1a70ad63b99fb99abe5c99a41468efe",
+            "kind": "rebate",
+            "amount": "23"
+          },
+          {
+            "account": "0xbc4e54d9db4fc17765bcf1bb08e9f7d73a6ba8c64c4a31263ad3719f7edd23f4",
+            "kind": "rebate",
+            "amount": "51533"
+          },
+          {
+            "account": "0xd4e7de5bc39d07a2dc927fe2fb8e750d75f43ebf9357c7eb6c036785cd11fc4e",
+            "kind": "win",
+            "amount": "356"
+          },
+          {
+            "account": "0xe2247d9d985295944ee11cfaf25e2cc2d125185dffff7e6d842d255567d9256c",
+            "kind": "rebate",
+            "amount": "802082216030"
+          },
+          {
+            "account": "0xed036756b8ddf815777fc7762ff4fe0aafb4d92e4028e4e788b7acd089741719",
+            "kind": "rebate",
+            "amount": "138038767828"
+          },
+          {
+            "account": "0xee17d8640db320b0d07fbc9d68093c4e6cfe57acfc79b830ff86d1972e741fdc",
+            "kind": "void_refund",
+            "amount": "89395"
+          },
+          {
+            "account": "0xf2fb18faf3f0dec60890e7f271337212b6952e1ae5f1c810712b247f96a5dca3",
+            "kind": "rebate",
+            "amount": "362697975610"
+          },
+          {
+            "account": "0xf6d64261009542662f0c32da7349cfd89841bff62fbe206201a637e9d0ac62b7",
+            "kind": "rebate",
+            "amount": "44"
+          }
+        ],
+        "payoutRoot": "0xc0ac73155189ff906d24e0b97d37fbf219a1e0233c35bb76326698e366dec5a4"
+      }
+    },
+    {
+      "id": "random-03",
+      "roundId": "0xf39d95b041430ba16c15f4152cf2c17f",
+      "params": {
+        "feeBps": "0",
+        "creatorBps": "0",
+        "capMultiple": "1",
+        "minEntrants": "1",
+        "creatorAwardBps": "100",
+        "countQualifyingOnly": false
+      },
+      "entries": [
+        {
+          "account": "0x22039c3875389f139be2e39860362d3995bd9e2956cdc41ee69f6a5d3c42ccea",
+          "stake": "76095",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x3d9c47400ff7ca5000cae58c6963b98857025f187bb13719071a7cb95b74e320",
+          "stake": "759288264627",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x60edda7ac8700a69fc8e7da1c11af9fc7060fe7673083297858f674b8ae1be68",
+          "stake": "837771324810",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x94e51076ff0ce15d2a54876cc597e771d577fcbc4f47d7edf733eed7e330f8ec",
+          "stake": "278839969713",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xee441b3f334f809fd5725cb47561381c73a5d5b2bc606425a7c4ba016fba7f3a",
+          "stake": "99",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xf1a7cd303e0d0701666a5946c4418667a0848d0ff07b9afb2860e6c6af35f96f",
+          "stake": "779934838097",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xf26fa5f952b0569162b5ee6180fa9635dbde90aa1c695bc4caac8189c6d96602",
+          "stake": "91741",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        }
+      ],
+      "expected": {
+        "record": {
+          "outcome": "refunded",
+          "refundReason": "2",
+          "n": [
+            "7",
+            "0"
+          ],
+          "w": [
+            "2655834565182",
+            "0"
+          ],
+          "winner": null,
+          "lossPool": "0",
+          "fee": "0",
+          "creatorFee": "0",
+          "distributable": "0",
+          "rebatePool": "0",
+          "dust": "0",
+          "voidCount": "0",
+          "voidStake": "0",
+          "total": "2655834565182",
+          "creatorAward": "0"
+        },
+        "payouts": [
+          {
+            "account": "0x22039c3875389f139be2e39860362d3995bd9e2956cdc41ee69f6a5d3c42ccea",
+            "kind": "refund",
+            "amount": "76095"
+          },
+          {
+            "account": "0x3d9c47400ff7ca5000cae58c6963b98857025f187bb13719071a7cb95b74e320",
+            "kind": "refund",
+            "amount": "759288264627"
+          },
+          {
+            "account": "0x60edda7ac8700a69fc8e7da1c11af9fc7060fe7673083297858f674b8ae1be68",
+            "kind": "refund",
+            "amount": "837771324810"
+          },
+          {
+            "account": "0x94e51076ff0ce15d2a54876cc597e771d577fcbc4f47d7edf733eed7e330f8ec",
+            "kind": "refund",
+            "amount": "278839969713"
+          },
+          {
+            "account": "0xee441b3f334f809fd5725cb47561381c73a5d5b2bc606425a7c4ba016fba7f3a",
+            "kind": "refund",
+            "amount": "99"
+          },
+          {
+            "account": "0xf1a7cd303e0d0701666a5946c4418667a0848d0ff07b9afb2860e6c6af35f96f",
+            "kind": "refund",
+            "amount": "779934838097"
+          },
+          {
+            "account": "0xf26fa5f952b0569162b5ee6180fa9635dbde90aa1c695bc4caac8189c6d96602",
+            "kind": "refund",
+            "amount": "91741"
+          }
+        ],
+        "payoutRoot": "0x45267fe203e0e7cd8ed3a14e4fb6f475e2e63018f8cabbc3e554713bc808f42b"
+      }
+    },
+    {
+      "id": "random-04",
+      "roundId": "0x989d0f3ef0a374c23c2298e8a81390cf",
+      "params": {
+        "feeBps": "0",
+        "creatorBps": "0",
+        "capMultiple": "10",
+        "minEntrants": "5",
+        "creatorAwardBps": "100",
+        "countQualifyingOnly": false
+      },
+      "entries": [
+        {
+          "account": "0x03d6131d4a8b3400292ced988cb19a52ec0036408eb584f3e32017f8fcd2a4cc",
+          "stake": "5145",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0x06d08e597ee05cb4122775e9cce0a6f5ea7469bdf6806fa8905531dfeb0930ae",
+          "stake": "705760838344",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x0c4c984998289a7518a01bafca91388497c3f0cd3f487c48e6399d9b8dd14fbc",
+          "stake": "84087",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x11192ba5d72aec2844cb02be114a0c79cd6d5fd692d0af0bf61016ed5dd2b6d9",
+          "stake": "45",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x19e53f9f674781fb35d514163fc8af941331b70c0c23b84eac6e4775f6573cfc",
+          "stake": "72",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0x1c9e5201b3bb9c7102a225eeec14038e2aa7a71a3cd39f59da6b463884cdbb55",
+          "stake": "67053",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x259866d41938463285254f6693f700872a254bf45730bebe4a01268e013d0694",
+          "stake": "285001485671",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x27d0bacafc27a839cd08f82bbf71f838e0319f0163b28ec3ddfae158e4bcb103",
+          "stake": "11813",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x29005dbe0a587b9454ac3b52a60b6ea9041fab3b9275c053bc2fb8aa2844cc74",
+          "stake": "44818",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0x3d081bd9eb2da38dcf665bf67531b7bc6a2efe14fdf93b207e11d4169a3b96cd",
+          "stake": "70151411311",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x3d2b378a7742b8be9ba03fe9113efd0a3d6a425d69794057c242e9d87ca3d105",
+          "stake": "97",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x415717bdeb0311ba435010eb8b9a4ab5700e45f1bf1a339946284eccd1c24fc3",
+          "stake": "66883",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x4a0d68b21a36903d625431edcf920aaeb18b923424f38838e9f9ab3a48455228",
+          "stake": "249466803119",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x5a3cb2f0de7050a91349bf416c92dcfd07b0631e2e9835cf4b9f89f6081d60d0",
+          "stake": "78",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x64e02acfbe6f2478a13161956a80161625b63e5ceac9b4cd772e06ee50ddcf21",
+          "stake": "60950",
+          "option": null,
+          "voidReason": "bad_option"
+        },
+        {
+          "account": "0x6fc02bad39f1c0cb3b8cc762906f32bbca5c0a992326efe708f2e78cfdbf90aa",
+          "stake": "79476",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0x75f4af6d42f9522263dad5841301ce8d3dbcc57a340f86a3b7dfb42129f50be2",
+          "stake": "27339956465",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x7ec628d798b75498b65e61b9969270b96c0f380f86cb17d1d22c390866452d03",
+          "stake": "99",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x7fbe08b1fe6c637b5fd108102a579082b7aa90986a13e1fa921eea53d72202e8",
+          "stake": "286996385093",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x826be68bab0b8318cbfceec1725593cd19fc1d20d1450d59c4b94ab60a4ffbc2",
+          "stake": "73",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0x82fda94c54198599e3ed48c51467656df25318a105ca425c2c7132c6a5cfbf5d",
+          "stake": "434492882736",
+          "option": null,
+          "voidReason": "non_canonical_header"
+        },
+        {
+          "account": "0x8405bd937ee08cbaf8b8ff25d87fa1d5457a850ae93d73b2526afcb3936072b9",
+          "stake": "780097239154",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x8429169cb9434fc81a18608399c98614e26fa867ec6ff16086138800c3ba4f4c",
+          "stake": "39368",
+          "option": null,
+          "voidReason": "wrong_target"
+        },
+        {
+          "account": "0x8cf8a5afd5e4a0171a22cbde6414f81b1e1372f0c9cacd0ca4bea7a95a3fda4f",
+          "stake": "31311",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x8d1b3ce3bde92df7213fa36af47a2e3bcbe3412d50258417782eba1c75fcb354",
+          "stake": "499758274217",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0x9302665244e5145d1a16cbddf1b5bae0206c492265c26e76819c2608e4d3c12b",
+          "stake": "97042358160",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0xa962ee948c0c6deb7da98528256bf0b4d973b41c9f863b2b1e328f4096de0f8e",
+          "stake": "2",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xb083b1d0af1c887e1286d7791a2590a0522ee4eceae6da924a7f2bc6e896c5ea",
+          "stake": "46201",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xbfed8e4897c4d9d5323861a79a4b288c1210305bf2e6514f13e60f5054ca9534",
+          "stake": "37427",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xc1523bd4e8bac074854c768f58c5f4aaa6103df80a2e56dd317329588ca16364",
+          "stake": "60144",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xc177697efa4bd85f2082e7d616743aade2b45c9b40e2b4937ac7d2382e26918e",
+          "stake": "10401",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xc3c56a53c51104190b2b726409258036fdb530ed8e58d087a939c4509cfd62fc",
+          "stake": "10241",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xc6f47f83354894ab878a5b2975213a047a90e73a69a9d477fc90582acc9f1ea6",
+          "stake": "859290657663",
+          "option": null,
+          "voidReason": "bad_plaintext"
+        },
+        {
+          "account": "0xd38068989b602d72ad753733446325af8afcbae7a9c295ca7c65e67b78f2bbc0",
+          "stake": "58",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xe510dd406c5e582b62a95083f07923309b43cbdf9ed6e1b6be8ef468603273ae",
+          "stake": "51040",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": false
+        }
+      ],
+      "expected": {
+        "record": {
+          "outcome": "settled",
+          "refundReason": null,
+          "n": [
+            "18",
+            "13"
+          ],
+          "w": [
+            "2370104482995",
+            "631510875103"
+          ],
+          "winner": "1",
+          "lossPool": "2370104482995",
+          "fee": "0",
+          "creatorFee": "0",
+          "distributable": "2370104482995",
+          "rebatePool": "6",
+          "dust": "3",
+          "voidCount": "4",
+          "voidStake": "1293783640717",
+          "total": "3001615358098",
+          "creatorAward": "23701044829"
+        },
+        "payouts": [
+          {
+            "account": "0x06d08e597ee05cb4122775e9cce0a6f5ea7469bdf6806fa8905531dfeb0930ae",
+            "kind": "rebate",
+            "amount": "1"
+          },
+          {
+            "account": "0x19e53f9f674781fb35d514163fc8af941331b70c0c23b84eac6e4775f6573cfc",
+            "kind": "win",
+            "amount": "342"
+          },
+          {
+            "account": "0x1c9e5201b3bb9c7102a225eeec14038e2aa7a71a3cd39f59da6b463884cdbb55",
+            "kind": "win",
+            "amount": "318707"
+          },
+          {
+            "account": "0x259866d41938463285254f6693f700872a254bf45730bebe4a01268e013d0694",
+            "kind": "win",
+            "amount": "1354631994787"
+          },
+          {
+            "account": "0x3d2b378a7742b8be9ba03fe9113efd0a3d6a425d69794057c242e9d87ca3d105",
+            "kind": "win",
+            "amount": "461"
+          },
+          {
+            "account": "0x415717bdeb0311ba435010eb8b9a4ab5700e45f1bf1a339946284eccd1c24fc3",
+            "kind": "win",
+            "amount": "317899"
+          },
+          {
+            "account": "0x4a0d68b21a36903d625431edcf920aaeb18b923424f38838e9f9ab3a48455228",
+            "kind": "win",
+            "amount": "1185733163273"
+          },
+          {
+            "account": "0x5a3cb2f0de7050a91349bf416c92dcfd07b0631e2e9835cf4b9f89f6081d60d0",
+            "kind": "win",
+            "amount": "370"
+          },
+          {
+            "account": "0x64e02acfbe6f2478a13161956a80161625b63e5ceac9b4cd772e06ee50ddcf21",
+            "kind": "void_refund",
+            "amount": "60950"
+          },
+          {
+            "account": "0x7ec628d798b75498b65e61b9969270b96c0f380f86cb17d1d22c390866452d03",
+            "kind": "win",
+            "amount": "470"
+          },
+          {
+            "account": "0x82fda94c54198599e3ed48c51467656df25318a105ca425c2c7132c6a5cfbf5d",
+            "kind": "void_refund",
+            "amount": "434492882736"
+          },
+          {
+            "account": "0x8405bd937ee08cbaf8b8ff25d87fa1d5457a850ae93d73b2526afcb3936072b9",
+            "kind": "rebate",
+            "amount": "1"
+          },
+          {
+            "account": "0x8429169cb9434fc81a18608399c98614e26fa867ec6ff16086138800c3ba4f4c",
+            "kind": "void_refund",
+            "amount": "39368"
+          },
+          {
+            "account": "0x8d1b3ce3bde92df7213fa36af47a2e3bcbe3412d50258417782eba1c75fcb354",
+            "kind": "rebate",
+            "amount": "1"
+          },
+          {
+            "account": "0x9302665244e5145d1a16cbddf1b5bae0206c492265c26e76819c2608e4d3c12b",
+            "kind": "win",
+            "amount": "461249115609"
+          },
+          {
+            "account": "0xa962ee948c0c6deb7da98528256bf0b4d973b41c9f863b2b1e328f4096de0f8e",
+            "kind": "win",
+            "amount": "9"
+          },
+          {
+            "account": "0xb083b1d0af1c887e1286d7791a2590a0522ee4eceae6da924a7f2bc6e896c5ea",
+            "kind": "win",
+            "amount": "219596"
+          },
+          {
+            "account": "0xbfed8e4897c4d9d5323861a79a4b288c1210305bf2e6514f13e60f5054ca9534",
+            "kind": "win",
+            "amount": "177893"
+          },
+          {
+            "account": "0xc3c56a53c51104190b2b726409258036fdb530ed8e58d087a939c4509cfd62fc",
+            "kind": "win",
+            "amount": "48676"
+          },
+          {
+            "account": "0xc6f47f83354894ab878a5b2975213a047a90e73a69a9d477fc90582acc9f1ea6",
+            "kind": "void_refund",
+            "amount": "859290657663"
+          }
+        ],
+        "payoutRoot": "0x1348587bd33dddd2d2bb8ad31ef860d948676bd4a8fff1290cd255ecf46a964d"
+      }
+    },
+    {
+      "id": "random-05",
+      "roundId": "0xf77dc2b260f0bc16468abce3cdb1b56d",
+      "params": {
+        "feeBps": "0",
+        "creatorBps": "0",
+        "capMultiple": "10",
+        "minEntrants": "5",
+        "creatorAwardBps": "250",
+        "countQualifyingOnly": false
+      },
+      "entries": [
+        {
+          "account": "0x0b79871c6dc7d8bc40b6cbecf0c7197ebaf0bf20bac36342909c53c3bc04651c",
+          "stake": "80869",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x0d5817506a0b87fd7aa8af3fc793de885fe6bf9e1b5216b3dcd489721395f74f",
+          "stake": "147310624006",
+          "option": null,
+          "voidReason": "bad_plaintext"
+        },
+        {
+          "account": "0x1329ab8ee60f6445292313eaec3cc3a9ae7bcfb945d51cc357f0918a17f3e001",
+          "stake": "85910",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x23934a1b43d141bd7f57ac00c3c2780bd93af968656ed3c7adc8ebe22bd769ca",
+          "stake": "819506580746",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x269c016204015dc8e462ef14b13672d061236a2d65bf7b43367eb4efad4328c9",
+          "stake": "64607",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x2ea173d092691a415443a1207a32bf1bdeeabdd09f817166c4b9401fcf336f51",
+          "stake": "84",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x31ae435e5482996843672ea58f051c7b627083b6057f7e9fb1e2ecf40e0cb935",
+          "stake": "39",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0x333088b61e10dd2360a70d722efddd2283eed2f381d6bf449ef77036d59fb247",
+          "stake": "668857902745",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x34b5304a0570762c49444e617f007435a91a883bd75b312dec9893ba69fba1f2",
+          "stake": "64",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x36ab1f2779f01d27ab06279c683635ff64ee02e55ebba15a77aa6d81be89304b",
+          "stake": "13",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0x37b12a1451ca58c8764fde5dc67aa3801a44e0923ecfcd97635f8b83bc6fa3d7",
+          "stake": "95",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x381e04db7741d776d05ca25ef47e316dbf7c8bcfe0966e9071ef5cb5f33179eb",
+          "stake": "30",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x45226b1eb731c060c1e6b5d54b9aad401c531e00ba0262e9d0a34309953b5cde",
+          "stake": "76798",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x4ae5863ffdbff6b6c5a68cc734889f8988f66ef63d6ed00c6494a85a0c0c1065",
+          "stake": "83",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0x612b924005dacca04505e6241f0b9d494a583ad264de30570a4427acf3eace55",
+          "stake": "24737",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x698b717c763509a4e048459e08e044d1cdd4df64ee234755f71163d2eb5410ca",
+          "stake": "43065",
+          "option": null,
+          "voidReason": "wrong_target"
+        },
+        {
+          "account": "0x6f6f25563b7bfb6d933abd980bc70e5a677f36389f8bf7605e907a074e24dbf8",
+          "stake": "368272067255",
+          "option": null,
+          "voidReason": "decrypt_failed"
+        },
+        {
+          "account": "0x730f42f8aef1a925a8d1f363878b052e27268d0a9a349125f81fbac780e8f795",
+          "stake": "10",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x7910b78973a82dce0d8625012f6a354eca0769f9b262d81f5c89788a7c63e01e",
+          "stake": "19826",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x7a6fdb11d0bb9175dc257590f4f9f3375d7defba9d402a5c9eaa1dd770eefa0e",
+          "stake": "78279",
+          "option": null,
+          "voidReason": "decrypt_failed"
+        },
+        {
+          "account": "0x7ec973fbfeab1c671f387576b870dbdd79ebda113417dcc82072467448cfcd53",
+          "stake": "21",
+          "option": null,
+          "voidReason": "wrong_target"
+        },
+        {
+          "account": "0x802e16370b47cc75445cd4a183e89c0f84cf5c13ee4e4de89f52c45fca9bd010",
+          "stake": "98",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x8e94a03e6696606ba8bfdfcad49eaa844c6738a972dcdfeb38b8921ae71f46e8",
+          "stake": "96",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xa00e5dde366ae1d74bb9bd634a725e7ff595fd855f7c55ffda665e9bc024e12c",
+          "stake": "34985",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0xa6788beb9260206faae4cb80d33643cddf9fbeafdd98c522d3a861090a75cb5a",
+          "stake": "54090",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xaec53f9dfa0295778ac4d3e3e4b6a221273782b8cbb31417edf91b1f1d2409c7",
+          "stake": "77",
+          "option": null,
+          "voidReason": "bad_plaintext"
+        },
+        {
+          "account": "0xb44c2b311df98b84a0dd1cadff4f6c9b5b5e79a2f623cf064f4c11927f16bfb4",
+          "stake": "15",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xb6ff442d3338b3a865345ba637c7f35a373009320e59ff0e6c20b17842382102",
+          "stake": "23301",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xb8fe16cc42aa04db7b9bf292119732236ac1ce02027ec19a3625bd1c68c22908",
+          "stake": "93736",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0xba952547e2dc60446063732cc5829d103a5a19f7595693e358e0a4d0c6458258",
+          "stake": "11",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0xbd3f5ed77123838f8426df28827b8dc504fd7b0469052a1053278e7adc1c9228",
+          "stake": "556283837911",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xc44cf0af73acf71c94886ad917136b0bd235d1b60fe4f1c6b80cfe8e914ff426",
+          "stake": "74944",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xd1c0645b8e020c90ca23abf5d392d2fe6410b83cd36d10d6c6b6fe93ef25747e",
+          "stake": "926325624119",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xe90b50739e9c6f60184c5c9893936787f3008efd832dfa504c39620317528129",
+          "stake": "773385242580",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xec3b497c539ec9a5c024473d6ba08e39ac0e4b70aec48618e05af4f14d81521a",
+          "stake": "63",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0xf2e240ca37f217481797b6c6a5b318c2a7e8cf3b2a392436a0390e51c5eef6a8",
+          "stake": "248190250366",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xffdf30c5cdd5d69ca1dfda8c681cf10d5dfcbf59aa92bda668c319ba574cb131",
+          "stake": "562579788073",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        }
+      ],
+      "expected": {
+        "record": {
+          "outcome": "settled",
+          "refundReason": null,
+          "n": [
+            "18",
+            "13"
+          ],
+          "w": [
+            "1479628443758",
+            "3075501417286"
+          ],
+          "winner": "1",
+          "lossPool": "1479628443758",
+          "fee": "0",
+          "creatorFee": "0",
+          "distributable": "1479628443758",
+          "rebatePool": "5",
+          "dust": "2",
+          "voidCount": "6",
+          "voidStake": "515582812703",
+          "total": "4555129861044",
+          "creatorAward": "36990711093"
+        },
+        "payouts": [
+          {
+            "account": "0x0d5817506a0b87fd7aa8af3fc793de885fe6bf9e1b5216b3dcd489721395f74f",
+            "kind": "void_refund",
+            "amount": "147310624006"
+          },
+          {
+            "account": "0x23934a1b43d141bd7f57ac00c3c2780bd93af968656ed3c7adc8ebe22bd769ca",
+            "kind": "win",
+            "amount": "1213772452289"
+          },
+          {
+            "account": "0x31ae435e5482996843672ea58f051c7b627083b6057f7e9fb1e2ecf40e0cb935",
+            "kind": "win",
+            "amount": "57"
+          },
+          {
+            "account": "0x333088b61e10dd2360a70d722efddd2283eed2f381d6bf449ef77036d59fb247",
+            "kind": "rebate",
+            "amount": "2"
+          },
+          {
+            "account": "0x36ab1f2779f01d27ab06279c683635ff64ee02e55ebba15a77aa6d81be89304b",
+            "kind": "win",
+            "amount": "19"
+          },
+          {
+            "account": "0x37b12a1451ca58c8764fde5dc67aa3801a44e0923ecfcd97635f8b83bc6fa3d7",
+            "kind": "win",
+            "amount": "140"
+          },
+          {
+            "account": "0x45226b1eb731c060c1e6b5d54b9aad401c531e00ba0262e9d0a34309953b5cde",
+            "kind": "win",
+            "amount": "113745"
+          },
+          {
+            "account": "0x698b717c763509a4e048459e08e044d1cdd4df64ee234755f71163d2eb5410ca",
+            "kind": "void_refund",
+            "amount": "43065"
+          },
+          {
+            "account": "0x6f6f25563b7bfb6d933abd980bc70e5a677f36389f8bf7605e907a074e24dbf8",
+            "kind": "void_refund",
+            "amount": "368272067255"
+          },
+          {
+            "account": "0x7910b78973a82dce0d8625012f6a354eca0769f9b262d81f5c89788a7c63e01e",
+            "kind": "win",
+            "amount": "29364"
+          },
+          {
+            "account": "0x7a6fdb11d0bb9175dc257590f4f9f3375d7defba9d402a5c9eaa1dd770eefa0e",
+            "kind": "void_refund",
+            "amount": "78279"
+          },
+          {
+            "account": "0x7ec973fbfeab1c671f387576b870dbdd79ebda113417dcc82072467448cfcd53",
+            "kind": "void_refund",
+            "amount": "21"
+          },
+          {
+            "account": "0x8e94a03e6696606ba8bfdfcad49eaa844c6738a972dcdfeb38b8921ae71f46e8",
+            "kind": "win",
+            "amount": "142"
+          },
+          {
+            "account": "0xa00e5dde366ae1d74bb9bd634a725e7ff595fd855f7c55ffda665e9bc024e12c",
+            "kind": "win",
+            "amount": "51816"
+          },
+          {
+            "account": "0xaec53f9dfa0295778ac4d3e3e4b6a221273782b8cbb31417edf91b1f1d2409c7",
+            "kind": "void_refund",
+            "amount": "77"
+          },
+          {
+            "account": "0xb44c2b311df98b84a0dd1cadff4f6c9b5b5e79a2f623cf064f4c11927f16bfb4",
+            "kind": "win",
+            "amount": "22"
+          },
+          {
+            "account": "0xbd3f5ed77123838f8426df28827b8dc504fd7b0469052a1053278e7adc1c9228",
+            "kind": "win",
+            "amount": "823912844599"
+          },
+          {
+            "account": "0xd1c0645b8e020c90ca23abf5d392d2fe6410b83cd36d10d6c6b6fe93ef25747e",
+            "kind": "win",
+            "amount": "1371982301083"
+          },
+          {
+            "account": "0xe90b50739e9c6f60184c5c9893936787f3008efd832dfa504c39620317528129",
+            "kind": "win",
+            "amount": "1145462067670"
+          },
+          {
+            "account": "0xec3b497c539ec9a5c024473d6ba08e39ac0e4b70aec48618e05af4f14d81521a",
+            "kind": "win",
+            "amount": "93"
+          },
+          {
+            "account": "0xffdf30c5cdd5d69ca1dfda8c681cf10d5dfcbf59aa92bda668c319ba574cb131",
+            "kind": "rebate",
+            "amount": "1"
+          }
+        ],
+        "payoutRoot": "0x95799ab8654fbf583a8feda291eb1927302ea6e520226a75cba7d896c99c0295"
+      }
+    },
+    {
+      "id": "random-06",
+      "roundId": "0x68df2b220edd73ae5c357cbe25f790bc",
+      "params": {
+        "feeBps": "0",
+        "creatorBps": "0",
+        "capMultiple": "10",
+        "minEntrants": "5",
+        "creatorAwardBps": "100",
+        "countQualifyingOnly": false
+      },
+      "entries": [
+        {
+          "account": "0x000d6031f00251b90b9ead07bcec56f5f6c88698c8757eee4394c1507395db6a",
+          "stake": "69830",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x101633916313144c49aea1549536e09774aef4e061414f7e147cb17866ebbf38",
+          "stake": "24174",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x1125ff031d080bd5297cd9f15eb65047fda76bf965af748184231e8c9f970bd7",
+          "stake": "30155",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x15b7cc8a4c9504c156874f680b6cef3c20591837a222f107ec2fa6cf5067275a",
+          "stake": "70",
+          "option": null,
+          "voidReason": "stake_out_of_range"
+        },
+        {
+          "account": "0x1c7e57703f87ab0e6c268aa6f85259e200975d0126fb74bb7c01dcc15f097fdc",
+          "stake": "28",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x365b4de6b7c9ad49a842fb4e1e32a02f0a8c365c4eabfdfdc67e82658020c42c",
+          "stake": "435761892332",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x396acd3cf18d404e2939aba590ccad51b1c45eba959e7f7f6f7b0fed9a53a7d0",
+          "stake": "91",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0x4a8d5413588821afa160c4147eaee201e2fccb4153ba6c3eb321983681d52d24",
+          "stake": "24971",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x536e5cb8ae04a96a583a8ec38f8b7bb79e60854d2bc968dead65cbb8b939f205",
+          "stake": "61",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x57768b2a84d698406a717203cd20a0554eaea98bd321c639f7020774e21e014d",
+          "stake": "25",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x7baa3e853bc53f879cead2e4ac040fdecd2c991c1d1341b0aebf9f48ebfeacfb",
+          "stake": "842534342665",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xaa91b87fb6a21dc1faa4661653d28f0f57231a46f795678eacb80e3bb70dfada",
+          "stake": "76",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xb2f74aa42bd443122e8f3fe1eda31b664a199304243102f05b1485d5e262162a",
+          "stake": "63",
+          "option": null,
+          "voidReason": "bad_option"
+        },
+        {
+          "account": "0xb637f29e205dfaed1a9cd00bffd9ee334d092e8752fdd9a666a8068449851845",
+          "stake": "52506",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0xb9848832bce97739ffa582abde3f66469af22252715247f9b14c70fc2a0ecb16",
+          "stake": "84",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xdbcd751275937a09f6f3b2d9db1a39f02891ffa9b3a92bee89c73dfb7d773041",
+          "stake": "556008683992",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xe73c0b7fd1ead645f4d45f39c64d5ba7262a6db420810aa476c3763e7598e794",
+          "stake": "36",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xee202e219969b13f6403cbb50bd2a25785df8e7190716c4d677572bf43b5b54d",
+          "stake": "42",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xf14a2c4a2a1a626f65f63df7802b7389e8d0bbf23a594749d0fd27648e36db9c",
+          "stake": "86469",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xf3d633e721646baa32f060fffcf17116919fc31f1856044b36d32632536daa9d",
+          "stake": "3090",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xf632cdcebde4d0a521976f0220b79d04c29067d452d1abbce6ea0f8f4dce682f",
+          "stake": "229851356856",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        }
+      ],
+      "expected": {
+        "record": {
+          "outcome": "refunded",
+          "refundReason": "2",
+          "n": [
+            "0",
+            "19"
+          ],
+          "w": [
+            "0",
+            "2064156567483"
+          ],
+          "winner": null,
+          "lossPool": "0",
+          "fee": "0",
+          "creatorFee": "0",
+          "distributable": "0",
+          "rebatePool": "0",
+          "dust": "0",
+          "voidCount": "2",
+          "voidStake": "133",
+          "total": "2064156567483",
+          "creatorAward": "0"
+        },
+        "payouts": [
+          {
+            "account": "0x000d6031f00251b90b9ead07bcec56f5f6c88698c8757eee4394c1507395db6a",
+            "kind": "refund",
+            "amount": "69830"
+          },
+          {
+            "account": "0x101633916313144c49aea1549536e09774aef4e061414f7e147cb17866ebbf38",
+            "kind": "refund",
+            "amount": "24174"
+          },
+          {
+            "account": "0x1125ff031d080bd5297cd9f15eb65047fda76bf965af748184231e8c9f970bd7",
+            "kind": "refund",
+            "amount": "30155"
+          },
+          {
+            "account": "0x15b7cc8a4c9504c156874f680b6cef3c20591837a222f107ec2fa6cf5067275a",
+            "kind": "refund",
+            "amount": "70"
+          },
+          {
+            "account": "0x1c7e57703f87ab0e6c268aa6f85259e200975d0126fb74bb7c01dcc15f097fdc",
+            "kind": "refund",
+            "amount": "28"
+          },
+          {
+            "account": "0x365b4de6b7c9ad49a842fb4e1e32a02f0a8c365c4eabfdfdc67e82658020c42c",
+            "kind": "refund",
+            "amount": "435761892332"
+          },
+          {
+            "account": "0x396acd3cf18d404e2939aba590ccad51b1c45eba959e7f7f6f7b0fed9a53a7d0",
+            "kind": "refund",
+            "amount": "91"
+          },
+          {
+            "account": "0x4a8d5413588821afa160c4147eaee201e2fccb4153ba6c3eb321983681d52d24",
+            "kind": "refund",
+            "amount": "24971"
+          },
+          {
+            "account": "0x536e5cb8ae04a96a583a8ec38f8b7bb79e60854d2bc968dead65cbb8b939f205",
+            "kind": "refund",
+            "amount": "61"
+          },
+          {
+            "account": "0x57768b2a84d698406a717203cd20a0554eaea98bd321c639f7020774e21e014d",
+            "kind": "refund",
+            "amount": "25"
+          },
+          {
+            "account": "0x7baa3e853bc53f879cead2e4ac040fdecd2c991c1d1341b0aebf9f48ebfeacfb",
+            "kind": "refund",
+            "amount": "842534342665"
+          },
+          {
+            "account": "0xaa91b87fb6a21dc1faa4661653d28f0f57231a46f795678eacb80e3bb70dfada",
+            "kind": "refund",
+            "amount": "76"
+          },
+          {
+            "account": "0xb2f74aa42bd443122e8f3fe1eda31b664a199304243102f05b1485d5e262162a",
+            "kind": "refund",
+            "amount": "63"
+          },
+          {
+            "account": "0xb637f29e205dfaed1a9cd00bffd9ee334d092e8752fdd9a666a8068449851845",
+            "kind": "refund",
+            "amount": "52506"
+          },
+          {
+            "account": "0xb9848832bce97739ffa582abde3f66469af22252715247f9b14c70fc2a0ecb16",
+            "kind": "refund",
+            "amount": "84"
+          },
+          {
+            "account": "0xdbcd751275937a09f6f3b2d9db1a39f02891ffa9b3a92bee89c73dfb7d773041",
+            "kind": "refund",
+            "amount": "556008683992"
+          },
+          {
+            "account": "0xe73c0b7fd1ead645f4d45f39c64d5ba7262a6db420810aa476c3763e7598e794",
+            "kind": "refund",
+            "amount": "36"
+          },
+          {
+            "account": "0xee202e219969b13f6403cbb50bd2a25785df8e7190716c4d677572bf43b5b54d",
+            "kind": "refund",
+            "amount": "42"
+          },
+          {
+            "account": "0xf14a2c4a2a1a626f65f63df7802b7389e8d0bbf23a594749d0fd27648e36db9c",
+            "kind": "refund",
+            "amount": "86469"
+          },
+          {
+            "account": "0xf3d633e721646baa32f060fffcf17116919fc31f1856044b36d32632536daa9d",
+            "kind": "refund",
+            "amount": "3090"
+          },
+          {
+            "account": "0xf632cdcebde4d0a521976f0220b79d04c29067d452d1abbce6ea0f8f4dce682f",
+            "kind": "refund",
+            "amount": "229851356856"
+          }
+        ],
+        "payoutRoot": "0x7658721459407cb84f87a155c7c643ca4795e5c69182bc6255bb7b7db4ba7ae9"
+      }
+    },
+    {
+      "id": "random-07",
+      "roundId": "0x2f0ddadf20a75bd7277d82d075dbde3a",
+      "params": {
+        "feeBps": "0",
+        "creatorBps": "0",
+        "capMultiple": "10",
+        "minEntrants": "1",
+        "creatorAwardBps": "100",
+        "countQualifyingOnly": false
+      },
+      "entries": [
+        {
+          "account": "0x0442226e6edfe5cc4ab387fb683dd6661cb91af24c38937f6424ae5315a320d9",
+          "stake": "524255590066",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x09d9ff4c984b85d4ea12c33d425118e96b69f82f2705ade4720f463cf60b9544",
+          "stake": "3",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x0d71e63bc919d3aa57828344fe3b415ba1a2644c3eaaddb14f49d8423a13458a",
+          "stake": "15",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x0e7caeb57932ebaf20499f097067f8b9976a491f0eaf17a15663e60ed3f4f913",
+          "stake": "82644",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x23c51c0c5c789f8689d0d1ca83e3ba2f20a0d1e72801f6a7e6e6149a6da6d104",
+          "stake": "37",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x2b09daccc7f2daaa515b858d03053ecfe8dad410c745dabf1faf5a8eff4a9813",
+          "stake": "29",
+          "option": null,
+          "voidReason": "non_canonical_header"
+        },
+        {
+          "account": "0x2b3288ee62e3319b9ba173d2d4291b04fd07758148df0f9ff1fd6a12564719e9",
+          "stake": "17596",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x338ce0027da9fc56cd0b79e94c99b0b8a9b6ca923f6a35cc3d2ac953825267ee",
+          "stake": "25",
+          "option": null,
+          "voidReason": "stake_out_of_range"
+        },
+        {
+          "account": "0x42d42c08645e9ceae6d5de63c51d981c86d6b88d94bab7ea3fa9b72b1dcf88d0",
+          "stake": "4",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x5d81f5599008ce8ed166a0bb794e0784e42f51613894a6936ec0900c3664e0ba",
+          "stake": "15440",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x6649e0c511a969ec49c9212e9fff229eb0f69fd51ae6f4539e2a5e6ef005c67d",
+          "stake": "56",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x845aac982a098fe5adc773f70a031a116dad16e89f729b72fa492251baa189af",
+          "stake": "66",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x87155df9d376ce58836ec9d79439395c67101e92fbef25b18b1831c68758b5f4",
+          "stake": "13",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x8e50002546baa3b0a5296b549fa41616a8c3d21cce53e38d0e6226358da65aaa",
+          "stake": "728118821389",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x9aaf86ad546fab7e564508c52594b3041979b426fad864d0485df5b032ed916d",
+          "stake": "13405",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x9ef2f7d1d35b2ebd109f8fe581680ba5ba459746b9e9f6e144c2dc1dd2802344",
+          "stake": "305319087543",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0xaa2114d560dba537b4a71b25c7d231e7b746e02939eef7c7b965090504be7c2f",
+          "stake": "6900",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xabce9257dc7e12fd0d909f298a31e273dc737774a70158991d592dec0ccd5f51",
+          "stake": "75883",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xb017508543b6f0761fa8f0101a2289eed4142cbe126aba05823b86df42e5810b",
+          "stake": "43",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0xb418a9350bf26258b846372d0df60fa32488d99ff117f78013bf88cc25d8f5c1",
+          "stake": "486451346140",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xcc6bc52b3c0bf2ffe82e649c8f767ed4ce6b053d09d17b7085f504c67d13f43d",
+          "stake": "95",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xcc93333e5bb06ab3a6e4645be281069cf0a1cdb90268e9a132b763d1b3c421d3",
+          "stake": "97274",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0xdaf1aef85473ea983a96f98058c50b35755cfcb0b40cde4034b89f06aef4e411",
+          "stake": "100",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xe41b6e687c7c3ee4e404fc700dada4cb7468ed918ae4618009446f3f83978e86",
+          "stake": "74005",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xeac72753f0f9cbe4fba0e8105e2b72aaac0254bbc218ffffd51ebb3bd6c1e1f0",
+          "stake": "228025710809",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xf24cefbba64a4ef2595e7ccfb1573bb4e51613dc1595dfe3e7a47fbe08a6b5e7",
+          "stake": "92",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        }
+      ],
+      "expected": {
+        "record": {
+          "outcome": "refunded",
+          "refundReason": "3",
+          "n": [
+            "12",
+            "12"
+          ],
+          "w": [
+            "1010707119516",
+            "1261463820102"
+          ],
+          "winner": null,
+          "lossPool": "0",
+          "fee": "0",
+          "creatorFee": "0",
+          "distributable": "0",
+          "rebatePool": "0",
+          "dust": "0",
+          "voidCount": "2",
+          "voidStake": "54",
+          "total": "2272170939618",
+          "creatorAward": "0"
+        },
+        "payouts": [
+          {
+            "account": "0x0442226e6edfe5cc4ab387fb683dd6661cb91af24c38937f6424ae5315a320d9",
+            "kind": "refund",
+            "amount": "524255590066"
+          },
+          {
+            "account": "0x09d9ff4c984b85d4ea12c33d425118e96b69f82f2705ade4720f463cf60b9544",
+            "kind": "refund",
+            "amount": "3"
+          },
+          {
+            "account": "0x0d71e63bc919d3aa57828344fe3b415ba1a2644c3eaaddb14f49d8423a13458a",
+            "kind": "refund",
+            "amount": "15"
+          },
+          {
+            "account": "0x0e7caeb57932ebaf20499f097067f8b9976a491f0eaf17a15663e60ed3f4f913",
+            "kind": "refund",
+            "amount": "82644"
+          },
+          {
+            "account": "0x23c51c0c5c789f8689d0d1ca83e3ba2f20a0d1e72801f6a7e6e6149a6da6d104",
+            "kind": "refund",
+            "amount": "37"
+          },
+          {
+            "account": "0x2b09daccc7f2daaa515b858d03053ecfe8dad410c745dabf1faf5a8eff4a9813",
+            "kind": "refund",
+            "amount": "29"
+          },
+          {
+            "account": "0x2b3288ee62e3319b9ba173d2d4291b04fd07758148df0f9ff1fd6a12564719e9",
+            "kind": "refund",
+            "amount": "17596"
+          },
+          {
+            "account": "0x338ce0027da9fc56cd0b79e94c99b0b8a9b6ca923f6a35cc3d2ac953825267ee",
+            "kind": "refund",
+            "amount": "25"
+          },
+          {
+            "account": "0x42d42c08645e9ceae6d5de63c51d981c86d6b88d94bab7ea3fa9b72b1dcf88d0",
+            "kind": "refund",
+            "amount": "4"
+          },
+          {
+            "account": "0x5d81f5599008ce8ed166a0bb794e0784e42f51613894a6936ec0900c3664e0ba",
+            "kind": "refund",
+            "amount": "15440"
+          },
+          {
+            "account": "0x6649e0c511a969ec49c9212e9fff229eb0f69fd51ae6f4539e2a5e6ef005c67d",
+            "kind": "refund",
+            "amount": "56"
+          },
+          {
+            "account": "0x845aac982a098fe5adc773f70a031a116dad16e89f729b72fa492251baa189af",
+            "kind": "refund",
+            "amount": "66"
+          },
+          {
+            "account": "0x87155df9d376ce58836ec9d79439395c67101e92fbef25b18b1831c68758b5f4",
+            "kind": "refund",
+            "amount": "13"
+          },
+          {
+            "account": "0x8e50002546baa3b0a5296b549fa41616a8c3d21cce53e38d0e6226358da65aaa",
+            "kind": "refund",
+            "amount": "728118821389"
+          },
+          {
+            "account": "0x9aaf86ad546fab7e564508c52594b3041979b426fad864d0485df5b032ed916d",
+            "kind": "refund",
+            "amount": "13405"
+          },
+          {
+            "account": "0x9ef2f7d1d35b2ebd109f8fe581680ba5ba459746b9e9f6e144c2dc1dd2802344",
+            "kind": "refund",
+            "amount": "305319087543"
+          },
+          {
+            "account": "0xaa2114d560dba537b4a71b25c7d231e7b746e02939eef7c7b965090504be7c2f",
+            "kind": "refund",
+            "amount": "6900"
+          },
+          {
+            "account": "0xabce9257dc7e12fd0d909f298a31e273dc737774a70158991d592dec0ccd5f51",
+            "kind": "refund",
+            "amount": "75883"
+          },
+          {
+            "account": "0xb017508543b6f0761fa8f0101a2289eed4142cbe126aba05823b86df42e5810b",
+            "kind": "refund",
+            "amount": "43"
+          },
+          {
+            "account": "0xb418a9350bf26258b846372d0df60fa32488d99ff117f78013bf88cc25d8f5c1",
+            "kind": "refund",
+            "amount": "486451346140"
+          },
+          {
+            "account": "0xcc6bc52b3c0bf2ffe82e649c8f767ed4ce6b053d09d17b7085f504c67d13f43d",
+            "kind": "refund",
+            "amount": "95"
+          },
+          {
+            "account": "0xcc93333e5bb06ab3a6e4645be281069cf0a1cdb90268e9a132b763d1b3c421d3",
+            "kind": "refund",
+            "amount": "97274"
+          },
+          {
+            "account": "0xdaf1aef85473ea983a96f98058c50b35755cfcb0b40cde4034b89f06aef4e411",
+            "kind": "refund",
+            "amount": "100"
+          },
+          {
+            "account": "0xe41b6e687c7c3ee4e404fc700dada4cb7468ed918ae4618009446f3f83978e86",
+            "kind": "refund",
+            "amount": "74005"
+          },
+          {
+            "account": "0xeac72753f0f9cbe4fba0e8105e2b72aaac0254bbc218ffffd51ebb3bd6c1e1f0",
+            "kind": "refund",
+            "amount": "228025710809"
+          },
+          {
+            "account": "0xf24cefbba64a4ef2595e7ccfb1573bb4e51613dc1595dfe3e7a47fbe08a6b5e7",
+            "kind": "refund",
+            "amount": "92"
+          }
+        ],
+        "payoutRoot": "0x9cc920ce94018e77c609670e9bcbe78fe7f360f9feb8a3da1cef8313e0e018d3"
+      }
+    },
+    {
+      "id": "random-08",
+      "roundId": "0xc70d8e96c4d51195f6310ef14232251e",
+      "params": {
+        "feeBps": "0",
+        "creatorBps": "0",
+        "capMultiple": "1",
+        "minEntrants": "1",
+        "creatorAwardBps": "0",
+        "countQualifyingOnly": false
+      },
+      "entries": [
+        {
+          "account": "0x41f05e04a056a44cb576311bc11883029a80bf0012daf87ad0205ba84ee4eea6",
+          "stake": "736564069249",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0x63a58d472a59cc4a5460014ef0cce19e96eaf4bce774d4075cad96da50fb0926",
+          "stake": "392261796397",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x97c55faabc3147cf4928c413c39ead18359aca825a717e23d7262e6bcda3357c",
+          "stake": "512193378072",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xc0d4652be5a7eadffa7cb932358712e6d553fbc55d296601023d26120bde8849",
+          "stake": "77653",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xc23707b080d17b13b340e09d3222b522b290242fb1c3a763c1f8f7715bc3d20e",
+          "stake": "175129502434",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0xe752cd72d8856fc5c265b1427a596e82fcb005167142458847714603273e3644",
+          "stake": "86296",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        }
+      ],
+      "expected": {
+        "record": {
+          "outcome": "settled",
+          "refundReason": null,
+          "n": [
+            "5",
+            "1"
+          ],
+          "w": [
+            "1079584840852",
+            "736564069249"
+          ],
+          "winner": "1",
+          "lossPool": "1079584840852",
+          "fee": "0",
+          "creatorFee": "0",
+          "distributable": "1079584840852",
+          "rebatePool": "343020771603",
+          "dust": "2",
+          "voidCount": "0",
+          "voidStake": "0",
+          "total": "1816148910101",
+          "creatorAward": "0"
+        },
+        "payouts": [
+          {
+            "account": "0x41f05e04a056a44cb576311bc11883029a80bf0012daf87ad0205ba84ee4eea6",
+            "kind": "win",
+            "amount": "1473128138498"
+          },
+          {
+            "account": "0x63a58d472a59cc4a5460014ef0cce19e96eaf4bce774d4075cad96da50fb0926",
+            "kind": "rebate",
+            "amount": "124634895729"
+          },
+          {
+            "account": "0x97c55faabc3147cf4928c413c39ead18359aca825a717e23d7262e6bcda3357c",
+            "kind": "rebate",
+            "amount": "162741232655"
+          },
+          {
+            "account": "0xc0d4652be5a7eadffa7cb932358712e6d553fbc55d296601023d26120bde8849",
+            "kind": "rebate",
+            "amount": "24672"
+          },
+          {
+            "account": "0xc23707b080d17b13b340e09d3222b522b290242fb1c3a763c1f8f7715bc3d20e",
+            "kind": "rebate",
+            "amount": "55644591126"
+          },
+          {
+            "account": "0xe752cd72d8856fc5c265b1427a596e82fcb005167142458847714603273e3644",
+            "kind": "rebate",
+            "amount": "27419"
+          }
+        ],
+        "payoutRoot": "0x66874349a61f4feed014292c2275e9329be71aa3342c3b9ba8b4e0340f5d8f16"
+      }
+    },
+    {
+      "id": "random-09",
+      "roundId": "0x6f7eef22986e5368b6f5822d7f40c9f9",
+      "params": {
+        "feeBps": "0",
+        "creatorBps": "0",
+        "capMultiple": "10",
+        "minEntrants": "1",
+        "creatorAwardBps": "0",
+        "countQualifyingOnly": false
+      },
+      "entries": [
+        {
+          "account": "0x001bbecff6c67d18ac6070b0459c0a010d6959f12a9ca07bfd2a130fa6eb778f",
+          "stake": "53744",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x06db05cc0c72cd9aa6287886e38a236a397bb5e08eea00db79d0705034c7a5e4",
+          "stake": "83718",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x076ac258f11016feebc183fd738dff0929f7cb022ad6814a4b4d40949a131e2e",
+          "stake": "45",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0x08d222e9a0cf98042b11a78a8a2c967aa8721a14476859e7cc80e80630b9352d",
+          "stake": "28326",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x0f96325e4160295984b34f99202826d9ae85912dac00b6b7287b8b017a327324",
+          "stake": "68",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x3a7b8f6cccf80ec680d9a0dae94651360071627f4c590bd0cafe01d3184a99a9",
+          "stake": "3117",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x3e56d7de2c695b15e40461932aee9fecdc9a425c818b28bc85e560f966575237",
+          "stake": "98311",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x413e0f68a372b9acb2657e2fb77da52a6ff929266ee585129fbb3ff3acfb684a",
+          "stake": "26",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x4f04ddf8f2d5c82761b8fe024195c3f1c7ad6b6c4747346d93638ab1437d974e",
+          "stake": "62",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x58f77c08e299f230f511b42792a95c2552bf641fb304be1b7b3fd4c498787a0e",
+          "stake": "205013342049",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x5a9b7ee26cd7b2983b782848196db19bc02fbc4adcedb9c6d7f582351a0a903e",
+          "stake": "23762032343",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x5c15e262df35171847faa578a571e5ef6538c768ca618aeb0b5cf457c3a7bca6",
+          "stake": "619703814900",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x5d2d59e20f5b8b7273e4c6bda9f180327fd360a2fff59a21e700ceb6fe375500",
+          "stake": "390544701819",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0x65718a971cff29b3e8b3284e01f03b2af78d9e6b4ca4a829878207d8d8ccead1",
+          "stake": "879407611186",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x6bf26de4de45858000dfb28fd0c1995ab6b2d7256126f73c9b7c2fa6bf30c9b3",
+          "stake": "63397",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x775e6ab707ca0febd828801adb77afaa71d657d535ce4db20068025eab8435b6",
+          "stake": "810264500121",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x7988322524f5534641f5cd935a045f42281d21664e3e2092f2cf3ec89203fa36",
+          "stake": "81766",
+          "option": null,
+          "voidReason": "not_anchored"
+        },
+        {
+          "account": "0x82bc21139981aad4e75c3020a1f8f8994395816e58053d9650fc46f40ead9c40",
+          "stake": "82607",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0x98f9806a2664d661fcc8ca0c2d7dd6c4fef2af9599a52b52252073f00d1f7e63",
+          "stake": "51",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0xa55c1556b4c12dd622ad85c2ae6a67d0a625c87f4d1f527e60ee29e4f5de8e3d",
+          "stake": "34835",
+          "option": null,
+          "voidReason": "bad_plaintext"
+        },
+        {
+          "account": "0xa7a9b33828e561cfd8731fe884b2e0523769e682054cf1cdd5e9efbfcff2d7dd",
+          "stake": "80",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xa9d1db752545c472b06a7cd0e2d29aa6162ff17fd87c4afd1d76204244dd4837",
+          "stake": "26738",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xb2ddd3174c95f6408908623389327faec4903c0367e9593353b44ee2aa49f61e",
+          "stake": "19767",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xc067f6593b37a2665ddd5734eaabc87bf3b2f21f67644572865eac4dcc0405bc",
+          "stake": "865152759825",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xcdae42702b22f0e4519e2dd71b493a994bcf61661176d5b2723119cb7b78c7e8",
+          "stake": "129790387408",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0xd18560f41e4c6acfaa412235f1177b9f7cd3ef10abb76652efcbcd34f6e23e55",
+          "stake": "767109565873",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xd49a313ae4de2fb696084a883656f5013e7d353e6ac016be7f53801e99bec963",
+          "stake": "685650496102",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0xd72721b801428abb9e08d30d953c57b270912208de4e860d9d8dc1bb5b2b9998",
+          "stake": "65",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        }
+      ],
+      "expected": {
+        "record": {
+          "outcome": "refunded",
+          "refundReason": "3",
+          "n": [
+            "13",
+            "13"
+          ],
+          "w": [
+            "1474965920368",
+            "3901433751380"
+          ],
+          "winner": null,
+          "lossPool": "0",
+          "fee": "0",
+          "creatorFee": "0",
+          "distributable": "0",
+          "rebatePool": "0",
+          "dust": "0",
+          "voidCount": "2",
+          "voidStake": "116601",
+          "total": "5376399671748",
+          "creatorAward": "0"
+        },
+        "payouts": [
+          {
+            "account": "0x001bbecff6c67d18ac6070b0459c0a010d6959f12a9ca07bfd2a130fa6eb778f",
+            "kind": "refund",
+            "amount": "53744"
+          },
+          {
+            "account": "0x06db05cc0c72cd9aa6287886e38a236a397bb5e08eea00db79d0705034c7a5e4",
+            "kind": "refund",
+            "amount": "83718"
+          },
+          {
+            "account": "0x076ac258f11016feebc183fd738dff0929f7cb022ad6814a4b4d40949a131e2e",
+            "kind": "refund",
+            "amount": "45"
+          },
+          {
+            "account": "0x08d222e9a0cf98042b11a78a8a2c967aa8721a14476859e7cc80e80630b9352d",
+            "kind": "refund",
+            "amount": "28326"
+          },
+          {
+            "account": "0x0f96325e4160295984b34f99202826d9ae85912dac00b6b7287b8b017a327324",
+            "kind": "refund",
+            "amount": "68"
+          },
+          {
+            "account": "0x3a7b8f6cccf80ec680d9a0dae94651360071627f4c590bd0cafe01d3184a99a9",
+            "kind": "refund",
+            "amount": "3117"
+          },
+          {
+            "account": "0x3e56d7de2c695b15e40461932aee9fecdc9a425c818b28bc85e560f966575237",
+            "kind": "refund",
+            "amount": "98311"
+          },
+          {
+            "account": "0x413e0f68a372b9acb2657e2fb77da52a6ff929266ee585129fbb3ff3acfb684a",
+            "kind": "refund",
+            "amount": "26"
+          },
+          {
+            "account": "0x4f04ddf8f2d5c82761b8fe024195c3f1c7ad6b6c4747346d93638ab1437d974e",
+            "kind": "refund",
+            "amount": "62"
+          },
+          {
+            "account": "0x58f77c08e299f230f511b42792a95c2552bf641fb304be1b7b3fd4c498787a0e",
+            "kind": "refund",
+            "amount": "205013342049"
+          },
+          {
+            "account": "0x5a9b7ee26cd7b2983b782848196db19bc02fbc4adcedb9c6d7f582351a0a903e",
+            "kind": "refund",
+            "amount": "23762032343"
+          },
+          {
+            "account": "0x5c15e262df35171847faa578a571e5ef6538c768ca618aeb0b5cf457c3a7bca6",
+            "kind": "refund",
+            "amount": "619703814900"
+          },
+          {
+            "account": "0x5d2d59e20f5b8b7273e4c6bda9f180327fd360a2fff59a21e700ceb6fe375500",
+            "kind": "refund",
+            "amount": "390544701819"
+          },
+          {
+            "account": "0x65718a971cff29b3e8b3284e01f03b2af78d9e6b4ca4a829878207d8d8ccead1",
+            "kind": "refund",
+            "amount": "879407611186"
+          },
+          {
+            "account": "0x6bf26de4de45858000dfb28fd0c1995ab6b2d7256126f73c9b7c2fa6bf30c9b3",
+            "kind": "refund",
+            "amount": "63397"
+          },
+          {
+            "account": "0x775e6ab707ca0febd828801adb77afaa71d657d535ce4db20068025eab8435b6",
+            "kind": "refund",
+            "amount": "810264500121"
+          },
+          {
+            "account": "0x7988322524f5534641f5cd935a045f42281d21664e3e2092f2cf3ec89203fa36",
+            "kind": "refund",
+            "amount": "81766"
+          },
+          {
+            "account": "0x82bc21139981aad4e75c3020a1f8f8994395816e58053d9650fc46f40ead9c40",
+            "kind": "refund",
+            "amount": "82607"
+          },
+          {
+            "account": "0x98f9806a2664d661fcc8ca0c2d7dd6c4fef2af9599a52b52252073f00d1f7e63",
+            "kind": "refund",
+            "amount": "51"
+          },
+          {
+            "account": "0xa55c1556b4c12dd622ad85c2ae6a67d0a625c87f4d1f527e60ee29e4f5de8e3d",
+            "kind": "refund",
+            "amount": "34835"
+          },
+          {
+            "account": "0xa7a9b33828e561cfd8731fe884b2e0523769e682054cf1cdd5e9efbfcff2d7dd",
+            "kind": "refund",
+            "amount": "80"
+          },
+          {
+            "account": "0xa9d1db752545c472b06a7cd0e2d29aa6162ff17fd87c4afd1d76204244dd4837",
+            "kind": "refund",
+            "amount": "26738"
+          },
+          {
+            "account": "0xb2ddd3174c95f6408908623389327faec4903c0367e9593353b44ee2aa49f61e",
+            "kind": "refund",
+            "amount": "19767"
+          },
+          {
+            "account": "0xc067f6593b37a2665ddd5734eaabc87bf3b2f21f67644572865eac4dcc0405bc",
+            "kind": "refund",
+            "amount": "865152759825"
+          },
+          {
+            "account": "0xcdae42702b22f0e4519e2dd71b493a994bcf61661176d5b2723119cb7b78c7e8",
+            "kind": "refund",
+            "amount": "129790387408"
+          },
+          {
+            "account": "0xd18560f41e4c6acfaa412235f1177b9f7cd3ef10abb76652efcbcd34f6e23e55",
+            "kind": "refund",
+            "amount": "767109565873"
+          },
+          {
+            "account": "0xd49a313ae4de2fb696084a883656f5013e7d353e6ac016be7f53801e99bec963",
+            "kind": "refund",
+            "amount": "685650496102"
+          },
+          {
+            "account": "0xd72721b801428abb9e08d30d953c57b270912208de4e860d9d8dc1bb5b2b9998",
+            "kind": "refund",
+            "amount": "65"
+          }
+        ],
+        "payoutRoot": "0x3cf8e458025b3b20262ad703a65eab2d60452319c8e953ad9421b3cd5c9329f0"
+      }
+    },
+    {
+      "id": "random-10",
+      "roundId": "0x363b97a61119c8eb2543f69463c59a93",
+      "params": {
+        "feeBps": "0",
+        "creatorBps": "0",
+        "capMultiple": "3",
+        "minEntrants": "5",
+        "creatorAwardBps": "0",
+        "countQualifyingOnly": false
+      },
+      "entries": [
+        {
+          "account": "0x06e5a00ddb77b0f3b11cfe2bf0f4faf1117906b8af4365fd7b8d15b452008ac8",
+          "stake": "81",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x2327c300f14698f325e236a5e3c75d7fff7a86f91e1e057b1ce65250fe5c975d",
+          "stake": "70",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x356ad1e63eea9b114b8935ea046c8019b3458a59025f7ee9eaa9495e9c47157a",
+          "stake": "254472408497",
+          "option": null,
+          "voidReason": "bad_plaintext"
+        },
+        {
+          "account": "0x5d9a98eeca6e7b0b778ff03efdac4adfc1c22f5acb8d3d2ed619532e6c3ad613",
+          "stake": "83064",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x5f128f3afeb1da2948b88a530b7e9df0758642e3503e7c0b1429c6725fe95652",
+          "stake": "963051243537",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x715bf1c6a359ddafbe89ea79b745347a60775d9e9d0e160371e7bde6d74ac34b",
+          "stake": "611666183676",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xb1a65b496f745319223f3008626f198ba34d48ef89755cc53dc15fbce1bd3fb4",
+          "stake": "6",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0xb2ded24ad0df2cefb9d7ffdf229b574ed3ebdd4c1bfa01daefbc73c3155597e7",
+          "stake": "397758490891",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xcddf13a7b50a7f49985bd8b9aee306a9eecff2f7defe43816ed688cf3b522f21",
+          "stake": "175605870676",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xd4f1c29e022dd6161233bbc645e702ab2b06df7badc469acc50712c4cccfdc89",
+          "stake": "938613715308",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        }
+      ],
+      "expected": {
+        "record": {
+          "outcome": "settled",
+          "refundReason": null,
+          "n": [
+            "4",
+            "5"
+          ],
+          "w": [
+            "611666266891",
+            "2475029320418"
+          ],
+          "winner": "0",
+          "lossPool": "2475029320418",
+          "fee": "0",
+          "creatorFee": "0",
+          "distributable": "2475029320418",
+          "rebatePool": "640030519745",
+          "dust": "3",
+          "voidCount": "1",
+          "voidStake": "254472408497",
+          "total": "3086695587309",
+          "creatorAward": "0"
+        },
+        "payouts": [
+          {
+            "account": "0x06e5a00ddb77b0f3b11cfe2bf0f4faf1117906b8af4365fd7b8d15b452008ac8",
+            "kind": "win",
+            "amount": "324"
+          },
+          {
+            "account": "0x2327c300f14698f325e236a5e3c75d7fff7a86f91e1e057b1ce65250fe5c975d",
+            "kind": "win",
+            "amount": "280"
+          },
+          {
+            "account": "0x356ad1e63eea9b114b8935ea046c8019b3458a59025f7ee9eaa9495e9c47157a",
+            "kind": "void_refund",
+            "amount": "254472408497"
+          },
+          {
+            "account": "0x5d9a98eeca6e7b0b778ff03efdac4adfc1c22f5acb8d3d2ed619532e6c3ad613",
+            "kind": "win",
+            "amount": "332256"
+          },
+          {
+            "account": "0x5f128f3afeb1da2948b88a530b7e9df0758642e3503e7c0b1429c6725fe95652",
+            "kind": "rebate",
+            "amount": "249040357969"
+          },
+          {
+            "account": "0x715bf1c6a359ddafbe89ea79b745347a60775d9e9d0e160371e7bde6d74ac34b",
+            "kind": "win",
+            "amount": "2446664734704"
+          },
+          {
+            "account": "0xb1a65b496f745319223f3008626f198ba34d48ef89755cc53dc15fbce1bd3fb4",
+            "kind": "rebate",
+            "amount": "1"
+          },
+          {
+            "account": "0xb2ded24ad0df2cefb9d7ffdf229b574ed3ebdd4c1bfa01daefbc73c3155597e7",
+            "kind": "rebate",
+            "amount": "102858407194"
+          },
+          {
+            "account": "0xcddf13a7b50a7f49985bd8b9aee306a9eecff2f7defe43816ed688cf3b522f21",
+            "kind": "rebate",
+            "amount": "45410822308"
+          },
+          {
+            "account": "0xd4f1c29e022dd6161233bbc645e702ab2b06df7badc469acc50712c4cccfdc89",
+            "kind": "rebate",
+            "amount": "242720932270"
+          }
+        ],
+        "payoutRoot": "0x2bb12aa25db0725afd65e80c110f1edeac27bb9804a00fd936d6521da6c3b868"
+      }
+    },
+    {
+      "id": "random-11",
+      "roundId": "0x862eba205cc1a606121cf918f8f03dc4",
+      "params": {
+        "feeBps": "0",
+        "creatorBps": "0",
+        "capMultiple": "1",
+        "minEntrants": "1",
+        "creatorAwardBps": "100",
+        "countQualifyingOnly": false
+      },
+      "entries": [
+        {
+          "account": "0x0690a2afb210a9c2959e69b9518206b0551bf4e7e9d72ffcfef48a9ca8daecaa",
+          "stake": "66",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x07f590bf131a172f5af9c39ca4f18f5276abc0715c2a2a7f882bb61637faa9d4",
+          "stake": "77931",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x08b1acfaa32568d6d6d5db7bb165451cbcbb0cc913016370a0be32446b384ce9",
+          "stake": "3",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x1e3edd2279cd6b4a932186b7e34046d87a56a7616e3fb5937c78ca2356c0f472",
+          "stake": "45",
+          "option": null,
+          "voidReason": "decrypt_failed"
+        },
+        {
+          "account": "0x316dbb0dab26f3867e335c773a59a78771fd322a618d721084529aa49a62c8e6",
+          "stake": "401341887914",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x327471748504c34cdf4edb16e4c8c33913fdff1fa24c9006a52c440155408c3a",
+          "stake": "74",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x7182082e1db06be6cf0137d10ff874d5d2d51a871f877600a1a929cc5ad28c6a",
+          "stake": "9",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xa72c09f5e5647da4f1fbb30db9dea3422004f0d454135edb34b145fd20dbe53f",
+          "stake": "30373",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xb4e3d05cb7975a7d0793d1ed09c77bc53e1337459f2d7989c3320167ad199517",
+          "stake": "455833317269",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0xc2a90750a3d0849d9a27481eecfec0f46b0128972817c319bd389c3c730e4382",
+          "stake": "563399344861",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xc6e65ca364788a27c9c2dccde40c9538f2e5d1f360eae44a8e84505f39521f0b",
+          "stake": "69",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xc94d794b483302d85bbc2a70a5f07b5ba122b85f3eb4f4f6a6f79dabcaed3846",
+          "stake": "91",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xff323d4b712af17ac54b53912b23a204e4f1c7a07a70df6edb8477f42099651a",
+          "stake": "484285808321",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        }
+      ],
+      "expected": {
+        "record": {
+          "outcome": "settled",
+          "refundReason": null,
+          "n": [
+            "9",
+            "3"
+          ],
+          "w": [
+            "1449027071772",
+            "455833395209"
+          ],
+          "winner": "1",
+          "lossPool": "1449027071772",
+          "fee": "0",
+          "creatorFee": "0",
+          "distributable": "1449027071772",
+          "rebatePool": "993193676563",
+          "dust": "4",
+          "voidCount": "1",
+          "voidStake": "45",
+          "total": "1904860466981",
+          "creatorAward": "14490270717"
+        },
+        "payouts": [
+          {
+            "account": "0x0690a2afb210a9c2959e69b9518206b0551bf4e7e9d72ffcfef48a9ca8daecaa",
+            "kind": "rebate",
+            "amount": "45"
+          },
+          {
+            "account": "0x07f590bf131a172f5af9c39ca4f18f5276abc0715c2a2a7f882bb61637faa9d4",
+            "kind": "win",
+            "amount": "155862"
+          },
+          {
+            "account": "0x08b1acfaa32568d6d6d5db7bb165451cbcbb0cc913016370a0be32446b384ce9",
+            "kind": "rebate",
+            "amount": "2"
+          },
+          {
+            "account": "0x1e3edd2279cd6b4a932186b7e34046d87a56a7616e3fb5937c78ca2356c0f472",
+            "kind": "void_refund",
+            "amount": "45"
+          },
+          {
+            "account": "0x316dbb0dab26f3867e335c773a59a78771fd322a618d721084529aa49a62c8e6",
+            "kind": "rebate",
+            "amount": "275088183637"
+          },
+          {
+            "account": "0x327471748504c34cdf4edb16e4c8c33913fdff1fa24c9006a52c440155408c3a",
+            "kind": "rebate",
+            "amount": "50"
+          },
+          {
+            "account": "0x7182082e1db06be6cf0137d10ff874d5d2d51a871f877600a1a929cc5ad28c6a",
+            "kind": "win",
+            "amount": "18"
+          },
+          {
+            "account": "0xa72c09f5e5647da4f1fbb30db9dea3422004f0d454135edb34b145fd20dbe53f",
+            "kind": "rebate",
+            "amount": "20818"
+          },
+          {
+            "account": "0xb4e3d05cb7975a7d0793d1ed09c77bc53e1337459f2d7989c3320167ad199517",
+            "kind": "win",
+            "amount": "911666634538"
+          },
+          {
+            "account": "0xc2a90750a3d0849d9a27481eecfec0f46b0128972817c319bd389c3c730e4382",
+            "kind": "rebate",
+            "amount": "386165778125"
+          },
+          {
+            "account": "0xc6e65ca364788a27c9c2dccde40c9538f2e5d1f360eae44a8e84505f39521f0b",
+            "kind": "rebate",
+            "amount": "47"
+          },
+          {
+            "account": "0xc94d794b483302d85bbc2a70a5f07b5ba122b85f3eb4f4f6a6f79dabcaed3846",
+            "kind": "rebate",
+            "amount": "62"
+          },
+          {
+            "account": "0xff323d4b712af17ac54b53912b23a204e4f1c7a07a70df6edb8477f42099651a",
+            "kind": "rebate",
+            "amount": "331939693773"
+          }
+        ],
+        "payoutRoot": "0x7874275f4bf6972dfe6707763fbe708306d03bca0d0602cf2b6702c635eba402"
+      }
+    },
+    {
+      "id": "random-12",
+      "roundId": "0x5571c5462a34ab15586476915b401772",
+      "params": {
+        "feeBps": "0",
+        "creatorBps": "0",
+        "capMultiple": "3",
+        "minEntrants": "5",
+        "creatorAwardBps": "100",
+        "countQualifyingOnly": false
+      },
+      "entries": [
+        {
+          "account": "0x0251633b38e676ba6c8ffd1234af53ec065c458295994affc445973084c5b29d",
+          "stake": "831260836763",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x0542a3c652df1dc2428fe83042eb84fc5eb011a0144d55feab7fea7f2b1b4b23",
+          "stake": "95",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0x192f359a641f364704c1443e4a9825b20a1641ea71187563d013c9437d6f00c2",
+          "stake": "48896",
+          "option": null,
+          "voidReason": "bad_option"
+        },
+        {
+          "account": "0x2863047dac8bce49096e778cbcd966ff71e54845a9232ae5d3f4a074628e8f0c",
+          "stake": "86859",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x2cbdd19284cf2c699394aaa2a8b37b9c70ec9ccd5038849c824f7afcc22c4c6e",
+          "stake": "21523",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x34db8c3713a4a32b6d77043a9b49a48479a67c4ba688e79d69716b94c8ae971f",
+          "stake": "71",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x3cf8ab9a028a4ab2ae7aaff1d2e3ae4c6f76e8911f72ff8cd3894a335d53fd24",
+          "stake": "948906986929",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x67c7c05d074d466527976a2aa075f356843cbd5476bc967e7342d8251a9cd47a",
+          "stake": "66",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x89b3ba68ced318db73ca3a083f3545731528cda710134cf3a4bd6b0f1eeed01e",
+          "stake": "80951",
+          "option": null,
+          "voidReason": "decrypt_failed"
+        },
+        {
+          "account": "0xb20c4ea887a0ef26c2e771b92acfa6254e2aad6c871b0498878f9a03e5b7f496",
+          "stake": "251469493213",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0xb579634f102728620c85a6db718d6d6d564428210878f1a4bf936bf948b25f37",
+          "stake": "84",
+          "option": null,
+          "voidReason": "decrypt_failed"
+        },
+        {
+          "account": "0xcd10ac987549d0bdcac504517db5a867ceabf7fe0656ea0018fc390bf1dde521",
+          "stake": "1",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xd09c07cf1dfe8885cd7991df936c1278f619441f086bce862fec2f91e96a7388",
+          "stake": "45300",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xd75c764805f7b6d7fa90cfefc8074a25b2c58d9d3c21808e109e86fbccb05cf7",
+          "stake": "27",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xe7b3aca2aecd74ab14a1c79bc076088efc038a47caff4e7431de6e0fba3282bd",
+          "stake": "56615",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": false
+        }
+      ],
+      "expected": {
+        "record": {
+          "outcome": "settled",
+          "refundReason": null,
+          "n": [
+            "1",
+            "11"
+          ],
+          "w": [
+            "251469493213",
+            "1780168034249"
+          ],
+          "winner": "0",
+          "lossPool": "1780168034249",
+          "fee": "0",
+          "creatorFee": "0",
+          "distributable": "1780168034249",
+          "rebatePool": "1025759554610",
+          "dust": "6",
+          "voidCount": "3",
+          "voidStake": "129931",
+          "total": "2031637527462",
+          "creatorAward": "17801680342"
+        },
+        "payouts": [
+          {
+            "account": "0x0251633b38e676ba6c8ffd1234af53ec065c458295994affc445973084c5b29d",
+            "kind": "rebate",
+            "amount": "478984977416"
+          },
+          {
+            "account": "0x0542a3c652df1dc2428fe83042eb84fc5eb011a0144d55feab7fea7f2b1b4b23",
+            "kind": "rebate",
+            "amount": "54"
+          },
+          {
+            "account": "0x192f359a641f364704c1443e4a9825b20a1641ea71187563d013c9437d6f00c2",
+            "kind": "void_refund",
+            "amount": "48896"
+          },
+          {
+            "account": "0x2863047dac8bce49096e778cbcd966ff71e54845a9232ae5d3f4a074628e8f0c",
+            "kind": "rebate",
+            "amount": "50049"
+          },
+          {
+            "account": "0x2cbdd19284cf2c699394aaa2a8b37b9c70ec9ccd5038849c824f7afcc22c4c6e",
+            "kind": "rebate",
+            "amount": "12401"
+          },
+          {
+            "account": "0x34db8c3713a4a32b6d77043a9b49a48479a67c4ba688e79d69716b94c8ae971f",
+            "kind": "rebate",
+            "amount": "40"
+          },
+          {
+            "account": "0x3cf8ab9a028a4ab2ae7aaff1d2e3ae4c6f76e8911f72ff8cd3894a335d53fd24",
+            "kind": "rebate",
+            "amount": "546774455867"
+          },
+          {
+            "account": "0x67c7c05d074d466527976a2aa075f356843cbd5476bc967e7342d8251a9cd47a",
+            "kind": "rebate",
+            "amount": "38"
+          },
+          {
+            "account": "0x89b3ba68ced318db73ca3a083f3545731528cda710134cf3a4bd6b0f1eeed01e",
+            "kind": "void_refund",
+            "amount": "80951"
+          },
+          {
+            "account": "0xb20c4ea887a0ef26c2e771b92acfa6254e2aad6c871b0498878f9a03e5b7f496",
+            "kind": "win",
+            "amount": "1005877972852"
+          },
+          {
+            "account": "0xb579634f102728620c85a6db718d6d6d564428210878f1a4bf936bf948b25f37",
+            "kind": "void_refund",
+            "amount": "84"
+          },
+          {
+            "account": "0xd09c07cf1dfe8885cd7991df936c1278f619441f086bce862fec2f91e96a7388",
+            "kind": "rebate",
+            "amount": "26102"
+          },
+          {
+            "account": "0xd75c764805f7b6d7fa90cfefc8074a25b2c58d9d3c21808e109e86fbccb05cf7",
+            "kind": "rebate",
+            "amount": "15"
+          },
+          {
+            "account": "0xe7b3aca2aecd74ab14a1c79bc076088efc038a47caff4e7431de6e0fba3282bd",
+            "kind": "rebate",
+            "amount": "32622"
+          }
+        ],
+        "payoutRoot": "0x5f1d3d0e9c18f5946a5c0bcea6250ceead32d64249e58880e16367e07d684388"
+      }
+    },
+    {
+      "id": "random-13",
+      "roundId": "0x1a68f07daa98e4719f96c5423d122bf0",
+      "params": {
+        "feeBps": "0",
+        "creatorBps": "0",
+        "capMultiple": "3",
+        "minEntrants": "5",
+        "creatorAwardBps": "100",
+        "countQualifyingOnly": false
+      },
+      "entries": [
+        {
+          "account": "0x0a82c8a3cb473a42f55784e6f2a19f514645c4d95017775ed27e06dc853d830b",
+          "stake": "45",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x0d24f95f6f39d53c7df20adce22951f8ac9f6ac6c5c10d01d8d0dd1478626868",
+          "stake": "48",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x240f368ad96fb146ccc2a7a10e76e54e770afc3e07e5707a69366770630a3249",
+          "stake": "92627",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x270ba341588251484e22dbaeecf371debe5b926a5c6d0b1172ab4dee003bf045",
+          "stake": "93689316209",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x2f94dfe11e673deecbe3fa543d34f54434a263e7be8b441c748647be882d7960",
+          "stake": "98",
+          "option": null,
+          "voidReason": "not_anchored"
+        },
+        {
+          "account": "0x3166a9a28b32771d479d056599328f1e4c3f4cf407291ea69c36b958bde8b19c",
+          "stake": "34117",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x39356208d13fc1d26aafdca9a0ff77543c1b400afda3f20f11c7952e7c6c8164",
+          "stake": "62638",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x44caeb461c26097cc20cf5f336440f2dbd1ebae684da185963d1391b1ae42e4e",
+          "stake": "111510013737",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0x5557b36a0495664e35c82cc36987bac9f46dfb109784e072d81af5807838233b",
+          "stake": "53543",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x71380542b6fc2debdd4365fed7862b1464bd6b77ac181dd435481e25da7e5aad",
+          "stake": "62620",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x71ee184687cf0acec65fe9386fed3ce5690329127716fec256b6431ec24d4ce4",
+          "stake": "43592",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x77ffbedaf12d81289645f6b3085f90287050397c91d6bb04bd800b5d29f0ae4c",
+          "stake": "70760212459",
+          "option": null,
+          "voidReason": "wrong_target"
+        },
+        {
+          "account": "0x7d71cf9b1c54055d4caefda7073fa9a56235dbefe5e175d91e3676cee1b5d783",
+          "stake": "10654",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x80e49d592f5d759be6e6f4518bc93a1fb9a9923918583622932753e3cdad216c",
+          "stake": "59731",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x86e713628f11e3ab3ee7a13de9ea131f7b495dfabbfbb24b395e15396e51b0be",
+          "stake": "5",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xac66ebd930789e177f13d68aef766cb208906f6540ae9b91b493bac672f26cf3",
+          "stake": "581817211007",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xd098b6b5e90a439e83fb687c14b8aae4a71f88231482708fd78e09468d44bedf",
+          "stake": "68",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0xf1605f2d97bba6561ad53408a4d71f0af19e5732d643c2513350bd652fcff2fe",
+          "stake": "357620613275",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xfdb232426df19616eb3678dde6e6ac07e12a8b7dcd1408cc31c07537fe656412",
+          "stake": "173707311130",
+          "option": null,
+          "voidReason": "not_anchored"
+        }
+      ],
+      "expected": {
+        "record": {
+          "outcome": "settled",
+          "refundReason": null,
+          "n": [
+            "12",
+            "4"
+          ],
+          "w": [
+            "205199656939",
+            "939437916977"
+          ],
+          "winner": "1",
+          "lossPool": "205199656939",
+          "fee": "0",
+          "creatorFee": "0",
+          "distributable": "205199656939",
+          "rebatePool": "2",
+          "dust": "1",
+          "voidCount": "3",
+          "voidStake": "244467523687",
+          "total": "1144637573916",
+          "creatorAward": "2051996569"
+        },
+        "payouts": [
+          {
+            "account": "0x240f368ad96fb146ccc2a7a10e76e54e770afc3e07e5707a69366770630a3249",
+            "kind": "win",
+            "amount": "112859"
+          },
+          {
+            "account": "0x2f94dfe11e673deecbe3fa543d34f54434a263e7be8b441c748647be882d7960",
+            "kind": "void_refund",
+            "amount": "98"
+          },
+          {
+            "account": "0x44caeb461c26097cc20cf5f336440f2dbd1ebae684da185963d1391b1ae42e4e",
+            "kind": "rebate",
+            "amount": "1"
+          },
+          {
+            "account": "0x77ffbedaf12d81289645f6b3085f90287050397c91d6bb04bd800b5d29f0ae4c",
+            "kind": "void_refund",
+            "amount": "70760212459"
+          },
+          {
+            "account": "0xac66ebd930789e177f13d68aef766cb208906f6540ae9b91b493bac672f26cf3",
+            "kind": "win",
+            "amount": "708902449895"
+          },
+          {
+            "account": "0xd098b6b5e90a439e83fb687c14b8aae4a71f88231482708fd78e09468d44bedf",
+            "kind": "win",
+            "amount": "82"
+          },
+          {
+            "account": "0xf1605f2d97bba6561ad53408a4d71f0af19e5732d643c2513350bd652fcff2fe",
+            "kind": "win",
+            "amount": "435735011078"
+          },
+          {
+            "account": "0xfdb232426df19616eb3678dde6e6ac07e12a8b7dcd1408cc31c07537fe656412",
+            "kind": "void_refund",
+            "amount": "173707311130"
+          }
+        ],
+        "payoutRoot": "0x5a2b13b78817b4c53409e36b2451f870db18f5d85b53b123dc8a619a324e70a3"
+      }
+    },
+    {
+      "id": "random-14",
+      "roundId": "0xcc7e518015e52996bb15a7e6bf3d6f8b",
+      "params": {
+        "feeBps": "0",
+        "creatorBps": "0",
+        "capMultiple": "3",
+        "minEntrants": "5",
+        "creatorAwardBps": "250",
+        "countQualifyingOnly": false
+      },
+      "entries": [
+        {
+          "account": "0x0d33ef946ce98753ca7b31384fd4c80c3dbe9d6051a98c4dc15ea4ada2140407",
+          "stake": "825839482550",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x1f205562056a8c9d5747ba076d3781f75fc670d2a105a8035729f6c2be920b9b",
+          "stake": "341533276579",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0x20dfee0e409ccc72748aeddcb57f13250c7c99fd3a87eaf523ae81c6b9234b02",
+          "stake": "61",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x2669fdef78ab40ec781d675519e5fec5253d617424b1babb483e56fb6d29856d",
+          "stake": "693940561190",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x2a4b376dcaa8f004ca4cb29c3d9381aaef84c3a1f78d46957051cb94c8794f72",
+          "stake": "504904949833",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x2e4c9f6594f24dfd4a9e160c556296c01c21e1f63dfd5983694d18d51a67b5a2",
+          "stake": "561820148500",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x318b2a6b576be9e2553715dd98a438c3e624f1b6d1ff5ee1acfb71a89a7fb555",
+          "stake": "398876954554",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x33d569b54f8e371159592042a62e5ad8c78b80f035d679e7eda0a5b2f541f926",
+          "stake": "40403",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x3b436b69ecc2c4f31ad474ae7a84f39d9f9d23c769497031bede25d4838cd9b5",
+          "stake": "66",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0x464afb3de7feb7ae38254b5c051457aa47f93809b420c42eaa09015d91741ac2",
+          "stake": "37367",
+          "option": null,
+          "voidReason": "decrypt_failed"
+        },
+        {
+          "account": "0x4c1cfa1761391b7dd2677b04b5c8affd64c987638125b0a23c22db3fd64ef5d3",
+          "stake": "396405150757",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0x4c905a9e85649d05c8929df29904f834fdaa52888940af4dcc4a074d06a79a58",
+          "stake": "37",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x4f414e6da7b2bc580b33103a6347fdbf1c4d53f91a8a878d74ec72426a90da1f",
+          "stake": "32588",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x503dc45292a44de21f87d5ddc1d03bc352913ba2563dbb7312682dedfc33bc30",
+          "stake": "94",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x6659c45fbdbe8d6460bccd0eb76faa532d953d55a5b3d984aaaf2f7178f629c7",
+          "stake": "2332",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x6fd4ff53ccb2bb1d6524e52216ebcea2460c41b508688a93e76a6ccd5ebef176",
+          "stake": "98420007906",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x877661d555d26476f10c7a7f21dbaf69e0abdb28979eef634eb21de3400a8c46",
+          "stake": "95",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x9a1f3465970db5a88b60aac150557d72ec7c911ba085206f42916a3ea99f2f0e",
+          "stake": "94",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x9e2c2dfd4423e5a51d7b5de738dae54c577a3460cc34e903a2d394b6502abc84",
+          "stake": "93341",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xa69b1afcb5232516a9e487e4e7303474eb8311d684d7ef8d25a94331825fd3de",
+          "stake": "575949387667",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0xa81527f34da3bd3b70263e66af964eb2bab7a15da6ef3a9221da52fb67f950f9",
+          "stake": "42",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xa9780ec19f5f001547b26d1bb9042941926aee687f46ba829a8fc7a661586de6",
+          "stake": "67",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0xb04716efe7dca1905b1b2e46bac3d645353d64a8043e49a34d77f7ef1083f49a",
+          "stake": "852327090715",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0xb20b807732493a41f4ae047a176d55b8ef029ace5fed5c0069bea0d9e1c6d6ca",
+          "stake": "95363360179",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0xb8183e83f523ffab0a76049972aaa7a7e415f969564c905134bb79c9fb6f7f6d",
+          "stake": "74258",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xbd742d7a597e7a041aacee2d08665c920e636eaf5ae877a65e93882bdad3e5d7",
+          "stake": "5874",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xc1a6eddfdd130a439a57ac308fcd53b9168933a7682f99d7fdbed442a8b1048b",
+          "stake": "584375388519",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xc6436ac0c2856074d953de0e3db962693cb2a2d0929490d28cf69a529057dd20",
+          "stake": "97",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0xd2969e44c0eb0ad446e088fc8e60ec3b7945d5d89efcf7db0608cc5130bdb28f",
+          "stake": "31651",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xd4aab583aecd9b93d4e474191bfc514744cf61fe766e655b74de005c833ab77f",
+          "stake": "997799731147",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xd9b5d8aa8cb57c80ef93e3e22c2d7528181fbac3ba97fde0414cf602c3dfc049",
+          "stake": "71930",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xdc03958c829fd588f7c4290cd93ce3b4600a4c1bb5bb9ff25edfdbeb856b088b",
+          "stake": "8835",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0xe890004c2bf99a5f4cb8daea113a56a3880ff9e65fb043f94d295ad8e3b771e4",
+          "stake": "51116",
+          "option": null,
+          "voidReason": "bad_plaintext"
+        },
+        {
+          "account": "0xf7d4d6852c9d9cd51153fa3eb6feec7b5d8d1a3b62683029a1f83d1eaf634e40",
+          "stake": "237599807180",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xfa22a5b9eefab83caee54e1c8ee48a52e1f4728c4ed2a0c122533ae508680891",
+          "stake": "67511",
+          "option": null,
+          "voidReason": "not_anchored"
+        }
+      ],
+      "expected": {
+        "record": {
+          "outcome": "settled",
+          "refundReason": null,
+          "n": [
+            "4",
+            "28"
+          ],
+          "w": [
+            "398877039979",
+            "6766278619162"
+          ],
+          "winner": "0",
+          "lossPool": "6766278619162",
+          "fee": "0",
+          "creatorFee": "0",
+          "distributable": "6766278619162",
+          "rebatePool": "5569647499225",
+          "dust": "14",
+          "voidCount": "3",
+          "voidStake": "155994",
+          "total": "7165155659141",
+          "creatorAward": "169156965479"
+        },
+        "payouts": [
+          {
+            "account": "0x0d33ef946ce98753ca7b31384fd4c80c3dbe9d6051a98c4dc15ea4ada2140407",
+            "kind": "rebate",
+            "amount": "679787970261"
+          },
+          {
+            "account": "0x1f205562056a8c9d5747ba076d3781f75fc670d2a105a8035729f6c2be920b9b",
+            "kind": "rebate",
+            "amount": "281132372292"
+          },
+          {
+            "account": "0x20dfee0e409ccc72748aeddcb57f13250c7c99fd3a87eaf523ae81c6b9234b02",
+            "kind": "rebate",
+            "amount": "50"
+          },
+          {
+            "account": "0x2669fdef78ab40ec781d675519e5fec5253d617424b1babb483e56fb6d29856d",
+            "kind": "rebate",
+            "amount": "571215660599"
+          },
+          {
+            "account": "0x2a4b376dcaa8f004ca4cb29c3d9381aaef84c3a1f78d46957051cb94c8794f72",
+            "kind": "rebate",
+            "amount": "415611409086"
+          },
+          {
+            "account": "0x2e4c9f6594f24dfd4a9e160c556296c01c21e1f63dfd5983694d18d51a67b5a2",
+            "kind": "rebate",
+            "amount": "462461030830"
+          },
+          {
+            "account": "0x318b2a6b576be9e2553715dd98a438c3e624f1b6d1ff5ee1acfb71a89a7fb555",
+            "kind": "win",
+            "amount": "1595507818216"
+          },
+          {
+            "account": "0x33d569b54f8e371159592042a62e5ad8c78b80f035d679e7eda0a5b2f541f926",
+            "kind": "rebate",
+            "amount": "33257"
+          },
+          {
+            "account": "0x3b436b69ecc2c4f31ad474ae7a84f39d9f9d23c769497031bede25d4838cd9b5",
+            "kind": "rebate",
+            "amount": "54"
+          },
+          {
+            "account": "0x464afb3de7feb7ae38254b5c051457aa47f93809b420c42eaa09015d91741ac2",
+            "kind": "void_refund",
+            "amount": "37367"
+          },
+          {
+            "account": "0x4c1cfa1761391b7dd2677b04b5c8affd64c987638125b0a23c22db3fd64ef5d3",
+            "kind": "rebate",
+            "amount": "326300035937"
+          },
+          {
+            "account": "0x4c905a9e85649d05c8929df29904f834fdaa52888940af4dcc4a074d06a79a58",
+            "kind": "rebate",
+            "amount": "30"
+          },
+          {
+            "account": "0x4f414e6da7b2bc580b33103a6347fdbf1c4d53f91a8a878d74ec72426a90da1f",
+            "kind": "rebate",
+            "amount": "26824"
+          },
+          {
+            "account": "0x503dc45292a44de21f87d5ddc1d03bc352913ba2563dbb7312682dedfc33bc30",
+            "kind": "rebate",
+            "amount": "77"
+          },
+          {
+            "account": "0x6659c45fbdbe8d6460bccd0eb76faa532d953d55a5b3d984aaaf2f7178f629c7",
+            "kind": "win",
+            "amount": "9328"
+          },
+          {
+            "account": "0x6fd4ff53ccb2bb1d6524e52216ebcea2460c41b508688a93e76a6ccd5ebef176",
+            "kind": "rebate",
+            "amount": "81014215015"
+          },
+          {
+            "account": "0x877661d555d26476f10c7a7f21dbaf69e0abdb28979eef634eb21de3400a8c46",
+            "kind": "rebate",
+            "amount": "78"
+          },
+          {
+            "account": "0x9a1f3465970db5a88b60aac150557d72ec7c911ba085206f42916a3ea99f2f0e",
+            "kind": "rebate",
+            "amount": "77"
+          },
+          {
+            "account": "0x9e2c2dfd4423e5a51d7b5de738dae54c577a3460cc34e903a2d394b6502abc84",
+            "kind": "rebate",
+            "amount": "76833"
+          },
+          {
+            "account": "0xa69b1afcb5232516a9e487e4e7303474eb8311d684d7ef8d25a94331825fd3de",
+            "kind": "rebate",
+            "amount": "474091483258"
+          },
+          {
+            "account": "0xa81527f34da3bd3b70263e66af964eb2bab7a15da6ef3a9221da52fb67f950f9",
+            "kind": "rebate",
+            "amount": "34"
+          },
+          {
+            "account": "0xa9780ec19f5f001547b26d1bb9042941926aee687f46ba829a8fc7a661586de6",
+            "kind": "rebate",
+            "amount": "55"
+          },
+          {
+            "account": "0xb04716efe7dca1905b1b2e46bac3d645353d64a8043e49a34d77f7ef1083f49a",
+            "kind": "rebate",
+            "amount": "701591187196"
+          },
+          {
+            "account": "0xb20b807732493a41f4ae047a176d55b8ef029ace5fed5c0069bea0d9e1c6d6ca",
+            "kind": "rebate",
+            "amount": "78498142100"
+          },
+          {
+            "account": "0xb8183e83f523ffab0a76049972aaa7a7e415f969564c905134bb79c9fb6f7f6d",
+            "kind": "win",
+            "amount": "297032"
+          },
+          {
+            "account": "0xbd742d7a597e7a041aacee2d08665c920e636eaf5ae877a65e93882bdad3e5d7",
+            "kind": "rebate",
+            "amount": "4835"
+          },
+          {
+            "account": "0xc1a6eddfdd130a439a57ac308fcd53b9168933a7682f99d7fdbed442a8b1048b",
+            "kind": "rebate",
+            "amount": "481027327496"
+          },
+          {
+            "account": "0xc6436ac0c2856074d953de0e3db962693cb2a2d0929490d28cf69a529057dd20",
+            "kind": "rebate",
+            "amount": "79"
+          },
+          {
+            "account": "0xd2969e44c0eb0ad446e088fc8e60ec3b7945d5d89efcf7db0608cc5130bdb28f",
+            "kind": "rebate",
+            "amount": "26053"
+          },
+          {
+            "account": "0xd4aab583aecd9b93d4e474191bfc514744cf61fe766e655b74de005c833ab77f",
+            "kind": "rebate",
+            "amount": "821336674131"
+          },
+          {
+            "account": "0xd9b5d8aa8cb57c80ef93e3e22c2d7528181fbac3ba97fde0414cf602c3dfc049",
+            "kind": "rebate",
+            "amount": "59209"
+          },
+          {
+            "account": "0xdc03958c829fd588f7c4290cd93ce3b4600a4c1bb5bb9ff25edfdbeb856b088b",
+            "kind": "win",
+            "amount": "35340"
+          },
+          {
+            "account": "0xe890004c2bf99a5f4cb8daea113a56a3880ff9e65fb043f94d295ad8e3b771e4",
+            "kind": "void_refund",
+            "amount": "51116"
+          },
+          {
+            "account": "0xf7d4d6852c9d9cd51153fa3eb6feec7b5d8d1a3b62683029a1f83d1eaf634e40",
+            "kind": "rebate",
+            "amount": "195579763465"
+          },
+          {
+            "account": "0xfa22a5b9eefab83caee54e1c8ee48a52e1f4728c4ed2a0c122533ae508680891",
+            "kind": "void_refund",
+            "amount": "67511"
+          }
+        ],
+        "payoutRoot": "0x07d2ea342de07680ec706a85eaee5c5a97560de6ab53d463f68caee60c66ef06"
+      }
+    },
+    {
+      "id": "random-15",
+      "roundId": "0xb7bcb7e3e238baf6dae0878b4de3aff3",
+      "params": {
+        "feeBps": "0",
+        "creatorBps": "0",
+        "capMultiple": "1",
+        "minEntrants": "5",
+        "creatorAwardBps": "0",
+        "countQualifyingOnly": false
+      },
+      "entries": [
+        {
+          "account": "0x0ad2de02650b61be4797f477726b349003a83986af2a797b60eb5088146ffb2e",
+          "stake": "634412141704",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x11594da09410c5692dddd8b6159442f7c69e4e67e1d3ea5568a8c65c68506d18",
+          "stake": "79501",
+          "option": null,
+          "voidReason": "bad_option"
+        },
+        {
+          "account": "0x1210d944bdd00e680ff1093894f7406a408ffda54043fd702e16117c92d35dab",
+          "stake": "37487",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x16b811ec3b523b26a013406c273a27d3453d62f1af29167fc88ad4b6103202d5",
+          "stake": "877559945787",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x1f6d3af0fbf8a9450b494566b4e3df109a43fecffb1c60c1bdac211a6b12a973",
+          "stake": "35347",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0x1feca089839130c9956367398fe3eba8da947739a5b6f3a7874d0ccdc4798d78",
+          "stake": "413081936127",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x2bb03e48bfd2b73888c75c06997971a308b392c77c1bdf45eb317de614b4eac9",
+          "stake": "89684",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0x3c99b205391216d2487418372082879bbdb1ee1953a653c11e788ac34f47a646",
+          "stake": "91066",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x3e5e66b64f08138352788f25df93b13e509a4218d48b8df27cc3f816347617b6",
+          "stake": "86",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x4ba67b2a2257b8798130fcae0236e078899876bba89e5465863b737aff00045f",
+          "stake": "590477368429",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x50772100357cb47fa02c256c5c04cfd7eff57ecd4bf3730d6ad24db8e9b8b95d",
+          "stake": "28174097770",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x5680ffa9f6de720197a9d0a2bd272c72ec7470b12b52faed9e129f3c46b1cc6c",
+          "stake": "7",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x6ec7303d4ba150b36eb8ee3d6c6c9ca51b36b495631b39b81fbb2992a3d025e3",
+          "stake": "54",
+          "option": null,
+          "voidReason": "decrypt_failed"
+        },
+        {
+          "account": "0x6f2870cd8e3ea70ba189c7442bb1099df45e3ed480e23d7b8e72a4e1ef5db0f9",
+          "stake": "3454239838",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x726c5b758e47c188b8929f12195ee7610c11f3de54d2c8830481b921a051fb60",
+          "stake": "59",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x8427990daff800429f6f238409ee86e08c135b270167122d643566f0cd819afe",
+          "stake": "98",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x8b211fbe6d7b579b62931decc1891e1e26d9d8e7567461bfa1321ac24098efe6",
+          "stake": "87",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0x8c1d3bb169165c6b29dc7610ed76a2238c1f01d52e560db5c9d007a070b5fc65",
+          "stake": "15",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x8d56c0814c895881c18edd1a098f4f78ba32b6e0519c21caa379e8437b4bd4cc",
+          "stake": "74347",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xa24ee7b9032f3b707dbafb411972993d7049e66e66188326954934c5e5e84473",
+          "stake": "640295214463",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xba55878000d09882124209f283b17005e85974dd57445bf9804c0c1c153cc0c0",
+          "stake": "40706",
+          "option": null,
+          "voidReason": "wrong_target"
+        },
+        {
+          "account": "0xc28413c7a2d056a2adf9f1fa9e4c0b1f598240a5b9509973f5e5e94f852a5d35",
+          "stake": "36",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xce1c0f0b1225009621afdda454447ab7da9c7f41d1d4eb4ad56485cfa3f416e4",
+          "stake": "75742",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xe79a0e2d21f72898cf73185c941b6448fb8284bf65fcf9a7351233f003fd11a9",
+          "stake": "89921",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xf5cabda0ce2de7bc5a4e9d2c6f47b80f6ea037bc764a31b4ce7376e0ba2ae2e7",
+          "stake": "58623",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        }
+      ],
+      "expected": {
+        "record": {
+          "outcome": "settled",
+          "refundReason": null,
+          "n": [
+            "10",
+            "12"
+          ],
+          "w": [
+            "413082355482",
+            "2774373141241"
+          ],
+          "winner": "0",
+          "lossPool": "2774373141241",
+          "fee": "0",
+          "creatorFee": "0",
+          "distributable": "2774373141241",
+          "rebatePool": "2361290785759",
+          "dust": "5",
+          "voidCount": "3",
+          "voidStake": "120261",
+          "total": "3187455496723",
+          "creatorAward": "0"
+        },
+        "payouts": [
+          {
+            "account": "0x0ad2de02650b61be4797f477726b349003a83986af2a797b60eb5088146ffb2e",
+            "kind": "rebate",
+            "amount": "539953159980"
+          },
+          {
+            "account": "0x11594da09410c5692dddd8b6159442f7c69e4e67e1d3ea5568a8c65c68506d18",
+            "kind": "void_refund",
+            "amount": "79501"
+          },
+          {
+            "account": "0x1210d944bdd00e680ff1093894f7406a408ffda54043fd702e16117c92d35dab",
+            "kind": "win",
+            "amount": "74974"
+          },
+          {
+            "account": "0x16b811ec3b523b26a013406c273a27d3453d62f1af29167fc88ad4b6103202d5",
+            "kind": "rebate",
+            "amount": "746898167061"
+          },
+          {
+            "account": "0x1f6d3af0fbf8a9450b494566b4e3df109a43fecffb1c60c1bdac211a6b12a973",
+            "kind": "win",
+            "amount": "70694"
+          },
+          {
+            "account": "0x1feca089839130c9956367398fe3eba8da947739a5b6f3a7874d0ccdc4798d78",
+            "kind": "win",
+            "amount": "826163872254"
+          },
+          {
+            "account": "0x2bb03e48bfd2b73888c75c06997971a308b392c77c1bdf45eb317de614b4eac9",
+            "kind": "win",
+            "amount": "179368"
+          },
+          {
+            "account": "0x3c99b205391216d2487418372082879bbdb1ee1953a653c11e788ac34f47a646",
+            "kind": "win",
+            "amount": "182132"
+          },
+          {
+            "account": "0x3e5e66b64f08138352788f25df93b13e509a4218d48b8df27cc3f816347617b6",
+            "kind": "win",
+            "amount": "172"
+          },
+          {
+            "account": "0x4ba67b2a2257b8798130fcae0236e078899876bba89e5465863b737aff00045f",
+            "kind": "rebate",
+            "amount": "502559929140"
+          },
+          {
+            "account": "0x50772100357cb47fa02c256c5c04cfd7eff57ecd4bf3730d6ad24db8e9b8b95d",
+            "kind": "rebate",
+            "amount": "23979196047"
+          },
+          {
+            "account": "0x5680ffa9f6de720197a9d0a2bd272c72ec7470b12b52faed9e129f3c46b1cc6c",
+            "kind": "win",
+            "amount": "14"
+          },
+          {
+            "account": "0x6ec7303d4ba150b36eb8ee3d6c6c9ca51b36b495631b39b81fbb2992a3d025e3",
+            "kind": "void_refund",
+            "amount": "54"
+          },
+          {
+            "account": "0x6f2870cd8e3ea70ba189c7442bb1099df45e3ed480e23d7b8e72a4e1ef5db0f9",
+            "kind": "rebate",
+            "amount": "2939930674"
+          },
+          {
+            "account": "0x726c5b758e47c188b8929f12195ee7610c11f3de54d2c8830481b921a051fb60",
+            "kind": "rebate",
+            "amount": "50"
+          },
+          {
+            "account": "0x8427990daff800429f6f238409ee86e08c135b270167122d643566f0cd819afe",
+            "kind": "rebate",
+            "amount": "83"
+          },
+          {
+            "account": "0x8b211fbe6d7b579b62931decc1891e1e26d9d8e7567461bfa1321ac24098efe6",
+            "kind": "rebate",
+            "amount": "74"
+          },
+          {
+            "account": "0x8c1d3bb169165c6b29dc7610ed76a2238c1f01d52e560db5c9d007a070b5fc65",
+            "kind": "win",
+            "amount": "30"
+          },
+          {
+            "account": "0x8d56c0814c895881c18edd1a098f4f78ba32b6e0519c21caa379e8437b4bd4cc",
+            "kind": "rebate",
+            "amount": "63277"
+          },
+          {
+            "account": "0xa24ee7b9032f3b707dbafb411972993d7049e66e66188326954934c5e5e84473",
+            "kind": "rebate",
+            "amount": "544960289444"
+          },
+          {
+            "account": "0xba55878000d09882124209f283b17005e85974dd57445bf9804c0c1c153cc0c0",
+            "kind": "void_refund",
+            "amount": "40706"
+          },
+          {
+            "account": "0xc28413c7a2d056a2adf9f1fa9e4c0b1f598240a5b9509973f5e5e94f852a5d35",
+            "kind": "rebate",
+            "amount": "30"
+          },
+          {
+            "account": "0xce1c0f0b1225009621afdda454447ab7da9c7f41d1d4eb4ad56485cfa3f416e4",
+            "kind": "win",
+            "amount": "151484"
+          },
+          {
+            "account": "0xe79a0e2d21f72898cf73185c941b6448fb8284bf65fcf9a7351233f003fd11a9",
+            "kind": "win",
+            "amount": "179842"
+          },
+          {
+            "account": "0xf5cabda0ce2de7bc5a4e9d2c6f47b80f6ea037bc764a31b4ce7376e0ba2ae2e7",
+            "kind": "rebate",
+            "amount": "49894"
+          }
+        ],
+        "payoutRoot": "0x3fa6075370b02d5e6b9a547bd9d1528b73054fdfc85b5f47f1b6ea517ec42cc9"
+      }
+    },
+    {
+      "id": "refund-1-empty",
+      "roundId": "0xb4466279910dbc91b8167a0db1a1b18b",
+      "params": {
+        "feeBps": "0",
+        "creatorBps": "0",
+        "capMultiple": "10",
+        "minEntrants": "1",
+        "creatorAwardBps": "100",
+        "countQualifyingOnly": false
+      },
+      "entries": [],
+      "expected": {
+        "record": {
+          "outcome": "refunded",
+          "refundReason": "1",
+          "n": [
+            "0",
+            "0"
+          ],
+          "w": [
+            "0",
+            "0"
+          ],
+          "winner": null,
+          "lossPool": "0",
+          "fee": "0",
+          "creatorFee": "0",
+          "distributable": "0",
+          "rebatePool": "0",
+          "dust": "0",
+          "voidCount": "0",
+          "voidStake": "0",
+          "total": "0",
+          "creatorAward": "0"
+        },
+        "payouts": [],
+        "payoutRoot": null
+      }
+    },
+    {
+      "id": "refund-1-only-voids",
+      "roundId": "0x07a5d7a0959e21cf0f7ecd7bc523dfc8",
+      "params": {
+        "feeBps": "0",
+        "creatorBps": "0",
+        "capMultiple": "10",
+        "minEntrants": "1",
+        "creatorAwardBps": "100",
+        "countQualifyingOnly": false
+      },
+      "entries": [
+        {
+          "account": "0x04b4f63fdef284c409255d1817315b4efee23fe838f0124c10f3705a5a545801",
+          "stake": "99999",
+          "option": null,
+          "voidReason": "stake_out_of_range"
+        },
+        {
+          "account": "0xbeeecc2002edfeadd764b7bce71c69f40281f2a9f852cf809daca5f1059e5369",
+          "stake": "40",
+          "option": null,
+          "voidReason": "not_anchored"
+        }
+      ],
+      "expected": {
+        "record": {
+          "outcome": "refunded",
+          "refundReason": "1",
+          "n": [
+            "0",
+            "0"
+          ],
+          "w": [
+            "0",
+            "0"
+          ],
+          "winner": null,
+          "lossPool": "0",
+          "fee": "0",
+          "creatorFee": "0",
+          "distributable": "0",
+          "rebatePool": "0",
+          "dust": "0",
+          "voidCount": "2",
+          "voidStake": "100039",
+          "total": "0",
+          "creatorAward": "0"
+        },
+        "payouts": [
+          {
+            "account": "0x04b4f63fdef284c409255d1817315b4efee23fe838f0124c10f3705a5a545801",
+            "kind": "refund",
+            "amount": "99999"
+          },
+          {
+            "account": "0xbeeecc2002edfeadd764b7bce71c69f40281f2a9f852cf809daca5f1059e5369",
+            "kind": "refund",
+            "amount": "40"
+          }
+        ],
+        "payoutRoot": "0xbabd43f647f8050b0c366a72c1add8091a3b612078bdbcf1190dd3ecbb94792a"
+      }
+    },
+    {
+      "id": "refund-2-one-sided",
+      "roundId": "0x210cb77f3c1aef29f34fb7a68a0b4c44",
+      "params": {
+        "feeBps": "0",
+        "creatorBps": "0",
+        "capMultiple": "10",
+        "minEntrants": "1",
+        "creatorAwardBps": "100",
+        "countQualifyingOnly": false
+      },
+      "entries": [
+        {
+          "account": "0x5db72d1f0a215a0caff998cf655f9ea08870601a9124a7202602462f73964896",
+          "stake": "99",
+          "option": "1",
+          "voidReason": null
+        },
+        {
+          "account": "0x841a026faac469d2a246e21544b85a5564ab3894adbf36cbd5b297be91e2df79",
+          "stake": "10",
+          "option": "1",
+          "voidReason": null
+        },
+        {
+          "account": "0xa975e383e20487b963aadeaaf84f3ad744e6a716d44050cde6ce7d4cf7966e85",
+          "stake": "5",
+          "option": null,
+          "voidReason": "bad_option"
+        }
+      ],
+      "expected": {
+        "record": {
+          "outcome": "refunded",
+          "refundReason": "2",
+          "n": [
+            "0",
+            "2"
+          ],
+          "w": [
+            "0",
+            "109"
+          ],
+          "winner": null,
+          "lossPool": "0",
+          "fee": "0",
+          "creatorFee": "0",
+          "distributable": "0",
+          "rebatePool": "0",
+          "dust": "0",
+          "voidCount": "1",
+          "voidStake": "5",
+          "total": "109",
+          "creatorAward": "0"
+        },
+        "payouts": [
+          {
+            "account": "0x5db72d1f0a215a0caff998cf655f9ea08870601a9124a7202602462f73964896",
+            "kind": "refund",
+            "amount": "99"
+          },
+          {
+            "account": "0x841a026faac469d2a246e21544b85a5564ab3894adbf36cbd5b297be91e2df79",
+            "kind": "refund",
+            "amount": "10"
+          },
+          {
+            "account": "0xa975e383e20487b963aadeaaf84f3ad744e6a716d44050cde6ce7d4cf7966e85",
+            "kind": "refund",
+            "amount": "5"
+          }
+        ],
+        "payoutRoot": "0x2633fa8a9948b2d6d5fcdef8735eaa53cea296c788d3a26df919fc5e16c30611"
+      }
+    },
+    {
+      "id": "refund-3-tie-uneven-stakes",
+      "roundId": "0xa84cf9efa6fc994b70305ea440e1f93e",
+      "params": {
+        "feeBps": "0",
+        "creatorBps": "0",
+        "capMultiple": "10",
+        "minEntrants": "1",
+        "creatorAwardBps": "100",
+        "countQualifyingOnly": false
+      },
+      "entries": [
+        {
+          "account": "0x2ba7c273ea9c4379355efc6d3e7c0a478b591438a1e8f6d2d74965d1be0b6b45",
+          "stake": "1",
+          "option": "0",
+          "voidReason": null
+        },
+        {
+          "account": "0x2db1362503f93d97782f8f9220a7b47f86b31e0442088cadb003670a4c017421",
+          "stake": "5",
+          "option": "1",
+          "voidReason": null
+        },
+        {
+          "account": "0x4a4c9d18755cbc3b160f687f2c8bd4d82f1d239d20180430ccef836041a307a0",
+          "stake": "5",
+          "option": "1",
+          "voidReason": null
+        },
+        {
+          "account": "0x61ba6dec425950d2f4f620e7dbab49c9ac9716e4a8e41e3ffc288020bcb4aab5",
+          "stake": "1000",
+          "option": "0",
+          "voidReason": null
+        }
+      ],
+      "expected": {
+        "record": {
+          "outcome": "refunded",
+          "refundReason": "3",
+          "n": [
+            "2",
+            "2"
+          ],
+          "w": [
+            "1001",
+            "10"
+          ],
+          "winner": null,
+          "lossPool": "0",
+          "fee": "0",
+          "creatorFee": "0",
+          "distributable": "0",
+          "rebatePool": "0",
+          "dust": "0",
+          "voidCount": "0",
+          "voidStake": "0",
+          "total": "1011",
+          "creatorAward": "0"
+        },
+        "payouts": [
+          {
+            "account": "0x2ba7c273ea9c4379355efc6d3e7c0a478b591438a1e8f6d2d74965d1be0b6b45",
+            "kind": "refund",
+            "amount": "1"
+          },
+          {
+            "account": "0x2db1362503f93d97782f8f9220a7b47f86b31e0442088cadb003670a4c017421",
+            "kind": "refund",
+            "amount": "5"
+          },
+          {
+            "account": "0x4a4c9d18755cbc3b160f687f2c8bd4d82f1d239d20180430ccef836041a307a0",
+            "kind": "refund",
+            "amount": "5"
+          },
+          {
+            "account": "0x61ba6dec425950d2f4f620e7dbab49c9ac9716e4a8e41e3ffc288020bcb4aab5",
+            "kind": "refund",
+            "amount": "1000"
+          }
+        ],
+        "payoutRoot": "0x710c9d9e9aaf7f3356489d637cabc82b71787f30a90d8ec01200b0b0f53e2c00"
+      }
+    },
+    {
+      "id": "room-refund-1-two-qualifying",
+      "roundId": "0x9f68eee65e86a1fb1ee43cf8b65ce8a0",
+      "params": {
+        "feeBps": "0",
+        "creatorBps": "0",
+        "capMultiple": "10",
+        "minEntrants": "3",
+        "creatorAwardBps": "0",
+        "countQualifyingOnly": true
+      },
+      "entries": [
+        {
+          "account": "0x38236b52b8ebc6cbd035ed888e72e1e741a4fd12db3502a84126944be6fed1c8",
+          "stake": "10",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x62a3ca0cc121601aa59e3ebc00d7dadc2532fe069bd9da278d25178e326a1a92",
+          "stake": "10",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0x6f9cb2b1e1bc71c7c3fb48d4009723670c08f723af4d252a2bb36158ce9165c2",
+          "stake": "10",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": false
+        },
+        {
+          "account": "0x78c149a5fc1932ce3c2ec9d73d1fbf6eca6738c93fb323e4adf110413ae6e014",
+          "stake": "10",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        }
+      ],
+      "expected": {
+        "record": {
+          "outcome": "refunded",
+          "refundReason": "1",
+          "n": [
+            "1",
+            "3"
+          ],
+          "w": [
+            "10",
+            "30"
+          ],
+          "winner": null,
+          "lossPool": "0",
+          "fee": "0",
+          "creatorFee": "0",
+          "distributable": "0",
+          "rebatePool": "0",
+          "dust": "0",
+          "voidCount": "0",
+          "voidStake": "0",
+          "total": "40",
+          "creatorAward": "0"
+        },
+        "payouts": [
+          {
+            "account": "0x38236b52b8ebc6cbd035ed888e72e1e741a4fd12db3502a84126944be6fed1c8",
+            "kind": "refund",
+            "amount": "10"
+          },
+          {
+            "account": "0x62a3ca0cc121601aa59e3ebc00d7dadc2532fe069bd9da278d25178e326a1a92",
+            "kind": "refund",
+            "amount": "10"
+          },
+          {
+            "account": "0x6f9cb2b1e1bc71c7c3fb48d4009723670c08f723af4d252a2bb36158ce9165c2",
+            "kind": "refund",
+            "amount": "10"
+          },
+          {
+            "account": "0x78c149a5fc1932ce3c2ec9d73d1fbf6eca6738c93fb323e4adf110413ae6e014",
+            "kind": "refund",
+            "amount": "10"
+          }
+        ],
+        "payoutRoot": "0x678d0e18691e6d871112552eb4e6fe6f56886c7b503a4273e9aec16ed0419bf1"
+      }
+    },
+    {
+      "id": "room-settles-three-qualifying",
+      "roundId": "0xa56f2aa18378d2790e9cb0d382071aa3",
+      "params": {
+        "feeBps": "0",
+        "creatorBps": "0",
+        "capMultiple": "10",
+        "minEntrants": "3",
+        "creatorAwardBps": "0",
+        "countQualifyingOnly": true
+      },
+      "entries": [
+        {
+          "account": "0x4f11a7444b64bc204165f2b250dcf3e96f9da164a01c615a54a2b3b19fda6ff1",
+          "stake": "10",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0x6449fe0b4ae471534aae259ff7e28ed15fd077fb141a898ee04cb7edcdc78e2a",
+          "stake": "10",
+          "option": null,
+          "voidReason": "wrong_target",
+          "qualifies": true
+        },
+        {
+          "account": "0x9830bb1a6cb46103ba91553e5f51445c7e1919a991f62a315bc2b6cc758305b2",
+          "stake": "10",
+          "option": "1",
+          "voidReason": null,
+          "qualifies": true
+        },
+        {
+          "account": "0xc5cb590c8ed928da0fc8a86097cacbd13d802c2809f8e36008de7ecde73c43c2",
+          "stake": "10",
+          "option": "0",
+          "voidReason": null,
+          "qualifies": true
+        }
+      ],
+      "expected": {
+        "record": {
+          "outcome": "settled",
+          "refundReason": null,
+          "n": [
+            "1",
+            "2"
+          ],
+          "w": [
+            "10",
+            "20"
+          ],
+          "winner": "0",
+          "lossPool": "20",
+          "fee": "0",
+          "creatorFee": "0",
+          "distributable": "20",
+          "rebatePool": "0",
+          "dust": "0",
+          "voidCount": "1",
+          "voidStake": "10",
+          "total": "30",
+          "creatorAward": "0"
+        },
+        "payouts": [
+          {
+            "account": "0x6449fe0b4ae471534aae259ff7e28ed15fd077fb141a898ee04cb7edcdc78e2a",
+            "kind": "void_refund",
+            "amount": "10"
+          },
+          {
+            "account": "0xc5cb590c8ed928da0fc8a86097cacbd13d802c2809f8e36008de7ecde73c43c2",
+            "kind": "win",
+            "amount": "30"
+          }
+        ],
+        "payoutRoot": "0xe002fcbc2054e060539b706723b252b3b39187ddebd521b4c99908c6ed81fdf2"
+      }
+    },
+    {
+      "id": "single-unit-stakes",
+      "roundId": "0xb3bf6dc95b5dfb7c7541d81a9b57e78b",
+      "params": {
+        "feeBps": "0",
+        "creatorBps": "0",
+        "capMultiple": "10",
+        "minEntrants": "1",
+        "creatorAwardBps": "100",
+        "countQualifyingOnly": false
+      },
+      "entries": [
+        {
+          "account": "0x2e607cae5020be2bab41aa717827ab4921a1fed02beb80709f16c0364e116f91",
+          "stake": "1",
+          "option": "1",
+          "voidReason": null
+        },
+        {
+          "account": "0xa51d60c370c613cc5ccb1eb6cb986bbf6fb28e654b5bb1f5222e6a30318c82ec",
+          "stake": "1",
+          "option": "0",
+          "voidReason": null
+        },
+        {
+          "account": "0xafb4e3caa348d63f29c1026a984ea4db4ce34729428425b938f1413e1a7656e1",
+          "stake": "1",
+          "option": "1",
+          "voidReason": null
+        }
+      ],
+      "expected": {
+        "record": {
+          "outcome": "settled",
+          "refundReason": null,
+          "n": [
+            "1",
+            "2"
+          ],
+          "w": [
+            "1",
+            "2"
+          ],
+          "winner": "0",
+          "lossPool": "2",
+          "fee": "0",
+          "creatorFee": "0",
+          "distributable": "2",
+          "rebatePool": "0",
+          "dust": "0",
+          "voidCount": "0",
+          "voidStake": "0",
+          "total": "3",
+          "creatorAward": "0"
+        },
+        "payouts": [
+          {
+            "account": "0xa51d60c370c613cc5ccb1eb6cb986bbf6fb28e654b5bb1f5222e6a30318c82ec",
+            "kind": "win",
+            "amount": "3"
+          }
+        ],
+        "payoutRoot": "0x0eac4411237e1a97d79e61170fcd6bbb18a287913bf17023b6c3f27c5cd8c94b"
+      }
+    }
+  ]
+}
