@@ -404,7 +404,7 @@ External long poles, started early so they stay off the critical path:
 | ID | Owner action | Unblocks | Needed by | Start by |
 | --- | --- | --- | --- | --- |
 | OA-01 | Open OrbStack once to finish setup (installed by PLAN-0 via Homebrew); confirm `docker run hello-world` works | Local drand network, local stack, e2e | W3 | W1 |
-| OA-02 | Reconnect the Paper desktop app's MCP server to Claude Code so the tools are visible in new sessions | Every design session | W2 | W1 |
+| OA-02 | Reconnect the Paper desktop app's MCP server to Claude Code so the tools are visible in new sessions. The tools were visible in W1-Z's session (Oct 7, 2026); W2-C confirms they work as its first step | Every design session | W2 | W1 |
 | OA-03 | GitHub: allow Actions; add branch protection on `main` requiring CI. **Done Oct 7, 2026 (W1-Z):** Actions enabled; the owner made the repo public (protection needs a paid plan on private repos); with the owner's approval W1-Z added two rulesets on `main`: "no force push or deletion" (no bypass) and "CI required" (`check`, `contracts`, `properties`; repository admins bypass, so Z can push its `--no-ff` merge) | CI, safe merges | W1 (CI), W2 (protection) | W1 |
 | OA-04 | Cloudflare: upgrade to Workers Paid (DOs at scale, Queues, `cpu_ms` 60,000) and create staging/production resources access (API token for deploy workflow) | Staging deploy, queue consumer CPU limits | W13 | W10 |
 | OA-05 | Cloudflare: a **second account** for the watcher, plus an API token for it | Watcher deploy | W14 | W11 |
@@ -472,7 +472,7 @@ Legend: ⬜ not started · 🟡 in progress · ✅ complete · ⛔ blocked. Z se
 | W1-B | `FlockedEscrow` | M | ✅ |
 | W1-C | `@flocked/settle` | M | ✅ |
 | W1-D | Workspace + CI wiring, vector cross-check | S | ✅ |
-| W1-Z | Consolidate wave 1 | S | ⬜ |
+| W1-Z | Consolidate wave 1 | S | ✅ |
 | W2-A | `@flocked/tlock` | M | ⬜ |
 | W2-B | `FlockedAnchor`, deploy scripts, `@flocked/abi` | M | ⬜ |
 | W2-C | Design: foundations + components | M | ⬜ |
@@ -551,7 +551,7 @@ Legend: ⬜ not started · 🟡 in progress · ✅ complete · ⛔ blocked. Z se
 | ID | Short name | Needed by | Status |
 | --- | --- | --- | --- |
 | OA-01 | Finish OrbStack setup | W3 | ⬜ |
-| OA-02 | Reconnect Paper MCP | W2 | ⬜ |
+| OA-02 | Reconnect Paper MCP | W2 | 🟡 |
 | OA-03 | GitHub Actions + branch protection | W1/W2 | ✅ |
 | OA-04 | Cloudflare Workers Paid + deploy token | W13 | ⬜ |
 | OA-05 | Second Cloudflare account (watcher) | W14 | ⬜ |
