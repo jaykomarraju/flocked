@@ -200,7 +200,7 @@ Picks are encrypted in the client to a future drand beacon round, so no one, inc
 **Free mode specifics**
 
 - **Lock leaf.** At question lock, every Free round (daily and room) is anchored through `FlockedAnchor`. The leaf commits `closesAt`, `beaconRound`, the question hash and a config hash covering stake range, cap, `minEntrants`, creator award and `beaconDelay`. The anchor contract enforces the same beacon-delay bounds as the escrow.
-- **Receipts.** Every accepted entry gets an EIP-712 receipt signed by the receipt key. The domain is "Flocked", chainId 8453, verifying contract `FlockedAnchor`. The receipt covers `(roundId, mode, userIdHash, stake, commitment, seq, closesAt, beaconRound)`, where:
+- **Receipts.** Every accepted entry gets an EIP-712 receipt signed by the receipt key. The domain is "Flocked", the chain ID of the deployment network (8453 for Base mainnet in production, 84532 for Base Sepolia in staging, the local chain in tests), verifying contract `FlockedAnchor`. The receipt covers `(roundId, mode, userIdHash, stake, commitment, seq, closesAt, beaconRound)`, where:
   - `userIdHash` = keccak256(abi.encode(roundId, userId));
   - `seq` is the entry's sequence number in the round.
 
@@ -405,7 +405,7 @@ A user is a person. A person can sign in several ways, and Stakes needs proof th
 
 **Entry tickets (Stakes)**
 
-- `/prepare` issues an EIP-712 ticket `(roundId, wallet, personTag, expiry)`. Its domain is name "Flocked", version 1, chainId 8453, verifying contract `FlockedEscrow`. It is signed by the ticket signer key.
+- `/prepare` issues an EIP-712 ticket `(roundId, wallet, personTag, expiry)`. Its domain is name "Flocked", version 1, the chain ID of the deployment network (as for receipts), verifying contract `FlockedEscrow`. It is signed by the ticket signer key.
   - `personTag` = HMAC(`PERSON_TAG_KEY`, "flocked/personTag/v1" ‖ person\_id ‖ roundId). It changes every round, so the tag itself adds no link across rounds. Entries from the same wallet are still linkable by address, and a player can enter from different linked wallets.
   - Tickets expire after 5 minutes.
   - Every issued ticket is recorded in `stakes_tickets`, and the row is committed before the signer signs.
@@ -1264,3 +1264,4 @@ The settlement engine is the riskiest code. It is a pure, shared TypeScript pack
 | Oct 7, 2026 | If Coinbase can't confirm personhood, Stakes is delayed and Free launches |
 | Oct 7, 2026 | Engineering defaults adopted: fixed-length plaintext; OpenZeppelin Merkle trees; Free rule-8 refund after a 24-hour drand outage; local drand for tests; opaque share links with a 3:2 embed image; D1 ciphertext archival; separate share-conversion event; paymaster limits; a 7-day question-submission block instead of suspension; account deletion by anonymization |
 | Oct 7, 2026 | Follow-on defaults (change if you disagree): room results notify in the app only; the story card stays 1080×1080 square; deleting an account keeps a person tombstone so caps carry over; invite links use a random `ref_code` instead of the handle |
+| Oct 7, 2026 | EIP-712 ticket and receipt domains use the deployment chain's ID (8453 in production, 84532 for Base Sepolia staging) instead of a fixed 8453, so staging runs on Base Sepolia. The contracts take it from `block.chainid` |
