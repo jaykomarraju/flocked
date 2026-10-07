@@ -10,36 +10,36 @@ Every item in the spec's "Testing and acceptance criteria" (Required tests and A
 
 | ID | Requirement | Session | Proof (planned) | Status |
 | --- | --- | --- | --- | --- |
-| SET-1 | Refund rules 1–3 and headcount ties, in the math | W1-C | `packages/settle/test/refunds.test.ts` | ⬜ |
+| SET-1 | Refund rules 1–3 and headcount ties, in the math | W1-C | `packages/settle/test/refunds.test.ts` :: "SET-1 refund rules 1–3", "SET-1 room qualification (countQualifyingOnly)" | ✅ |
 | SET-1b | Refund rules 4–8 produce the right mode outcome: 4 (void) W4-D; 5, 6 W6-A; 7, 8 W5-D | W4-D, W5-D, W6-A | Workers tests in `apps/api/test/settlement/*.test.ts`, `apps/api/test/lifecycle/void.test.ts` | ⬜ |
-| SET-2 | Cap binding and not binding; rebates to losers | W1-C | `packages/settle/test/cap.test.ts` | ⬜ |
-| SET-3 | Headcount minority holding more stake than the majority (Free) | W1-C | `packages/settle/test/free.test.ts` | ⬜ |
-| SET-4 | VOID entries of each kind (non-canonical header, wrong target round, wrong chain, `not_anchored`, out-of-range Free stake, bad plaintext, bad option, decrypt failure) excluded and refunded | W1-C (math), W2-A (classification), W5-A (pipeline) | `packages/settle/test/void.test.ts`, `packages/tlock/test/classify.test.ts`, `apps/api/test/settlement/void.test.ts` | ⬜ |
-| SET-5 | Single-base-unit stakes | W1-C | `packages/settle/test/edge.test.ts` | ⬜ |
-| SET-6 | Largest Stakes values in `bigint` | W1-C | `packages/settle/test/edge.test.ts` | ⬜ |
-| PROP-1 | Property: invariant always holds; no payout negative | W1-C | `packages/settle/test/properties.test.ts` | ⬜ |
-| PROP-2 | Property: winner payout in [s, (1+cap)·s]; loser in [0, s] | W1-C | same | ⬜ |
-| PROP-3 | Property: dust < losing headcount | W1-C | same | ⬜ |
-| PROP-4 | Property: results independent of entry order | W1-C | same | ⬜ |
-| PROP-5 | Property: Stakes closed form equals the general formula | W1-C | same | ⬜ |
+| SET-2 | Cap binding and not binding; rebates to losers | W1-C | `packages/settle/test/cap.test.ts` :: "SET-2 cap and rebates" | ✅ |
+| SET-3 | Headcount minority holding more stake than the majority (Free) | W1-C | `packages/settle/test/free.test.ts` :: "SET-3 Free: headcount minority holding more stake" | ✅ |
+| SET-4 | VOID entries of each kind (non-canonical header, wrong target round, wrong chain, `not_anchored`, out-of-range Free stake, bad plaintext, bad option, decrypt failure) excluded and refunded | W1-C (math), W2-A (classification), W5-A (pipeline) | Math: `packages/settle/test/void.test.ts` :: "SET-4 VOID entries are excluded from tallies and refunded" (W1-C). Open: `packages/tlock/test/classify.test.ts`, `apps/api/test/settlement/void.test.ts` | 🟡 |
+| SET-5 | Single-base-unit stakes | W1-C | `packages/settle/test/edge.test.ts` :: "SET-5 single-base-unit stakes" | ✅ |
+| SET-6 | Largest Stakes values in `bigint` | W1-C | `packages/settle/test/edge.test.ts` :: "SET-6 largest Stakes values in bigint" | ✅ |
+| PROP-1 | Property: invariant always holds; no payout negative | W1-C | `packages/settle/test/properties.test.ts` :: "property > PROP-1: the invariant always holds and no payout is negative" | ✅ |
+| PROP-2 | Property: winner payout in [s, (1+cap)·s]; loser in [0, s] | W1-C | `packages/settle/test/properties.test.ts` :: "property > PROP-2: winner payout in [s, (1+cap)·s]; loser payout in [0, s]" | ✅ |
+| PROP-3 | Property: dust < losing headcount | W1-C | `packages/settle/test/properties.test.ts` :: "property > PROP-3: dust is below the losing headcount" | ✅ |
+| PROP-4 | Property: results independent of entry order | W1-C | `packages/settle/test/properties.test.ts` :: "property > PROP-4: results are independent of entry order" | ✅ |
+| PROP-5 | Property: Stakes closed form equals the general formula | W1-C | `packages/settle/test/properties.test.ts` :: "property > PROP-5: the Stakes closed form equals the general formula per entry" | ✅ |
 
 ## Required tests: contracts (Foundry)
 
 | ID | Requirement | Session | Proof (planned) | Status |
 | --- | --- | --- | --- | --- |
-| CON-1 | All reverts, including every `createRound` validation and launch ceiling | W1-B | `contracts/test/Escrow.CreateRound.t.sol`, `Escrow.Reverts.t.sol` | ⬜ |
-| CON-2 | Ticket signature, wallet binding, expiry, per-person dedupe | W1-B | `contracts/test/Escrow.Enter.t.sol` | ⬜ |
-| CON-3 | `voidRound` only before close; `refundTooFew` only when `entryCount < minEntrants` | W1-B | `contracts/test/Escrow.Refunds.t.sol` | ⬜ |
-| CON-4 | `propose` tally checks and derived amounts | W1-B | `contracts/test/Escrow.Propose.t.sol` | ⬜ |
-| CON-5 | Challenge window, veto in both directions, `finalize` | W1-B | `contracts/test/Escrow.Challenge.t.sol` | ⬜ |
-| CON-6 | Per-kind claim limits; `withdraw` with a creator that cannot receive USDC | W1-B | `contracts/test/Escrow.Claim.t.sol` | ⬜ |
-| CON-7 | `refundTimeout`, pause behaviour, role timelocks (72 h; guardian 7 d; immediate revocations) | W1-B | `contracts/test/Escrow.Roles.t.sol` | ⬜ |
-| CON-8 | No path both settles and refunds a round | W1-B | `contracts/test/invariant/EscrowInvariant.t.sol` | ⬜ |
+| CON-1 | All reverts, including every `createRound` validation and launch ceiling | W1-B | `contracts/test/Escrow.CreateRound.t.sol` :: `test_createRound_*` (12, incl. `_stakeCeilings`, `_feeCeilings`, `_capMultipleCeilings`, `_beaconDelayBoundaries`); `contracts/test/Escrow.Reverts.t.sol` :: `test_constructor_*`, `test_unknownRound_reverts`, `test_wrongStatus_onRefundedRound`, `test_roleChecks` | ✅ |
+| CON-2 | Ticket signature, wallet binding, expiry, per-person dedupe | W1-B | `contracts/test/Escrow.Enter.t.sol` :: `test_enter_revertsOnWrongSigner`, `_revertsOnTamperedTicket`, `_revertsWhenWalletIsNotSender`, `_revertsOnTicketForOtherRound`, `_revertsOnExpiredTicket`, `_ticketValidAtExactExpiry`, `_rejectsSamePersonTagFromAnotherWallet`, `_rejectsSecondEntryFromSameWallet`, `_domainUsesBlockChainId` | ✅ |
+| CON-3 | `voidRound` only before close; `refundTooFew` only when `entryCount < minEntrants` | W1-B | `contracts/test/Escrow.Refunds.t.sol` :: `test_voidRound_byGuardianJustBeforeClose`, `test_voidRound_revertsAtOrAfterClose`, `test_refundTooFew_afterCloseWithTooFew`, `_revertsBeforeClose`, `_revertsWithEnoughEntrants`, `test_claimRefund_*` | ✅ |
+| CON-4 | `propose` tally checks and derived amounts | W1-B | `contracts/test/Escrow.Propose.t.sol` :: `test_propose_revertsWhenTallyDoesNotMatchEntryCount`, `_refundReason1..3_*`, `_settleDerivesClosedForm`, `_capBindsAndRebates`, `_matchesStakesMath`, `_minEntrantsBoundary` | ✅ |
+| CON-5 | Challenge window, veto in both directions, `finalize` | W1-B | `contracts/test/Escrow.Challenge.t.sol` :: `test_veto_settleProposalBecomesRefundedReason5`, `test_veto_refundProposalReturnsToOpenAndCanBeReproposed`, `test_veto_revertsAtClaimsOpenAt`, `test_finalize_settleCreditsTreasuryFeePlusDustAndCreatorFee`, `test_finalize_revertsDuringWindow`, `test_finalize_refundProposal` | ✅ |
+| CON-6 | Per-kind claim limits; `withdraw` with a creator that cannot receive USDC | W1-B | `contracts/test/Escrow.Claim.t.sol` :: `test_claim_perKindLimitsCapTotalAtPostedTally`, `test_claim_rebateLimitWithExtraLeaves`, `test_claim_everyKindPaysDerivedAmountAndDrainsRound`, `test_withdraw_creatorThatCannotReceiveNeverBlocksRound` | ✅ |
+| CON-7 | `refundTimeout`, pause behaviour, role timelocks (72 h; guardian 7 d; immediate revocations) | W1-B | `contracts/test/Escrow.Roles.t.sol` :: `test_refundTimeout_onlyAfterCloseplus72h`, `test_pause_blocksEnterOnlyAndIsImmediate`, `test_operatorGrant_requiresTimelock`, `test_operatorRevocation_isImmediate`, `test_ticketSigner_disableIsImmediateAndRotationIsTimelocked`, `test_treasury_timelocked72h`, `test_guardian_replacementBehind7DayTimelock`, `test_rescue_onlyAboveObligations` | ✅ |
+| CON-8 | No path both settles and refunds a round | W1-B | `contracts/test/invariant/EscrowInvariant.t.sol` :: `invariant_neverBothSettledAndRefunded` | ✅ |
 | CON-9 | `FlockedAnchor` write-once rules, deadline relative to the beacon, skip-and-emit for invalid batch items | W2-B | `contracts/test/Anchor.t.sol` | ⬜ |
-| CON-10 | An entry ticket signed for one escrow reverts on another | W1-B | `contracts/test/Escrow.Enter.t.sol` | ⬜ |
-| CON-11 | Fuzz `enter`, `propose`, `claim` | W1-B | `contracts/test/fuzz/*.t.sol` | ⬜ |
-| CON-12 | Invariant: USDC held ≥ sum of every round's outstanding obligations | W1-B | `contracts/test/invariant/EscrowInvariant.t.sol` | ⬜ |
-| CON-13 | Contract closed form and payout Merkle leaves match `@flocked/settle` recorded vectors | W1-D | `contracts/test/Vectors.t.sol` reading `packages/settle/vectors/*.json` | ⬜ |
+| CON-10 | An entry ticket signed for one escrow reverts on another | W1-B | `contracts/test/Escrow.Enter.t.sol` :: `test_enter_ticketSignedForOneEscrowRevertsOnAnother` | ✅ |
+| CON-11 | Fuzz `enter`, `propose`, `claim` | W1-B | `contracts/test/fuzz/EnterFuzz.t.sol` (5), `contracts/test/fuzz/ProposeFuzz.t.sol` (4, incl. `testFuzz_stakesMath_invariantAndBounds`), `contracts/test/fuzz/ClaimFuzz.t.sol` :: `testFuzz_claim_fullSettlementDrainsExactly`, `testFuzz_claim_forgedProofFails` | ✅ |
+| CON-12 | Invariant: USDC held ≥ sum of every round's outstanding obligations | W1-B | `contracts/test/invariant/EscrowInvariant.t.sol` :: `invariant_usdcHeldCoversObligations`, `invariant_totalObligationsMatchesRounds` | ✅ |
+| CON-13 | Contract closed form and payout Merkle leaves match `@flocked/settle` recorded vectors | W1-D | `contracts/test/Vectors.t.sol` :: `test_settleVectors_header`, `test_settleVectors_matchStakesMath`, `test_settleVectors_throughPropose`; `contracts/test/MerkleVectors.t.sol` :: `test_merkleVectors_header`, `test_merkleVectors_everyProofVerifies`, `test_merkleVectors_claimOnSettledRound` | ✅ |
 
 ## Required tests: tlock
 
@@ -107,8 +107,8 @@ Every item in the spec's "Testing and acceptance criteria" (Required tests and A
 | AC-1 | A daily round opens, accepts Free and Stakes entries, closes, settles and reveals automatically, with no manual step | W7-D (local), W14-D (staging soak) | `e2e/tests/lifecycle.spec.ts` (no manual calls), soak report | ⬜ |
 | AC-2 | No per-option information retrievable through any API, log or storage before the beacon; no endpoint shows a mode's split before its reveal | W6-D, W7-A, W10-A, W13-C | PIPE-1 tests + storage scan in `e2e/tests/log-scan.spec.ts` | ⬜ |
 | AC-3 | Anyone reproduces every settlement and Merkle root with `npx @flocked/verify`; any player verifies their own entry in the browser | W9-B, W11-C | `e2e/tests/verify-cli.spec.ts`, `e2e/ui/verify-page.spec.ts` | ⬜ |
-| AC-4 | Every onchain Stakes entry carries a valid ticket; one person can't enter a round twice from different wallets; every VOID can be recomputed from public data | W1-B, W6-B, W10-B | CON-2, `apps/api/test/stakes/prepare.test.ts`, watcher VOID recompute test | ⬜ |
-| AC-5 | Stakes payouts: exact claims after the window, losers only their rebate; veto → full refund; refundable if operator never proposes; never both settled and refunded; claims ≤ derived totals | W1-B, W7-D, W10-D | CON-5..8, E2E-4, E2E-5, `e2e/tests/stakes-timeout.spec.ts` | ⬜ |
+| AC-4 | Every onchain Stakes entry carries a valid ticket; one person can't enter a round twice from different wallets; every VOID can be recomputed from public data | W1-B, W6-B, W10-B | CON-2, `apps/api/test/stakes/prepare.test.ts`, watcher VOID recompute test | 🟡 |
+| AC-5 | Stakes payouts: exact claims after the window, losers only their rebate; veto → full refund; refundable if operator never proposes; never both settled and refunded; claims ≤ derived totals | W1-B, W7-D, W10-D | CON-5..8, E2E-4, E2E-5, `e2e/tests/stakes-timeout.spec.ts` | 🟡 |
 | AC-6 | Every locked, non-voided Free round has exactly one lock leaf and one commitment onchain; commitment before the beacon in normal operation; every Free receipt verifies against it | W4-D, W11-B | `apps/api/test/lifecycle/free-anchor.test.ts`, watcher Free checks | ⬜ |
 | AC-7 | Every settled player has a share card; the share URL unfurls on Farcaster and OG consumers | W10-A, W11-D | `apps/api/test/cards/*.test.ts`, `e2e/ui/share.spec.ts` (meta tag assertions) | ⬜ |
 | AC-8 | Stakes UI absent for users not verified, outside the geo allow list, under age, or self-excluded | W10-C | `e2e/ui/stakes-eligibility.spec.ts` | ⬜ |
@@ -123,7 +123,7 @@ Every item in the spec's "Testing and acceptance criteria" (Required tests and A
 | NFR-3 | Reveal: p95 < 2 min after beacon at full scale; small rounds within seconds | W14-D | Load-test report | ⬜ |
 | NFR-4 | Settlement: Free commitments before beacon; Stakes proposal within 10 min of beacon; final 2 h later | W4-A, W6-A, W14-D | Integration tests + load-test report | ⬜ |
 | NFR-5 | Availability: 99.9% read paths in the 30 min around reveal | W13-A (monitor), W14-D (measure during soak) | Uptime checks + soak report | ⬜ |
-| NFR-6 | Correctness: invariant every settlement; settlement idempotent (identical output, no double writes) | W1-C, W5-A, W5-D, W6-A | PROP-1, `apps/api/test/settlement/idempotency.test.ts` | ⬜ |
+| NFR-6 | Correctness: invariant every settlement; settlement idempotent (identical output, no double writes) | W1-C, W5-A, W5-D, W6-A | PROP-1, `apps/api/test/settlement/idempotency.test.ts` | 🟡 |
 | NFR-7 | Security: separate keys, ticket signer isolated in its own Worker, guardian multisig, admin behind Access, audit before mainnet funds | W6-B, W13-C, W13-D, W16-A, OA-17, OA-20 | Security review checklist; deploy config review | ⬜ |
 | NFR-8 | Privacy: no plaintext picks logged or stored before beacon; per-round person tags; raw Coinbase data never stored; IPs only within rate-limit windows | W3-A, W5-B, W13-C | Unit tests + log/storage scan | ⬜ |
 | NFR-9 | Accessibility: WCAG 2.1 AA; reveal honours `prefers-reduced-motion` | W9-C (motion), W14-B (audit) | axe in Playwright; manual audit report | ⬜ |

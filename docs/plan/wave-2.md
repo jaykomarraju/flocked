@@ -109,13 +109,13 @@ D implements the following. They are the pinned interfaces wave 3's parallel ses
 
 ## W2-B: `FlockedAnchor`, deploy scripts, `@flocked/abi`
 
-- **Role / size:** build, M.
-- **Objective.** Implement `FlockedAnchor` with full tests, CREATE2 deploy scripts for both contracts, and the generated ABI package.
+- **Role / size:** build, M. If it runs long, split: `.2` takes the deploy scripts and `@flocked/abi`.
+- **Objective.** Implement `FlockedAnchor` with full tests, CREATE2 deploy scripts for both contracts, and the generated ABI package. First, apply the two W1-Z owner decisions to `FlockedEscrow` (wave-1.md P1.3, "Amended by W1-Z"), so the generated ABI and NatSpec match the spec: `unpause` becomes `DEFAULT_ADMIN_ROLE` only, and `GUARDIAN_ROLE` gets exactly one holder with `transferGuardian` and a `guardian()` view, which also removes the unbounded revoke loop in `executeGuardianReplacement`.
 - **Read first.** `plan.md` §2, §4. `docs/sessions/W1-Z.md`. This section (P2.2). `contracts/README.md`. Spec: "Smart contract" (only "Contract: `FlockedAnchor`" and the "Stolen anchor key" residual-risk bullet), "Sealed picks (timelock encryption)" (only "Free mode specifics").
-- **Owns.** `contracts/src/FlockedAnchor.sol`, `contracts/src/interfaces/IFlockedAnchor.sol`, `contracts/test/Anchor*.t.sol`, `contracts/script/**`, `contracts/deployments/**`, `packages/abi/**`. It may edit `contracts/foundry.toml` and `contracts/.gitignore`.
-- **Must not touch.** `FlockedEscrow.sol` (record needed changes as an open issue for Z). Root registry files.
+- **Owns.** `contracts/src/FlockedAnchor.sol`, `contracts/src/interfaces/IFlockedAnchor.sol`, `contracts/test/Anchor*.t.sol`, `contracts/script/**`, `contracts/deployments/**`, `packages/abi/**`. It may edit `contracts/foundry.toml` and `contracts/.gitignore`. For the two escrow decisions only: `contracts/src/FlockedEscrow.sol`, `contracts/src/interfaces/IFlockedEscrow.sol`, `contracts/test/Escrow.*.t.sol`, `contracts/test/invariant/**`, `contracts/test/utils/**`, `contracts/README.md`.
+- **Must not touch.** Any other `FlockedEscrow` behaviour (record needed changes as an open issue for Z). Root registry files.
 - **Deliverables.** As P2.2; Anchor unit, fuzz and an invariant ("each round key written at most once per kind").
-- **Required tests.** CON-9; deploy script dry run on anvil (`forge script ... --fork-url http://127.0.0.1:8545 --broadcast` against a locally started anvil) with a test asserting the deployment JSON; `pnpm --filter @flocked/abi typecheck`.
+- **Required tests.** CON-7 stays green with both escrow changes: the pauser's `unpause` reverts and the admin's succeeds immediately; `transferGuardian` moves the role at once and the old holder loses it; granting, revoking or renouncing `GUARDIAN_ROLE` reverts; `executeGuardianReplacement` costs the same whatever happened before it; the invariant suite asserts the role always has exactly one holder. CON-9; deploy script dry run on anvil (`forge script ... --fork-url http://127.0.0.1:8545 --broadcast` against a locally started anvil) with a test asserting the deployment JSON; `pnpm --filter @flocked/abi typecheck`.
 - **Acceptance checks.** CON-9 passes; a receipt signed with viem's `signTypedData` using `@flocked/shared`'s future builder shape (P2.2 typehash) recovers on-chain in a Foundry test via a helper `verifyReceipt` view (add one to Anchor if useful to clients; otherwise test with `ECDSA` in the test).
 - **Risks.** Batch skip semantics; time-window edges (`closesAt ≤ ts < beaconTime`).
 
@@ -137,13 +137,15 @@ D implements the following. They are the pinned interfaces wave 3's parallel ses
 - **Objective.** Merge A, B and C. Wire `packages/tlock`, `packages/abi` and the tokens into the workspace and CI. Then implement P2.4, the contracts wave 3 builds against, plus the TL-4 forge cross-check.
 - **Read first.** `plan.md` §2, §3.4, §4. This section. Handoffs W2-A, B, C. Spec: "API", "Data model", "Real-time and the reveal" (only "WebSocket messages"), "Round lifecycle" (only "Timing" and "Scheduling"), "Architecture" (table only), "Non-functional requirements" (only "Alerts").
 - **Owns.** Registry files; `packages/shared/src/**` (not `design-tokens.json`); `apps/api/**`; `contracts/test/TargetRound.t.sol`.
-- **Deliverables.** P2.4 in full; root scripts `contracts:build` (forge build + ABI codegen); CI additions (ABI freshness check; tokens schema check).
+- **Deliverables.** P2.4 in full. Two W1-Z carry-overs in `packages/shared`: a test that `@flocked/settle`'s `Mode` equals `@flocked/shared`'s (settle keeps its own copy so it stays dependency-free), and the share-percentage rule for `winLine`/`lossLine` (spec Decision log, Oct 7, 2026: whole percent, winning share rounded down, losing share rounded up, `<1%` and `>99%` at the extremes). CI hardening from the W1-Z review: every `pnpm --filter` step in `ci.yml` gets `--fail-if-no-match`, and the `properties` job runs `test/properties.test.ts` by path instead of `-t property`, so a rename can't turn either into a green no-op. Root scripts `contracts:build` (forge build + ABI codegen); CI additions (ABI freshness check; tokens schema check).
 - **Required tests.** `pnpm check`; migration applies cleanly in the Workers test runtime and a test asserts every spec table and unique key exists; zod schemas round-trip fixtures; DST tests; points batch atomicity (insufficient balance rolls back); TL-4.
 - **Acceptance checks.** Every endpoint in the spec's API table has a request and response schema, and every DO in the Architecture table has a stub class and an RPC interface.
 - **Emits.** W2-Z prompt.
 
 ## W2-Z checklist
 
+- W2-B applied the W1-Z escrow decisions (admin-only `unpause`; single-holder `GUARDIAN_ROLE` with `transferGuardian`), CON-7 is green, and the generated ABI includes them.
+- W2-D added the `Mode` equality test, the share-percentage rule and the CI hardening.
 - CON-9 and TL-2..4 proven; TL-1 (Workers half) proven.
 - Raise spec issues: receipt domain version, `questionHash` encoding, dark `accentInk`, muted contrast, and any from tlock.
 - Ask the owner to review Foundations and Components in Paper (OA-D1 can happen any time before W8).

@@ -256,6 +256,11 @@ Each mode settles independently.
 | 7 | Commitment not anchored before the beacon | Free |
 | 8 | Beacon still unavailable 24 hours after its round time (Stakes is covered by rule 6) | Free |
 
+- Rules 1–3 are checked in order 1, 2, 3, and the first that applies sets the reason. For example, 10 vs 0 with `minEntrants` 20 is rule 1, not rule 2.
+- A round has at most one entry per account: one per wallet and one per person in Stakes, one per user in Free.
+- `minEntrants` ≥ 1 and `capMultiple` ≥ 1 in every mode (the Stakes launch ceilings allow `capMultiple` 1–10).
+- A refunded round pays no creator fee (Stakes) and no creator award (Free).
+
 **Normal case**
 
 ```latex
@@ -494,7 +499,8 @@ interface IFlockedEscrow {
     function claim(uint256 roundId, Kind kind, bytes32[] calldata proof) external;
     function claimRefund(uint256 roundId) external;
     function withdraw() external;                                                              // treasury and creators pull fees
-    function pause() external; function unpause() external;                                    // PAUSER_ROLE
+    function pause() external; function unpause() external;                                    // pause: PAUSER_ROLE; unpause: DEFAULT_ADMIN_ROLE
+    function transferGuardian(address newGuardian) external;                                   // GUARDIAN_ROLE; the role always has exactly one holder
 }
 ```
 
@@ -512,6 +518,7 @@ interface IFlockedEscrow {
   - the stake, fees and cap are within the launch ceilings;
   - `minEntrants ≥ 1`;
   - `creator ≠ 0`;
+  - `beaconRound ≥ 1` (drand has no round 0);
   - `closesAt + MIN_BEACON_DELAY ≤ beaconTime(beaconRound) ≤ closesAt + MAX_BEACON_DELAY`.
 
   The contract supports exactly two options.
@@ -521,23 +528,25 @@ interface IFlockedEscrow {
   - `opensAt ≤ block.timestamp < closesAt`;
   - the ticket is signed by the current ticket signer, `ticket.roundId == roundId`, `ticket.wallet == msg.sender` and it hasn't expired;
   - the ciphertext is 64–2,048 bytes;
-  - neither this address nor this `personTag` has entered the round.
+  - `personTag ≠ 0`;
+  - neither this address nor this `personTag` has entered the round, so a round has at most one entry per wallet and one per person.
 
-  It pulls exactly `stake` USDC and records the entry, `roundBalance` and `entryCount`.
+  It pulls exactly `stake` USDC, checking that its own balance rose by exactly `stake`, and records the entry, `roundBalance` and `entryCount`. The `Entered` event's `ticketHash` is the ticket's EIP-712 digest.
 - **`refundTooFew`** can be called by anyone on an Open round after `closesAt` if `entryCount < minEntrants`. It moves the round to Refunded with reason 1.
 - **`propose`** (OPERATOR\_ROLE) requires all of these:
   - the round is Open;
   - `beaconTime(beaconRound) ≤ block.timestamp < closesAt + REFUND_TIMEOUT`;
-  - `n0 + n1 + nVoid == entryCount`.
+  - `n0 + n1 + nVoid == entryCount`;
+  - `bundleHash ≠ 0`.
 
   What it does depends on the posted tally:
-  - **Refund proposal.** If `n0 + n1 < minEntrants`, or `n0 == 0`, or `n1 == 0`, or `n0 == n1`, the round becomes RefundProposed with the matching reason (1, 2 or 3), and `payoutRoot` must be zero.
-  - **Settle proposal.** Otherwise the round becomes SettleProposed. The contract derives the winning option, F, C, w, r and dust from the closed form, and records the payout root.
+  - **Refund proposal.** If `n0 + n1 < minEntrants`, or `n0 == 0`, or `n1 == 0`, or `n0 == n1`, the round becomes RefundProposed with the matching reason, and `payoutRoot` must be zero. The rules are checked in order 1, 2, 3, and the first that applies sets the reason (10 vs 0 with `minEntrants` 20 is reason 1).
+  - **Settle proposal.** Otherwise the round becomes SettleProposed, and `payoutRoot` must be nonzero. The contract derives the winning option, F, C, w, r and dust from the closed form, and records the payout root.
 
   Either way it sets `claimsOpenAt = block.timestamp + CHALLENGE_WINDOW`. No USDC moves at proposal.
 - **`veto`** (GUARDIAN\_ROLE) works only before `claimsOpenAt`:
-  - on a SettleProposed round, it moves the round to Refunded with reason 5;
-  - on a RefundProposed round, it returns the round to Open, so the operator must propose again (the timeout remains the backstop).
+  - on a SettleProposed round, it moves the round to Refunded with reason 5. The vetoed proposal's tally, payout root and amounts stay readable in `getRound` as evidence;
+  - on a RefundProposed round, it returns the round to Open and clears the proposal, so the operator must propose again (the timeout remains the backstop).
 
   The `evidenceHash` is emitted with the veto.
 - **`finalize`** can be called by anyone at or after `claimsOpenAt`:
@@ -551,20 +560,20 @@ interface IFlockedEscrow {
   - that the caller entered the round;
   - one claim per address.
 
-  The amount is derived from `kind` (s + w, r or s). Per-kind claim counts cannot exceed N\_M, N\_L and nVoid, so total claims can never exceed the round's posted total.
-- **`claimRefund`** requires a Refunded round and pays the caller's stake once.
-- **`withdraw`** pays out credited fee balances (pull pattern), so a creator address that cannot receive USDC never blocks a round.
+  The amount is derived from `kind` (s + w, r or s). Per-kind claim counts cannot exceed N\_M, N\_L and nVoid, so total claims can never exceed the round's posted total. A rebate claim reverts when r = 0, since the tree has no rebate leaves then.
+- **`claimRefund`** requires a Refunded round and pays the caller's stake once. Every entrant can claim, whatever the refund reason, including entries a vetoed settlement had counted as VOID. A refunded round credits no fees and no creator fee.
+- **`withdraw`** pays out credited fee balances (pull pattern), so a creator address that cannot receive USDC never blocks a round. It pays only the credited address (`msg.sender`); there is no `withdrawTo`. A credited address that can't receive USDC, for example one on Circle's blocklist, stays credited until it can, and its balance counts as an obligation, so it can't be rescued.
 - **State machine.** Settled and Refunded are terminal. There are three routes to an outcome:
   - Open → SettleProposed → Settled, or → Refunded by veto.
   - Open → RefundProposed → Refunded, or back to Open by veto.
   - Open → Refunded directly: void before close, too few entries, or timeout.
 
-  A round can never be both settled and refunded.
+  A round can never be both settled and refunded. `RoundRefunded(reason)` is emitted on every move into Refunded, including `finalize` of a refund proposal (alongside `RoundFinalized`).
 - **Roles:**
-  - `DEFAULT_ADMIN_ROLE` (multisig). It grants `OPERATOR_ROLE` and sets the ticket signer and treasury behind a 72-hour onchain timelock. Revocations, disabling the ticket signer (setting it to zero) and pause take effect immediately.
+  - `DEFAULT_ADMIN_ROLE` (multisig). It grants `OPERATOR_ROLE` and sets the ticket signer and treasury behind a 72-hour onchain timelock. Revocations, disabling the ticket signer (setting it to zero) and pause take effect immediately. Only `DEFAULT_ADMIN_ROLE` executes or cancels a scheduled change, and scheduled changes don't expire.
   - `OPERATOR_ROLE` is the backend key.
-  - `GUARDIAN_ROLE` is a separate guardian multisig that can veto and void before close. It is its own admin. The admin multisig can replace it only behind a 7-day public timelock, so a compromised guardian can be rotated without redeploying.
-  - `PAUSER_ROLE` can pause. Pause blocks `enter` only; proposals, vetoes, claims, refunds and withdrawals always work.
+  - `GUARDIAN_ROLE` is a separate guardian multisig that can veto and void before close. Exactly one address holds the role at any time. The guardian can hand it to a new address with `transferGuardian`, immediately; it can't grant the role to anyone else or renounce it. The admin multisig can replace the guardian only behind a 7-day public timelock, and the replacement is a single write, so a compromised guardian can be rotated without redeploying.
+  - `PAUSER_ROLE` can pause but not unpause. Only `DEFAULT_ADMIN_ROLE` can unpause (immediately), so a stolen pauser key can't undo a pause. Pauser grants take effect immediately. Pause blocks `enter` only; proposals, vetoes, claims, refunds and withdrawals always work.
 - **No locked funds.** Every USDC unit deposited through `enter` belongs to exactly one round, and every round ends Settled or Refunded with a claim path for each entrant. USDC sent to the contract by other means can be rescued only above the contract's outstanding obligations, by the admin multisig behind the timelock.
 - USDC is the only accepted token. The address is set in the constructor.
 
@@ -967,7 +976,7 @@ Social features give players something to protect (streaks) and someone to beat 
   - The same atomic rules apply.
 - **Anti-farming:**
   - Room rounds never count toward global stats, streaks, leaderboards or referrals.
-  - A room round refunds unless it has at least 3 qualifying entrants: valid entries from distinct users whose accounts were at least 24 hours old at `closesAt`. Distinct users are distinct people where verified, because a person ID binds to only one account.
+  - A room round refunds unless it has at least 3 qualifying entrants: valid entries from distinct users whose accounts were at least 24 hours old at `closesAt`. Distinct users are distinct people where verified, because a person ID binds to only one account. The API decides which entries qualify and passes that flag to settlement, which counts only qualifying entries for rule 1.
   - For Stakes room rounds, tickets go only to members whose accounts meet the age rule, and `minEntrants` = 3 onchain, so every onchain entry qualifies.
   - Qualification is recorded per entry in the (members-only) bundle.
   - An unverified person with several accounts can still meet the minimum alone. That is accepted, because the only reward is room points.
@@ -1265,3 +1274,8 @@ The settlement engine is the riskiest code. It is a pure, shared TypeScript pack
 | Oct 7, 2026 | Engineering defaults adopted: fixed-length plaintext; OpenZeppelin Merkle trees; Free rule-8 refund after a 24-hour drand outage; local drand for tests; opaque share links with a 3:2 embed image; D1 ciphertext archival; separate share-conversion event; paymaster limits; a 7-day question-submission block instead of suspension; account deletion by anonymization |
 | Oct 7, 2026 | Follow-on defaults (change if you disagree): room results notify in the app only; the story card stays 1080×1080 square; deleting an account keeps a person tombstone so caps carry over; invite links use a random `ref_code` instead of the handle |
 | Oct 7, 2026 | EIP-712 ticket and receipt domains use the deployment chain's ID (8453 in production, 84532 for Base Sepolia staging) instead of a fixed 8453, so staging runs on Base Sepolia. The contracts take it from `block.chainid` |
+| Oct 7, 2026 | Only the admin multisig can unpause `FlockedEscrow`. `PAUSER_ROLE` can only pause, so a stolen pauser key can't undo a pause |
+| Oct 7, 2026 | No `withdrawTo`: `withdraw` pays only the credited address. A credited address on Circle's blocklist stays credited until it's unblocked, because letting it send funds elsewhere would get around the blocklist |
+| Oct 7, 2026 | Wave-1 contract and settlement behaviour written into the spec as built: `createRound` rejects beacon round 0; `enter` rejects a zero `personTag` and checks the USDC received; `propose` rejects a zero `bundleHash`, and a zero `payoutRoot` on settle proposals; refund rules are checked in order 1, 2, 3; after a veto every entrant (VOID included) reclaims their stake and no fees are credited; vetoed proposals stay readable as evidence; only the admin executes or cancels timelocked changes, which don't expire; one entry per account per round; `minEntrants` and `capMultiple` are at least 1; refunded rounds pay no creator fee or creator award; the API decides room qualification |
+| Oct 7, 2026 | `GUARDIAN_ROLE` has exactly one holder. The guardian hands the role on with `transferGuardian` (immediately), and the admin's 7-day replacement is a single write, so a stolen guardian key can't block its own replacement by granting the role to many addresses |
+| Oct 7, 2026 | The win and loss voice lines in Design\_Language.md (Voice) are templates: whole percent, with the winning share rounded down and the losing share rounded up, so a winner never reads 50%; "<1%" and ">99%" at the extremes |

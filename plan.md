@@ -59,7 +59,7 @@ Files that make up the plan:
   ```bash
   git fetch origin
   git worktree add ../flocked-w{n}-{x} -b w{n}-{x}-{slug} <base>
-  cd ../flocked-w{n}-{x} && pnpm install   # once the workspace exists (from W1-D on)
+  cd ../flocked-w{n}-{x} && pnpm install && (cd contracts && forge soldeer install)   # from W1-D on
   ```
   Two sessions never share a working directory. Worktrees live next to the repo: `~/Documents/GitHub/flocked-w{n}-{x}`.
 - **Bases.** A, B and C branch from the tag `wave-{n-1}` (wave 1: tag `wave-0`, the PLAN-0 commit on `main`). D creates `w{n}-integration` from `main` (which equals `wave-{n-1}`) and merges A, B and C into it with `--no-ff`. Fix sessions branch from `w{n}-integration`.
@@ -214,10 +214,10 @@ complete | partial | blocked — <one line>
 
 1. Read the four handoffs. Every one must be `complete`.
 2. `git diff --stat main...w{n}-integration`; read full diffs only where a handoff flags risk, plus any change to a pinned interface.
-3. On `w{n}-integration` in a fresh worktree: `pnpm install --frozen-lockfile && pnpm check`, plus `pnpm e2e` once it exists. Check CI is green on the pushed branch (`gh run list --branch w{n}-integration`).
+3. On `w{n}-integration` in a fresh worktree: `pnpm install --frozen-lockfile && (cd contracts && forge soldeer install) && pnpm check` and `(cd contracts && FOUNDRY_PROFILE=ci forge test)`, plus `pnpm e2e` once it exists. Check CI is green on the pushed branch (`gh run list --branch w{n}-integration`).
 4. Every traceability row assigned to this wave has a named, passing test. Update the row's status.
 5. Collect "Spec issues" and raise them with the owner. Apply decisions to the spec and Decision log.
-6. Merge into `main` (`--no-ff`), tag `wave-{n}`, push both, delete merged branches and the wave's worktrees.
+6. Merge into `main` (`--no-ff`) and push it, delete merged branches and the wave's worktrees. Tag `wave-{n}` on `main` once the wave summary and the next wave's prompts are committed (steps 7 and 9), so the tag, which the next wave branches from, contains them and `main` equals the tag (2.4).
 7. Update `plan.md` Status, `docs/plan/traceability.md`, and any later wave file whose plan changed. Write `docs/sessions/W{n}-Z.md`.
 8. Remind the owner of owner actions due before the next two waves.
 9. Emit the next wave's prompts.
@@ -273,7 +273,7 @@ Exact library versions are chosen at install time by the session that adds them 
 | --- | --- |
 | `pnpm check` | Everything a session must keep green: `lint`, `typecheck`, `test`, `contracts:test` |
 | `pnpm lint` / `pnpm typecheck` / `pnpm test` | `pnpm -r` over every workspace package |
-| `pnpm contracts:test` | `forge test --root contracts` (unit, fuzz, invariant) |
+| `pnpm contracts:test` | `forge test --root contracts` (unit, fuzz, invariant, vectors). The CI profile runs as `FOUNDRY_PROFILE=ci forge test` in `contracts/` (doubled fuzz and invariant runs; Foundry 1.7 has no `--profile` flag) |
 | `pnpm contracts:build` | `forge build --root contracts` + ABI codegen into `packages/abi` (from W2) |
 | `pnpm spec "<heading>" [--sub "<label>"]` | Prints one `## ` section of `Product_Spec.md` (or one bold sub-block of it) |
 | `pnpm stack:up` / `pnpm stack:down` | Local stack: drand network, anvil, contract deploy, `wrangler dev` (from W3-D) |
@@ -301,10 +301,11 @@ Exact library versions are chosen at install time by the session that adds them 
 
 ### 4.6 CI
 
-- `.github/workflows/ci.yml` (from W1-A): on push and PR, run install with the frozen lockfile, `pnpm lint`, `pnpm typecheck`, `pnpm test`, and Foundry `forge test` (from W1-D).
+- `.github/workflows/ci.yml` (from W1-A): on push and PR, three jobs. `check`: install with the frozen lockfile, `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm format:check`, and the settle vector-freshness check. `contracts` (from W1-D): Foundry v1.7.1, `forge soldeer install`, `forge fmt --check`, `forge build`, `FOUNDRY_PROFILE=ci forge test`. `properties` (from W1-D): settle's property tests with `FAST_CHECK_RUNS=10000`.
+- A fresh worktree needs `pnpm install` and `(cd contracts && forge soldeer install)` before `pnpm check` (Soldeer dependencies are gitignored).
 - `e2e.yml` (from W7-D) runs the local stack plus Playwright on `w*-integration` and `main`.
 - `deploy.yml` (from W13-D) deploys to staging on `main`, and to production on manual dispatch with a required reviewer.
-- CI must be green before Z merges. Branch protection on `main` is an owner action (OA-11).
+- CI must be green before Z merges. `main` is protected by two rulesets (OA-03): no force pushes or deletion for anyone, and the three CI jobs required, with repository admins allowed to bypass so Z can push its `--no-ff` merge after checking CI itself.
 
 ---
 
@@ -404,7 +405,7 @@ External long poles, started early so they stay off the critical path:
 | --- | --- | --- | --- | --- |
 | OA-01 | Open OrbStack once to finish setup (installed by PLAN-0 via Homebrew); confirm `docker run hello-world` works | Local drand network, local stack, e2e | W3 | W1 |
 | OA-02 | Reconnect the Paper desktop app's MCP server to Claude Code so the tools are visible in new sessions | Every design session | W2 | W1 |
-| OA-03 | GitHub: allow Actions; add branch protection on `main` requiring CI | CI, safe merges | W1 (CI), W2 (protection) | W1 |
+| OA-03 | GitHub: allow Actions; add branch protection on `main` requiring CI. **Done Oct 7, 2026 (W1-Z):** Actions enabled; the owner made the repo public (protection needs a paid plan on private repos); with the owner's approval W1-Z added two rulesets on `main`: "no force push or deletion" (no bypass) and "CI required" (`check`, `contracts`, `properties`; repository admins bypass, so Z can push its `--no-ff` merge) | CI, safe merges | W1 (CI), W2 (protection) | W1 |
 | OA-04 | Cloudflare: upgrade to Workers Paid (DOs at scale, Queues, `cpu_ms` 60,000) and create staging/production resources access (API token for deploy workflow) | Staging deploy, queue consumer CPU limits | W13 | W10 |
 | OA-05 | Cloudflare: a **second account** for the watcher, plus an API token for it | Watcher deploy | W14 | W11 |
 | OA-06 | Cloudflare Access application protecting `/admin` (and the admin API) on staging and production | Admin console deploy | W14 | W12 |
@@ -467,10 +468,10 @@ Legend: ⬜ not started · 🟡 in progress · ✅ complete · ⛔ blocked. Z se
 | Session | Title | Size | Status |
 | --- | --- | --- | --- |
 | PLAN-0 | Implementation plan | — | ✅ |
-| W1-A | Repo scaffold, CI, shared skeleton | M | ⬜ |
-| W1-B | `FlockedEscrow` | M | ⬜ |
-| W1-C | `@flocked/settle` | M | ⬜ |
-| W1-D | Workspace + CI wiring, vector cross-check | S | ⬜ |
+| W1-A | Repo scaffold, CI, shared skeleton | M | ✅ |
+| W1-B | `FlockedEscrow` | M | ✅ |
+| W1-C | `@flocked/settle` | M | ✅ |
+| W1-D | Workspace + CI wiring, vector cross-check | S | ✅ |
 | W1-Z | Consolidate wave 1 | S | ⬜ |
 | W2-A | `@flocked/tlock` | M | ⬜ |
 | W2-B | `FlockedAnchor`, deploy scripts, `@flocked/abi` | M | ⬜ |
@@ -551,7 +552,7 @@ Legend: ⬜ not started · 🟡 in progress · ✅ complete · ⛔ blocked. Z se
 | --- | --- | --- | --- |
 | OA-01 | Finish OrbStack setup | W3 | ⬜ |
 | OA-02 | Reconnect Paper MCP | W2 | ⬜ |
-| OA-03 | GitHub Actions + branch protection | W1/W2 | ⬜ |
+| OA-03 | GitHub Actions + branch protection | W1/W2 | ✅ |
 | OA-04 | Cloudflare Workers Paid + deploy token | W13 | ⬜ |
 | OA-05 | Second Cloudflare account (watcher) | W14 | ⬜ |
 | OA-06 | Cloudflare Access for `/admin` | W14 | ⬜ |
@@ -603,3 +604,4 @@ Defaults chosen by PLAN-0. Z may revisit any of them with the owner.
 13. **Staging soak length** is 7 daily rounds (the spec sets none).
 14. **Watcher signing key** (for signed verdicts) is another owner-held key, folded into OA-15.
 15. **Dates** in plan files are absolute. "Wave n" means after `wave-{n}` is tagged.
+16. **The repository is public** (owner decision, Oct 7, 2026, W1-Z) so `main` can be protected on the free plan. Everything committed is public: never commit secrets, owner contact details beyond commit metadata, or unpublished audit findings. Public repos also get deployment environments with required reviewers (OA-14).
