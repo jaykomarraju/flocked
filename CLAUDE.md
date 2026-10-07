@@ -15,7 +15,7 @@ shared reveal, and the side fewer people picked wins. Free (points) and Stakes (
 
 ## Reading the spec
 
-Never read the whole spec. Load one section at a time:
+Never read the whole spec. Load one section at a time (from a package directory, use `pnpm -w spec`):
 
 ```bash
 pnpm spec --list
