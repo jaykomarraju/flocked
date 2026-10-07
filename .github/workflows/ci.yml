@@ -27,3 +27,39 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm format:check
+      - name: Settlement vectors are fresh
+        run: pnpm --filter @flocked/settle vectors && git diff --exit-code packages/settle/vectors
+
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v7
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.7.1
+      - run: forge soldeer install
+      - run: forge fmt --check
+      - run: forge build
+      # Foundry 1.7 has no `--profile` flag; the `ci` profile is selected through the environment.
+      - run: forge test
+        env:
+          FOUNDRY_PROFILE: ci
+
+  properties:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @flocked/settle test -t property
+        env:
+          FAST_CHECK_RUNS: '10000'

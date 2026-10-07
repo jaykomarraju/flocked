@@ -34,8 +34,10 @@ function numberOffenders(dir: string): string[] {
       .forEach((line, i) => {
         const where = `${file}:${i + 1}: ${line.trim()}`;
         const comment = /^\s*(\/\/|\/?\*)/.test(line);
-        if (/\bMath\.|\bparseFloat\b|\bparseInt\b|\bNumber\(|\btoFixed\(|\b\d+\.\d+\b/.test(line)) offenders.push(where);
-        else if (!comment && /\bnumber\b/.test(line) && !ALLOWED_NUMBER_LINES.has(line.trim())) offenders.push(where);
+        if (/\bMath\.|\bparseFloat\b|\bparseInt\b|\bNumber\(|\btoFixed\(|\b\d+\.\d+\b/.test(line))
+          offenders.push(where);
+        else if (!comment && /\bnumber\b/.test(line) && !ALLOWED_NUMBER_LINES.has(line.trim()))
+          offenders.push(where);
       });
   }
   return offenders;
@@ -47,7 +49,9 @@ describe('money is bigint only', () => {
     expectTypeOf<Payout['amount']>().toEqualTypeOf<bigint>();
     expectTypeOf<SettlementRecord[MoneyKeys]>().toEqualTypeOf<bigint>();
     expectTypeOf<SettlementRecord['w']>().toEqualTypeOf<[bigint, bigint]>();
-    expectTypeOf<StakesClosedForm[Exclude<keyof StakesClosedForm, 'outcome' | 'refundReason' | 'winner'>]>().toEqualTypeOf<bigint>();
+    expectTypeOf<
+      StakesClosedForm[Exclude<keyof StakesClosedForm, 'outcome' | 'refundReason' | 'winner'>]
+    >().toEqualTypeOf<bigint>();
   });
 
   it('grep: src/ has no floating-point helpers and uses number only on the allowlist', () => {

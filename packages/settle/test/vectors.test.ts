@@ -31,12 +31,22 @@ interface MerkleVector {
 interface FreeVector {
   id: string;
   params: Record<string, string | boolean>;
-  entries: { account: string; stake: string; option: string | null; voidReason: VoidReason | null; qualifies?: boolean }[];
-  expected: { record: Record<string, unknown>; payouts: { account: string; kind: string; amount: string }[] };
+  entries: {
+    account: string;
+    stake: string;
+    option: string | null;
+    voidReason: VoidReason | null;
+    qualifies?: boolean;
+  }[];
+  expected: {
+    record: Record<string, unknown>;
+    payouts: { account: string; kind: string; amount: string }[];
+  };
 }
 
 const closed = (JSON.parse(read('stakes-closed-form.json')) as { vectors: ClosedVector[] }).vectors;
-const merkle = (JSON.parse(read('stakes-payout-merkle.json')) as { vectors: MerkleVector[] }).vectors;
+const merkle = (JSON.parse(read('stakes-payout-merkle.json')) as { vectors: MerkleVector[] })
+  .vectors;
 const free = (JSON.parse(read('free-general.json')) as { vectors: FreeVector[] }).vectors;
 
 describe('vectors', () => {
@@ -50,7 +60,8 @@ describe('vectors', () => {
   it('every numeric field is a decimal string', () => {
     const check = (v: unknown, path: string): void => {
       expect(typeof v, path).not.toBe('number');
-      if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) check(x, `${path}.${k}`);
+      if (v && typeof v === 'object')
+        for (const [k, x] of Object.entries(v)) check(x, `${path}.${k}`);
     };
     check(closed, 'closed');
     check(merkle, 'merkle');
@@ -96,13 +107,19 @@ describe('vectors', () => {
       expect(e(v, 'winPayout'), v.id).toBe(cf.winPayout);
       expect(e(v, 'dust'), v.id).toBe(cf.dust);
       if (v.expected.status === '2') expect(e(v, 'winPayout')).toBe(BigInt(v.stake) + e(v, 'w'));
-      expect(e(v, 'roundBalance')).toBe((BigInt(v.n0) + BigInt(v.n1) + BigInt(v.nVoid)) * BigInt(v.stake));
+      expect(e(v, 'roundBalance')).toBe(
+        (BigInt(v.n0) + BigInt(v.n1) + BigInt(v.nVoid)) * BigInt(v.stake),
+      );
       // The invariant in closed form.
       const [nM, nL] = v.expected.winner === '0' ? [v.n0, v.n1] : [v.n1, v.n0];
       const lhs =
         v.expected.status === '2'
-          ? BigInt(nM) * e(v, 'winPayout') + BigInt(nL) * e(v, 'rebatePayout') + BigInt(v.nVoid) * e(v, 'voidRefund') +
-            e(v, 'fee') + e(v, 'creatorFee') + e(v, 'dust')
+          ? BigInt(nM) * e(v, 'winPayout') +
+            BigInt(nL) * e(v, 'rebatePayout') +
+            BigInt(v.nVoid) * e(v, 'voidRefund') +
+            e(v, 'fee') +
+            e(v, 'creatorFee') +
+            e(v, 'dust')
           : (BigInt(v.n0) + BigInt(v.n1) + BigInt(v.nVoid)) * e(v, 'voidRefund');
       expect(lhs, v.id).toBe(e(v, 'roundBalance'));
     }
@@ -119,7 +136,10 @@ describe('vectors', () => {
       expect(StandardMerkleTree.of(values, [...STAKES_PAYOUT_LEAF]).root, v.id).toBe(v.root);
       for (const p of v.proofs) {
         const leaf = [BigInt(v.chainRoundId), p.account, Number(p.kind)];
-        expect(StandardMerkleTree.verify(v.root, [...STAKES_PAYOUT_LEAF], leaf, p.proof), v.id).toBe(true);
+        expect(
+          StandardMerkleTree.verify(v.root, [...STAKES_PAYOUT_LEAF], leaf, p.proof),
+          v.id,
+        ).toBe(true);
       }
     }
   });
@@ -142,7 +162,10 @@ describe('vectors', () => {
         creatorAwardBps: Number(p.creatorAwardBps),
         countQualifyingOnly: p.countQualifyingOnly === true,
       });
-      expect(payouts.map((x) => ({ ...x, amount: x.amount.toString() })), v.id).toEqual(v.expected.payouts);
+      expect(
+        payouts.map((x) => ({ ...x, amount: x.amount.toString() })),
+        v.id,
+      ).toEqual(v.expected.payouts);
       expect(record.dust.toString(), v.id).toBe(v.expected.record.dust);
       expect(record.creatorAward.toString(), v.id).toBe(v.expected.record.creatorAward);
       expect(record.outcome, v.id).toBe(v.expected.record.outcome);

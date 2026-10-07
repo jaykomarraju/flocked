@@ -3,7 +3,13 @@
  * Every numeric field is a decimal string (P1.1). A fixed seed drives the random cases.
  */
 import { bytesToHex, hexToBytes, keccak256, toHex } from 'viem';
-import type { EntryInput, OptionIndex, Payout, SettleParams, StakesClosedForm } from '../src/index.js';
+import type {
+  EntryInput,
+  OptionIndex,
+  Payout,
+  SettleParams,
+  StakesClosedForm,
+} from '../src/index.js';
 import {
   FORMULA_VERSION,
   VOID_REASONS,
@@ -18,7 +24,13 @@ import {
 export const SEED = 0x5e771e;
 const USDC = 1_000_000n;
 const STAKES: SettleParams = { feeBps: 500, creatorBps: 100, capMultiple: 10, minEntrants: 20 };
-const FREE: SettleParams = { feeBps: 0, creatorBps: 0, capMultiple: 10, minEntrants: 1, creatorAwardBps: 100 };
+const FREE: SettleParams = {
+  feeBps: 0,
+  creatorBps: 0,
+  capMultiple: 10,
+  minEntrants: 1,
+  creatorAwardBps: 100,
+};
 /** Largest round the generator cross-checks against the general formula entry by entry. */
 const CROSS_CHECK_MAX_ENTRIES = 300_000n;
 
@@ -44,35 +56,59 @@ function rng(seed: number) {
 
 const json = (v: unknown): string => `${JSON.stringify(v, null, 2)}\n`;
 const str = (v: bigint | number): string => v.toString();
-const byId = <T extends { id: string }>(xs: T[]): T[] => [...xs].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+const byId = <T extends { id: string }>(xs: T[]): T[] =>
+  [...xs].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 
 function stakesEntries(stake: bigint, n0: bigint, n1: bigint, nVoid: bigint): EntryInput[] {
   const out: EntryInput[] = [];
   let i = 0;
   const account = () => `0x${(++i).toString(16).padStart(40, '0')}`;
-  for (let k = 0n; k < n0; k++) out.push({ account: account(), stake, option: 0, voidReason: null });
-  for (let k = 0n; k < n1; k++) out.push({ account: account(), stake, option: 1, voidReason: null });
-  for (let k = 0n; k < nVoid; k++) out.push({ account: account(), stake, option: null, voidReason: 'decrypt_failed' });
+  for (let k = 0n; k < n0; k++)
+    out.push({ account: account(), stake, option: 0, voidReason: null });
+  for (let k = 0n; k < n1; k++)
+    out.push({ account: account(), stake, option: 1, voidReason: null });
+  for (let k = 0n; k < nVoid; k++)
+    out.push({ account: account(), stake, option: null, voidReason: 'decrypt_failed' });
   return out;
 }
 
 /** Throws unless the closed form agrees with the general formula (record and every entry's payout). */
-function crossCheck(stake: bigint, n0: bigint, n1: bigint, nVoid: bigint, params: SettleParams, cf: StakesClosedForm): void {
+function crossCheck(
+  stake: bigint,
+  n0: bigint,
+  n1: bigint,
+  nVoid: bigint,
+  params: SettleParams,
+  cf: StakesClosedForm,
+): void {
   if (n0 + n1 + nVoid > CROSS_CHECK_MAX_ENTRIES) return;
   const entries = stakesEntries(stake, n0, n1, nVoid);
   const { record, payouts } = settle(entries, params);
   checkInvariant(record, payouts);
   const paid = new Map<string, bigint>(payouts.map((p) => [p.account, p.amount]));
   const fail = (what: string) => {
-    throw new Error(`closed form != general formula (${what}) for s=${stake} n0=${n0} n1=${n1} nVoid=${nVoid}`);
+    throw new Error(
+      `closed form != general formula (${what}) for s=${stake} n0=${n0} n1=${n1} nVoid=${nVoid}`,
+    );
   };
-  for (const k of ['lossPool', 'fee', 'creatorFee', 'distributable', 'rebatePool', 'dust'] as const) {
+  for (const k of [
+    'lossPool',
+    'fee',
+    'creatorFee',
+    'distributable',
+    'rebatePool',
+    'dust',
+  ] as const) {
     if (record[k] !== cf[k]) fail(k);
   }
   if (record.refundReason !== cf.refundReason || record.winner !== cf.winner) fail('outcome');
   for (const e of entries) {
     const want =
-      cf.outcome === 'refunded' || e.option === null ? cf.voidRefund : e.option === cf.winner ? cf.winPayout : cf.rebatePayout;
+      cf.outcome === 'refunded' || e.option === null
+        ? cf.voidRefund
+        : e.option === cf.winner
+          ? cf.winPayout
+          : cf.rebatePayout;
     if ((paid.get(e.account) ?? 0n) !== want) fail(`payout of ${e.account}`);
   }
 }
@@ -99,7 +135,14 @@ function closedFormCases(): ClosedCase[] {
     { id: 'min-entrants-exact', stake: s5, n0: 8n, n1: 12n, nVoid: 0n },
     { id: 'refund-2-one-sided-option-1', stake: s5, n0: 0n, n1: 25n, nVoid: 0n },
     { id: 'refund-2-one-sided-option-0', stake: s5, n0: 25n, n1: 0n, nVoid: 3n },
-    { id: 'refund-2-min-entrants-0-empty', stake: s5, n0: 0n, n1: 0n, nVoid: 2n, params: { minEntrants: 0 } },
+    {
+      id: 'refund-2-min-entrants-0-empty',
+      stake: s5,
+      n0: 0n,
+      n1: 0n,
+      nVoid: 2n,
+      params: { minEntrants: 0 },
+    },
     { id: 'refund-3-tie', stake: s5, n0: 15n, n1: 15n, nVoid: 1n },
     { id: 'refund-3-tie-large', stake: s100, n0: 100_000n, n1: 100_000n, nVoid: 7n },
     { id: 'tie-broken-by-one', stake: s5, n0: 15n, n1: 16n, nVoid: 0n },
@@ -107,8 +150,22 @@ function closedFormCases(): ClosedCase[] {
     { id: 'cap-boundary-ratio-10-not-binding', stake: USDC, n0: 2n, n1: 20n, nVoid: 0n },
     { id: 'cap-boundary-ratio-11-binding', stake: USDC, n0: 2n, n1: 22n, nVoid: 1n },
     { id: 'cap-not-binding-r-zero', stake: s5, n0: 40n, n1: 60n, nVoid: 0n },
-    { id: 'cap-multiple-1-binding', stake: 2n * USDC, n0: 5n, n1: 15n, nVoid: 0n, params: { capMultiple: 1 } },
-    { id: 'cap-multiple-1-not-binding', stake: 2n * USDC, n0: 100n, n1: 106n, nVoid: 0n, params: { capMultiple: 1 } },
+    {
+      id: 'cap-multiple-1-binding',
+      stake: 2n * USDC,
+      n0: 5n,
+      n1: 15n,
+      nVoid: 0n,
+      params: { capMultiple: 1 },
+    },
+    {
+      id: 'cap-multiple-1-not-binding',
+      stake: 2n * USDC,
+      n0: 100n,
+      n1: 106n,
+      nVoid: 0n,
+      params: { capMultiple: 1 },
+    },
     { id: 'cap-multiple-10-heavy', stake: s5, n0: 3n, n1: 300n, nVoid: 4n },
     { id: 'rebate-positive-with-dust', stake: 3n * USDC, n0: 7n, n1: 93n, nVoid: 0n },
     { id: 'stake-1-base-unit', stake: 1n, n0: 21n, n1: 30n, nVoid: 0n },
@@ -120,15 +177,71 @@ function closedFormCases(): ClosedCase[] {
     { id: 'large-100k-vs-1m-ratio-10', stake: s100, n0: 100_000n, n1: 1_000_000n, nVoid: 0n },
     { id: 'large-100k-vs-1.1m-cap-binding', stake: s100, n0: 100_000n, n1: 1_100_000n, nVoid: 12n },
     { id: 'large-billions', stake: s100, n0: 1_000_000_000n, n1: 3_000_000_007n, nVoid: 12_345n },
-    { id: 'fees-min-zero', stake: s5, n0: 9n, n1: 13n, nVoid: 0n, params: { feeBps: 0, creatorBps: 0 } },
-    { id: 'fees-min-zero-cap-binding', stake: s5, n0: 1n, n1: 30n, nVoid: 1n, params: { feeBps: 0, creatorBps: 0 } },
-    { id: 'fees-max-fee-only', stake: s5, n0: 9n, n1: 13n, nVoid: 0n, params: { feeBps: 10_000, creatorBps: 0 } },
-    { id: 'fees-max-creator-only', stake: s5, n0: 9n, n1: 13n, nVoid: 0n, params: { feeBps: 0, creatorBps: 10_000 } },
-    { id: 'fees-max-split', stake: s5, n0: 9n, n1: 13n, nVoid: 2n, params: { feeBps: 9_000, creatorBps: 1_000 } },
-    { id: 'fees-odd-bps-rounding', stake: 333_333n, n0: 11n, n1: 17n, nVoid: 0n, params: { feeBps: 333, creatorBps: 77 } },
+    {
+      id: 'fees-min-zero',
+      stake: s5,
+      n0: 9n,
+      n1: 13n,
+      nVoid: 0n,
+      params: { feeBps: 0, creatorBps: 0 },
+    },
+    {
+      id: 'fees-min-zero-cap-binding',
+      stake: s5,
+      n0: 1n,
+      n1: 30n,
+      nVoid: 1n,
+      params: { feeBps: 0, creatorBps: 0 },
+    },
+    {
+      id: 'fees-max-fee-only',
+      stake: s5,
+      n0: 9n,
+      n1: 13n,
+      nVoid: 0n,
+      params: { feeBps: 10_000, creatorBps: 0 },
+    },
+    {
+      id: 'fees-max-creator-only',
+      stake: s5,
+      n0: 9n,
+      n1: 13n,
+      nVoid: 0n,
+      params: { feeBps: 0, creatorBps: 10_000 },
+    },
+    {
+      id: 'fees-max-split',
+      stake: s5,
+      n0: 9n,
+      n1: 13n,
+      nVoid: 2n,
+      params: { feeBps: 9_000, creatorBps: 1_000 },
+    },
+    {
+      id: 'fees-odd-bps-rounding',
+      stake: 333_333n,
+      n0: 11n,
+      n1: 17n,
+      nVoid: 0n,
+      params: { feeBps: 333, creatorBps: 77 },
+    },
     { id: 'min-entrants-1', stake: s5, n0: 1n, n1: 2n, nVoid: 0n, params: { minEntrants: 1 } },
-    { id: 'min-entrants-3-room-boundary', stake: s5, n0: 1n, n1: 1n, nVoid: 4n, params: { minEntrants: 3 } },
-    { id: 'min-entrants-3-room-settles', stake: s5, n0: 1n, n1: 2n, nVoid: 0n, params: { minEntrants: 3 } },
+    {
+      id: 'min-entrants-3-room-boundary',
+      stake: s5,
+      n0: 1n,
+      n1: 1n,
+      nVoid: 4n,
+      params: { minEntrants: 3 },
+    },
+    {
+      id: 'min-entrants-3-room-settles',
+      stake: s5,
+      n0: 1n,
+      n1: 2n,
+      nVoid: 0n,
+      params: { minEntrants: 3 },
+    },
   ];
   const r = rng(SEED);
   const stakes = [1n, 7n, USDC, s5, 10n * USDC, 25n * USDC, s100];
@@ -143,7 +256,12 @@ function closedFormCases(): ClosedCase[] {
       n0,
       n1,
       nVoid: BigInt(r.pick([0, 0, r.int(1, 20)])),
-      params: { feeBps, creatorBps, capMultiple: r.pick([1, 2, 5, 10, 10, 10]), minEntrants: r.pick([1, 3, 20, 20, 50]) },
+      params: {
+        feeBps,
+        creatorBps,
+        capMultiple: r.pick([1, 2, 5, 10, 10, 10]),
+        minEntrants: r.pick([1, 3, 20, 20, 50]),
+      },
     });
   }
   return cases;
@@ -152,7 +270,13 @@ function closedFormCases(): ClosedCase[] {
 function stakesClosedFormFile(): unknown {
   const vectors = closedFormCases().map((c) => {
     const params: SettleParams = { ...STAKES, ...c.params };
-    const cf = settleStakesClosedForm({ stake: c.stake, n0: c.n0, n1: c.n1, nVoid: c.nVoid, ...params });
+    const cf = settleStakesClosedForm({
+      stake: c.stake,
+      n0: c.n0,
+      n1: c.n1,
+      nVoid: c.nVoid,
+      ...params,
+    });
     crossCheck(c.stake, c.n0, c.n1, c.nVoid, params, cf);
     return {
       id: c.id,
@@ -183,7 +307,11 @@ function stakesClosedFormFile(): unknown {
       },
     };
   });
-  return { formulaVersion: str(FORMULA_VERSION), kind: 'stakes-closed-form', vectors: byId(vectors) };
+  return {
+    formulaVersion: str(FORMULA_VERSION),
+    kind: 'stakes-closed-form',
+    vectors: byId(vectors),
+  };
 }
 
 /** Deterministic pseudo-random lowercase address. */
@@ -191,10 +319,22 @@ function address(tag: string, i: number): `0x${string}` {
   return `0x${keccak256(toHex(`${tag}:${i}`)).slice(26)}`;
 }
 
-const LEAF_KIND: Record<Payout['kind'], 0 | 1 | 2 | null> = { win: 0, rebate: 1, void_refund: 2, refund: null };
+const LEAF_KIND: Record<Payout['kind'], 0 | 1 | 2 | null> = {
+  win: 0,
+  rebate: 1,
+  void_refund: 2,
+  refund: null,
+};
 
-function merkleVector(id: string, chainRoundId: bigint, leaves: { account: `0x${string}`; kind: 0 | 1 | 2 }[], sample: number[]) {
-  const sorted = [...leaves].sort((a, b) => (a.account < b.account ? -1 : a.account > b.account ? 1 : a.kind - b.kind));
+function merkleVector(
+  id: string,
+  chainRoundId: bigint,
+  leaves: { account: `0x${string}`; kind: 0 | 1 | 2 }[],
+  sample: number[],
+) {
+  const sorted = [...leaves].sort((a, b) =>
+    a.account < b.account ? -1 : a.account > b.account ? 1 : a.kind - b.kind,
+  );
   const tree = stakesPayoutTree(chainRoundId, sorted);
   return {
     id,
@@ -214,7 +354,12 @@ function settledLeaves(tag: string, stake: bigint, n0: number, n1: number, nVoid
   const entries: EntryInput[] = [];
   let i = 0;
   const push = (option: OptionIndex | null) => {
-    entries.push({ account: address(tag, i++), stake, option, voidReason: option === null ? 'bad_plaintext' : null });
+    entries.push({
+      account: address(tag, i++),
+      stake,
+      option,
+      voidReason: option === null ? 'bad_plaintext' : null,
+    });
   };
   for (let k = 0; k < n0; k++) push(0);
   for (let k = 0; k < n1; k++) push(1);
@@ -240,8 +385,21 @@ function stakesPayoutMerkleFile(): unknown {
   const all = (n: number) => Array.from({ length: n }, (_, i) => i);
   const vectors = [
     merkleVector('one-leaf', 7n, [{ account: address('one', 0), kind: 0 }], [0]),
-    merkleVector('two-leaf', 8n, [{ account: address('two', 0), kind: 0 }, { account: address('two', 1), kind: 2 }], all(2)),
-    merkleVector('odd-seven-leaf', 9n, settledLeaves('odd', 5n * USDC, 1, 30, 0).slice(0, 7), all(7)),
+    merkleVector(
+      'two-leaf',
+      8n,
+      [
+        { account: address('two', 0), kind: 0 },
+        { account: address('two', 1), kind: 2 },
+      ],
+      all(2),
+    ),
+    merkleVector(
+      'odd-seven-leaf',
+      9n,
+      settledLeaves('odd', 5n * USDC, 1, 30, 0).slice(0, 7),
+      all(7),
+    ),
     merkleVector('small-settled', 10n, settledLeaves('small', 5n * USDC, 2, 22, 1), all(25)),
     merkleVector('large-1203-leaf', (1n << 128n) + 5n, large, sample),
   ];
@@ -256,21 +414,123 @@ interface FreeCase {
 }
 
 function freeCases(): FreeCase[] {
-  const room: Partial<SettleParams> = { minEntrants: 3, countQualifyingOnly: true, creatorAwardBps: 0 };
+  const room: Partial<SettleParams> = {
+    minEntrants: 3,
+    countQualifyingOnly: true,
+    creatorAwardBps: 0,
+  };
   const cases: FreeCase[] = [
-    { id: 'minority-holds-more-stake', entries: [[0, 1000n], [0, 500n], [1, 1000n], [1, 1000n], [1, 1000n], [1, 1000n], [1, 1000n]] },
-    { id: 'cap-binding-uneven-stakes', entries: [[0, 1n], [0, 1n], [1, 100n], [1, 50n], [1, 30n]] },
-    { id: 'cap-binding-single-whale-loser', entries: [[0, 10n], [1, 1_000_000n], [1, 1n]] },
-    { id: 'all-void-reasons', entries: [[0, 70n], [1, 20n], [1, 30n], ...VOID_REASONS.map((v, i): [typeof v, bigint] => [v, BigInt(100 + i)])] },
+    {
+      id: 'minority-holds-more-stake',
+      entries: [
+        [0, 1000n],
+        [0, 500n],
+        [1, 1000n],
+        [1, 1000n],
+        [1, 1000n],
+        [1, 1000n],
+        [1, 1000n],
+      ],
+    },
+    {
+      id: 'cap-binding-uneven-stakes',
+      entries: [
+        [0, 1n],
+        [0, 1n],
+        [1, 100n],
+        [1, 50n],
+        [1, 30n],
+      ],
+    },
+    {
+      id: 'cap-binding-single-whale-loser',
+      entries: [
+        [0, 10n],
+        [1, 1_000_000n],
+        [1, 1n],
+      ],
+    },
+    {
+      id: 'all-void-reasons',
+      entries: [
+        [0, 70n],
+        [1, 20n],
+        [1, 30n],
+        ...VOID_REASONS.map((v, i): [typeof v, bigint] => [v, BigInt(100 + i)]),
+      ],
+    },
     { id: 'refund-1-empty', entries: [] },
-    { id: 'refund-1-only-voids', entries: [['not_anchored', 40n], ['stake_out_of_range', 99_999n]] },
-    { id: 'refund-2-one-sided', entries: [[1, 10n], [1, 99n], ['bad_option', 5n]] },
-    { id: 'refund-3-tie-uneven-stakes', entries: [[0, 1000n], [0, 1n], [1, 5n], [1, 5n]] },
-    { id: 'room-refund-1-two-qualifying', params: room, entries: [[0, 10n, true], [1, 10n, true], [1, 10n, false], [1, 10n, false]] },
-    { id: 'room-settles-three-qualifying', params: room, entries: [[0, 10n, true], [1, 10n, true], [1, 10n, true], ['wrong_target', 10n, true]] },
-    { id: 'single-unit-stakes', entries: [[0, 1n], [1, 1n], [1, 1n]] },
-    { id: 'huge-stakes', entries: [[0, 10n ** 30n], [1, 3n * 10n ** 30n + 7n], [1, 10n ** 29n]] },
-    { id: 'general-with-fees', params: { feeBps: 500, creatorBps: 100, minEntrants: 1 }, entries: [[0, 300n], [0, 700n], [1, 5000n], [1, 2500n], [1, 1234n]] },
+    {
+      id: 'refund-1-only-voids',
+      entries: [
+        ['not_anchored', 40n],
+        ['stake_out_of_range', 99_999n],
+      ],
+    },
+    {
+      id: 'refund-2-one-sided',
+      entries: [
+        [1, 10n],
+        [1, 99n],
+        ['bad_option', 5n],
+      ],
+    },
+    {
+      id: 'refund-3-tie-uneven-stakes',
+      entries: [
+        [0, 1000n],
+        [0, 1n],
+        [1, 5n],
+        [1, 5n],
+      ],
+    },
+    {
+      id: 'room-refund-1-two-qualifying',
+      params: room,
+      entries: [
+        [0, 10n, true],
+        [1, 10n, true],
+        [1, 10n, false],
+        [1, 10n, false],
+      ],
+    },
+    {
+      id: 'room-settles-three-qualifying',
+      params: room,
+      entries: [
+        [0, 10n, true],
+        [1, 10n, true],
+        [1, 10n, true],
+        ['wrong_target', 10n, true],
+      ],
+    },
+    {
+      id: 'single-unit-stakes',
+      entries: [
+        [0, 1n],
+        [1, 1n],
+        [1, 1n],
+      ],
+    },
+    {
+      id: 'huge-stakes',
+      entries: [
+        [0, 10n ** 30n],
+        [1, 3n * 10n ** 30n + 7n],
+        [1, 10n ** 29n],
+      ],
+    },
+    {
+      id: 'general-with-fees',
+      params: { feeBps: 500, creatorBps: 100, minEntrants: 1 },
+      entries: [
+        [0, 300n],
+        [0, 700n],
+        [1, 5000n],
+        [1, 2500n],
+        [1, 1234n],
+      ],
+    },
   ];
   const r = rng(SEED + 2);
   for (let k = 0; k < 16; k++) {
@@ -279,11 +539,19 @@ function freeCases(): FreeCase[] {
     const skew = r.next();
     for (let j = 0; j < count; j++) {
       const stake = r.pick([r.big(1n, 100n), r.big(1n, 100_000n), r.big(1n, 10n ** 12n)]);
-      entries.push(r.next() < 0.08 ? [r.pick(VOID_REASONS), stake] : [r.next() < skew ? 0 : 1, stake, r.next() < 0.8]);
+      entries.push(
+        r.next() < 0.08
+          ? [r.pick(VOID_REASONS), stake]
+          : [r.next() < skew ? 0 : 1, stake, r.next() < 0.8],
+      );
     }
     cases.push({
       id: `random-${String(k).padStart(2, '0')}`,
-      params: { creatorAwardBps: r.pick([0, 100, 100, 250]), capMultiple: r.pick([1, 3, 10, 10]), minEntrants: r.pick([1, 1, 5]) },
+      params: {
+        creatorAwardBps: r.pick([0, 100, 100, 250]),
+        capMultiple: r.pick([1, 3, 10, 10]),
+        minEntrants: r.pick([1, 1, 5]),
+      },
       entries,
     });
   }
@@ -297,7 +565,10 @@ function freeGeneralFile(): unknown {
     const entries: EntryInput[] = c.entries.map(([kind, stake, qualifies], j) => {
       const userId = hexToBytes(keccak256(toHex(`user:${caseIndex}:${j}`))).slice(0, 16);
       const account = userIdHash(roundId, userId);
-      const base = typeof kind === 'number' ? { option: kind, voidReason: null } : { option: null, voidReason: kind };
+      const base =
+        typeof kind === 'number'
+          ? { option: kind, voidReason: null }
+          : { option: null, voidReason: kind };
       return { account, stake, ...base, ...(qualifies === undefined ? {} : { qualifies }) };
     });
     entries.sort((a, b) => (a.account < b.account ? -1 : 1));
@@ -306,7 +577,10 @@ function freeGeneralFile(): unknown {
     const payoutRoot =
       payouts.length === 0
         ? null
-        : freePayoutTree(roundId, payouts.map((p) => ({ userIdHash: p.account as `0x${string}`, amount: p.amount }))).root;
+        : freePayoutTree(
+            roundId,
+            payouts.map((p) => ({ userIdHash: p.account as `0x${string}`, amount: p.amount })),
+          ).root;
     return {
       id: c.id,
       roundId: bytesToHex(roundId),

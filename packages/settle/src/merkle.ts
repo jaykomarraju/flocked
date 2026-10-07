@@ -5,7 +5,14 @@ type Hex = `0x${string}`;
 
 export const STAKES_PAYOUT_LEAF = ['uint256', 'address', 'uint8'] as const;
 export const FREE_PAYOUT_LEAF = ['bytes16', 'bytes32', 'uint256'] as const;
-export const FREE_COMMITMENT_LEAF = ['bytes16', 'uint8', 'bytes32', 'uint64', 'bytes32', 'uint32'] as const;
+export const FREE_COMMITMENT_LEAF = [
+  'bytes16',
+  'uint8',
+  'bytes32',
+  'uint64',
+  'bytes32',
+  'uint32',
+] as const;
 
 /** Stakes payout leaf kind: 0 = Win, 1 = Rebate, 2 = VoidRefund. */
 export type StakesLeafKind = 0 | 1 | 2;
@@ -41,11 +48,16 @@ function bytes32(h: Hex, name: string): Hex {
 }
 
 function uint(v: bigint, max: bigint, name: string): bigint {
-  if (typeof v !== 'bigint' || v < 0n || v > max) throw new RangeError(`${name} out of range: ${String(v)}`);
+  if (typeof v !== 'bigint' || v < 0n || v > max)
+    throw new RangeError(`${name} out of range: ${String(v)}`);
   return v;
 }
 
-function build<T extends unknown[]>(values: T[], encoding: readonly string[], keyOf: (v: T) => string) {
+function build<T extends unknown[]>(
+  values: T[],
+  encoding: readonly string[],
+  keyOf: (v: T) => string,
+) {
   if (values.length === 0) throw new RangeError('a Merkle tree needs at least one leaf');
   const index = new Map<string, number>();
   values.forEach((v, i) => {
@@ -71,7 +83,8 @@ export function stakesPayoutTree(
 ): PayoutTree<[account: Hex, kind: StakesLeafKind]> {
   uint(chainRoundId, UINT256_MAX, 'chainRoundId');
   const values = leaves.map(({ account, kind }): [bigint, Hex, number] => {
-    if (!/^0x[0-9a-f]{40}$/.test(account)) throw new TypeError(`account must be a lowercase address: ${account}`);
+    if (!/^0x[0-9a-f]{40}$/.test(account))
+      throw new TypeError(`account must be a lowercase address: ${account}`);
     const k: number = kind; // runtime check for untyped callers
     if (k !== 0 && k !== 1 && k !== 2) throw new RangeError(`bad kind ${k}`);
     return [chainRoundId, account, kind];
@@ -104,7 +117,8 @@ export function freeCommitmentTree(leaves: FreeCommitmentLeaf[]): PayoutTree<[se
   const values = leaves.map((l): [Hex, number, Hex, bigint, Hex, number] => {
     const mode: number = l.mode; // runtime check for untyped callers
     if (mode !== 0 && mode !== 1) throw new RangeError(`bad mode ${mode}`);
-    if (!Number.isInteger(l.seq) || l.seq < 0 || l.seq > 0xffffffff) throw new RangeError(`bad seq ${l.seq}`);
+    if (!Number.isInteger(l.seq) || l.seq < 0 || l.seq > 0xffffffff)
+      throw new RangeError(`bad seq ${l.seq}`);
     return [
       bytes16(l.roundId, 'roundId'),
       l.mode,
@@ -121,6 +135,9 @@ export function freeCommitmentTree(leaves: FreeCommitmentLeaf[]): PayoutTree<[se
 /** userIdHash = keccak256(abi.encode(bytes16 roundId, bytes16 userId)). */
 export function userIdHash(roundId: Uint8Array, userId: Uint8Array): Hex {
   return keccak256(
-    encodeAbiParameters([{ type: 'bytes16' }, { type: 'bytes16' }], [bytes16(roundId, 'roundId'), bytes16(userId, 'userId')]),
+    encodeAbiParameters(
+      [{ type: 'bytes16' }, { type: 'bytes16' }],
+      [bytes16(roundId, 'roundId'), bytes16(userId, 'userId')],
+    ),
   );
 }

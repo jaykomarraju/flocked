@@ -1,6 +1,14 @@
 import { BPS, toBigParams } from './params.js';
 import { VOID_REASONS } from './types.js';
-import type { EntryInput, OptionIndex, Payout, PayoutKind, SettleParams, SettleResult, SettlementRecord } from './types.js';
+import type {
+  EntryInput,
+  OptionIndex,
+  Payout,
+  PayoutKind,
+  SettleParams,
+  SettleResult,
+  SettlementRecord,
+} from './types.js';
 
 const KIND_ORDER: Record<PayoutKind, number> = { win: 0, rebate: 1, void_refund: 2, refund: 3 };
 
@@ -14,7 +22,12 @@ export function comparePayouts(a: Payout, b: Payout): number {
  * Refund rules 1–3, checked in spec order. `counted` is the headcount compared with `minEntrants`
  * (all valid entries, or only qualifying ones in room rounds).
  */
-export function refundReasonFor(n0: bigint, n1: bigint, counted: bigint, minEntrants: bigint): 1 | 2 | 3 | null {
+export function refundReasonFor(
+  n0: bigint,
+  n1: bigint,
+  counted: bigint,
+  minEntrants: bigint,
+): 1 | 2 | 3 | null {
   if (counted < minEntrants) return 1;
   if (n0 === 0n || n1 === 0n) return 2;
   if (n0 === n1) return 3;
@@ -33,9 +46,11 @@ function validateEntries(entries: readonly EntryInput[]): void {
       throw new RangeError(`stake must be a positive bigint (${e.account})`);
     }
     if (e.voidReason === null) {
-      if (e.option !== 0 && e.option !== 1) throw new TypeError(`valid entry needs option 0 or 1 (${e.account})`);
+      if (e.option !== 0 && e.option !== 1)
+        throw new TypeError(`valid entry needs option 0 or 1 (${e.account})`);
     } else {
-      if (!VOID_REASONS.includes(e.voidReason)) throw new TypeError(`unknown voidReason ${e.voidReason}`);
+      if (!VOID_REASONS.includes(e.voidReason))
+        throw new TypeError(`unknown voidReason ${e.voidReason}`);
       if (e.option !== null) throw new TypeError(`VOID entry must have option null (${e.account})`);
     }
   }
@@ -87,7 +102,11 @@ export function settle(entries: readonly EntryInput[], params: SettleParams): Se
 
   const refundReason = refundReasonFor(n[0], n[1], counted, p.minEntrants);
   if (refundReason !== null) {
-    const payouts: Payout[] = entries.map((e) => ({ account: e.account, kind: 'refund', amount: e.stake }));
+    const payouts: Payout[] = entries.map((e) => ({
+      account: e.account,
+      kind: 'refund',
+      amount: e.stake,
+    }));
     payouts.sort(comparePayouts);
     return { record: { ...base, refundReason }, payouts };
   }
@@ -121,7 +140,8 @@ export function settle(entries: readonly EntryInput[], params: SettleParams): Se
     if (rj > 0n) payouts.push({ account: e.account, kind: 'rebate', amount: rj });
   }
   for (const e of entries) {
-    if (e.option === null) payouts.push({ account: e.account, kind: 'void_refund', amount: e.stake });
+    if (e.option === null)
+      payouts.push({ account: e.account, kind: 'void_refund', amount: e.stake });
   }
   payouts.sort(comparePayouts);
 

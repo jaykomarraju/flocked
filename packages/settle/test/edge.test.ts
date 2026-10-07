@@ -1,20 +1,56 @@
 import { describe, expect, it } from 'vitest';
 import { checkInvariant, settle, settleStakesClosedForm } from '../src/index.js';
-import { FREE_DEFAULTS, STAKES_DEFAULTS, USDC, addr, amountOf, fixedRound, valid } from './helpers.js';
+import {
+  FREE_DEFAULTS,
+  STAKES_DEFAULTS,
+  USDC,
+  addr,
+  amountOf,
+  fixedRound,
+  valid,
+} from './helpers.js';
 
 describe('SET-5 single-base-unit stakes', () => {
   it('Stakes, stake 1, 21 vs 30: fee floors to 1, creator fee to 0, the rest is dust', () => {
     const { record, payouts } = settle(fixedRound(1n, 21, 30), STAKES_DEFAULTS);
-    expect(record).toMatchObject({ lossPool: 30n, fee: 1n, creatorFee: 0n, distributable: 29n, rebatePool: 8n, dust: 8n });
+    expect(record).toMatchObject({
+      lossPool: 30n,
+      fee: 1n,
+      creatorFee: 0n,
+      distributable: 29n,
+      rebatePool: 8n,
+      dust: 8n,
+    });
     expect(amountOf(payouts, addr(1))).toBe(2n);
     checkInvariant(record, payouts);
-    const cf = settleStakesClosedForm({ stake: 1n, n0: 21n, n1: 30n, nVoid: 0n, ...STAKES_DEFAULTS });
+    const cf = settleStakesClosedForm({
+      stake: 1n,
+      n0: 21n,
+      n1: 30n,
+      nVoid: 0n,
+      ...STAKES_DEFAULTS,
+    });
     expect(cf).toMatchObject({ w: 1n, r: 0n, dust: 8n, winPayout: 2n, rebatePayout: 0n });
   });
 
   it('Stakes, stake 1, cap binding at 1 vs 20', () => {
-    const cf = settleStakesClosedForm({ stake: 1n, n0: 1n, n1: 20n, nVoid: 2n, ...STAKES_DEFAULTS });
-    expect(cf).toMatchObject({ lossPool: 20n, fee: 1n, creatorFee: 0n, distributable: 19n, w: 10n, rebatePool: 9n, r: 0n, dust: 9n });
+    const cf = settleStakesClosedForm({
+      stake: 1n,
+      n0: 1n,
+      n1: 20n,
+      nVoid: 2n,
+      ...STAKES_DEFAULTS,
+    });
+    expect(cf).toMatchObject({
+      lossPool: 20n,
+      fee: 1n,
+      creatorFee: 0n,
+      distributable: 19n,
+      w: 10n,
+      rebatePool: 9n,
+      r: 0n,
+      dust: 9n,
+    });
     expect(cf.roundBalance).toBe(23n);
   });
 
@@ -35,7 +71,13 @@ describe('SET-6 largest Stakes values in bigint', () => {
     const entries = fixedRound(s, 100_000, 150_000, 1_000);
     const { record, payouts } = settle(entries, STAKES_DEFAULTS);
     checkInvariant(record, payouts);
-    const cf = settleStakesClosedForm({ stake: s, n0: 100_000n, n1: 150_000n, nVoid: 1_000n, ...STAKES_DEFAULTS });
+    const cf = settleStakesClosedForm({
+      stake: s,
+      n0: 100_000n,
+      n1: 150_000n,
+      nVoid: 1_000n,
+      ...STAKES_DEFAULTS,
+    });
     expect(record.lossPool).toBe(15_000_000_000_000n);
     expect(cf.roundBalance).toBe(25_100_000_000_000n);
     expect(amountOf(payouts, addr(1))).toBe(cf.winPayout);
@@ -44,7 +86,13 @@ describe('SET-6 largest Stakes values in bigint', () => {
   });
 
   it('headcounts in the billions stay exact beyond 2^53', () => {
-    const cf = settleStakesClosedForm({ stake: s, n0: 1_000_000_000n, n1: 3_000_000_007n, nVoid: 12_345n, ...STAKES_DEFAULTS });
+    const cf = settleStakesClosedForm({
+      stake: s,
+      n0: 1_000_000_000n,
+      n1: 3_000_000_007n,
+      nVoid: 12_345n,
+      ...STAKES_DEFAULTS,
+    });
     expect(cf.lossPool).toBe(300_000_000_700_000_000n);
     expect(cf.lossPool > BigInt(Number.MAX_SAFE_INTEGER)).toBe(true);
     expect(cf.fee).toBe(15_000_000_035_000_000n);
@@ -54,7 +102,13 @@ describe('SET-6 largest Stakes values in bigint', () => {
     expect(cf.rebatePool).toBe(658_000_000n);
     expect(cf.r).toBe(0n);
     expect(cf.dust).toBe(658_000_000n);
-    const lhs = 1_000_000_000n * cf.winPayout + 3_000_000_007n * cf.rebatePayout + 12_345n * cf.voidRefund + cf.fee + cf.creatorFee + cf.dust;
+    const lhs =
+      1_000_000_000n * cf.winPayout +
+      3_000_000_007n * cf.rebatePayout +
+      12_345n * cf.voidRefund +
+      cf.fee +
+      cf.creatorFee +
+      cf.dust;
     expect(lhs).toBe(cf.roundBalance);
   });
 });

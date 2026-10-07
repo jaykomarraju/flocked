@@ -7,10 +7,12 @@
     "node": ">=20.19"
   },
   "scripts": {
-    "check": "pnpm lint && pnpm typecheck && pnpm test",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm contracts:test",
     "lint": "eslint scripts && pnpm -r --if-present lint",
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "node --test --test-reporter=spec scripts/*.test.mjs && pnpm -r --if-present test",
+    "contracts:build": "forge build --root contracts",
+    "contracts:test": "forge test --root contracts",
     "spec": "node scripts/spec-section.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

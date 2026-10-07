@@ -24,11 +24,18 @@ pnpm spec "Smart contract" --sub "Constants"
 
 ## Commands
 
-| Command                               | Runs                                                   |
-| ------------------------------------- | ------------------------------------------------------ |
-| `pnpm check`                          | lint, typecheck, test (keep green before every commit) |
-| `pnpm lint` / `typecheck` / `test`    | across every workspace package (and `scripts/`)        |
-| `pnpm format` / `pnpm format:check`   | Prettier                                               |
-| `pnpm spec "<heading>" [--sub "<l>"]` | one section (or bold block) of `Product_Spec.md`       |
+| Command                                 | Runs                                                                   |
+| --------------------------------------- | ---------------------------------------------------------------------- |
+| `pnpm check`                            | lint, typecheck, test, contracts:test (keep green before every commit) |
+| `pnpm lint` / `typecheck` / `test`      | across every workspace package (and `scripts/`)                        |
+| `pnpm contracts:build`                  | `forge build --root contracts`                                         |
+| `pnpm contracts:test`                   | `forge test --root contracts` (unit, fuzz, invariant, vectors)         |
+| `pnpm --filter @flocked/settle vectors` | regenerate settlement vectors (CI fails if they change)                |
+| `pnpm format` / `pnpm format:check`     | Prettier                                                               |
+| `pnpm spec "<heading>" [--sub "<l>"]`   | one section (or bold block) of `Product_Spec.md`                       |
 
-Toolchain: Node 20.19, pnpm 10, TypeScript strict ESM, ESLint flat config, Prettier, Vitest.
+Fresh worktree: `pnpm install` and `(cd contracts && forge soldeer install)` before `pnpm check`. The CI
+Foundry profile is `FOUNDRY_PROFILE=ci forge test` (Foundry 1.7 has no `--profile` flag).
+
+Toolchain: Node 20.19, pnpm 10, TypeScript strict ESM, ESLint flat config, Prettier, Vitest; Foundry 1.7.1
+(Soldeer deps) for `contracts/`.

@@ -21,7 +21,8 @@ export function checkInvariant(record: SettlementRecord, payouts: readonly Payou
     check(typeof p.amount === 'bigint', `payout ${idx} amount is not bigint`);
     check(p.amount >= 0n, `payout ${idx} (${p.account}) is negative`);
     const prev = payouts[idx - 1];
-    if (prev !== undefined) check(comparePayouts(prev, p) < 0, `payouts not sorted/unique at ${idx}`);
+    if (prev !== undefined)
+      check(comparePayouts(prev, p) < 0, `payouts not sorted/unique at ${idx}`);
     sum += p.amount;
     if (p.kind === 'void_refund') voidRefunds += p.amount;
   }
@@ -33,16 +34,33 @@ export function checkInvariant(record: SettlementRecord, payouts: readonly Payou
   const tv = record.total + record.voidStake;
 
   if (record.outcome === 'refunded') {
-    check(record.refundReason !== null && record.winner === null, 'refund needs a reason and no winner');
-    for (const k of ['lossPool', 'fee', 'creatorFee', 'distributable', 'rebatePool', 'dust', 'creatorAward'] as const) {
+    check(
+      record.refundReason !== null && record.winner === null,
+      'refund needs a reason and no winner',
+    );
+    for (const k of [
+      'lossPool',
+      'fee',
+      'creatorFee',
+      'distributable',
+      'rebatePool',
+      'dust',
+      'creatorAward',
+    ] as const) {
       check(record[k] === 0n, `refunded record has non-zero ${k}`);
     }
-    check(payouts.every((p) => p.kind === 'refund'), 'refunded round may only pay refunds');
+    check(
+      payouts.every((p) => p.kind === 'refund'),
+      'refunded round may only pay refunds',
+    );
     check(sum === tv, `refund sum ${sum} != T + V ${tv}`);
     return;
   }
 
-  check(record.refundReason === null && record.winner !== null, 'settlement needs a winner and no refund reason');
+  check(
+    record.refundReason === null && record.winner !== null,
+    'settlement needs a winner and no refund reason',
+  );
   const winner = record.winner;
   const nM = winner === 0 ? n0 : n1;
   const nL = winner === 0 ? n1 : n0;
@@ -51,10 +69,19 @@ export function checkInvariant(record: SettlementRecord, payouts: readonly Payou
   for (const k of ['fee', 'creatorFee', 'distributable', 'rebatePool', 'dust'] as const) {
     check(record[k] >= 0n, `negative ${k}`);
   }
-  check(record.distributable === record.lossPool - record.fee - record.creatorFee, 'D != Lp - F - C');
+  check(
+    record.distributable === record.lossPool - record.fee - record.creatorFee,
+    'D != Lp - F - C',
+  );
   check(record.rebatePool <= record.distributable, 'R > D');
   check(record.dust < nL, 'dust must be below the losing headcount');
-  check(payouts.every((p) => p.kind !== 'refund'), 'settled round may not pay refunds');
+  check(
+    payouts.every((p) => p.kind !== 'refund'),
+    'settled round may not pay refunds',
+  );
   check(voidRefunds === record.voidStake, 'VOID refunds != V');
-  check(sum + record.fee + record.creatorFee + record.dust === tv, `invariant: ${sum} + F + C + dust != T + V ${tv}`);
+  check(
+    sum + record.fee + record.creatorFee + record.dust === tv,
+    `invariant: ${sum} + F + C + dust != T + V ${tv}`,
+  );
 }

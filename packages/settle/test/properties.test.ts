@@ -62,7 +62,11 @@ describe('property', () => {
 
   it('PROP-4: results are independent of entry order', () => {
     const arb = roundArb.chain(([entries, params]) =>
-      fc.tuple(fc.constant(entries), fc.shuffledSubarray(entries, { minLength: entries.length }), fc.constant(params)),
+      fc.tuple(
+        fc.constant(entries),
+        fc.shuffledSubarray(entries, { minLength: entries.length }),
+        fc.constant(params),
+      ),
     );
     fc.assert(
       fc.property(arb, ([entries, shuffled, params]) => {
@@ -74,7 +78,11 @@ describe('property', () => {
 
   it('PROP-5: the Stakes closed form equals the general formula per entry', () => {
     const arb = fc.record({
-      stake: fc.oneof(fc.bigInt({ min: 1n, max: 100_000_000n }), fc.constantFrom(1n, 100_000_000n), fc.bigInt({ min: 1n, max: 10n ** 24n })),
+      stake: fc.oneof(
+        fc.bigInt({ min: 1n, max: 100_000_000n }),
+        fc.constantFrom(1n, 100_000_000n),
+        fc.bigInt({ min: 1n, max: 10n ** 24n }),
+      ),
       n0: fc.integer({ min: 0, max: 120 }),
       n1: fc.integer({ min: 0, max: 120 }),
       nVoid: fc.integer({ min: 0, max: 8 }),
@@ -85,7 +93,13 @@ describe('property', () => {
         const p: SettleParams = { ...params, creatorAwardBps: 0 };
         const entries: EntryInput[] = fixedRound(stake, n0, n1, nVoid);
         const { record, payouts } = settle(entries, p);
-        const cf = settleStakesClosedForm({ stake, n0: BigInt(n0), n1: BigInt(n1), nVoid: BigInt(nVoid), ...p });
+        const cf = settleStakesClosedForm({
+          stake,
+          n0: BigInt(n0),
+          n1: BigInt(n1),
+          nVoid: BigInt(nVoid),
+          ...p,
+        });
 
         expect(cf.outcome).toBe(record.outcome);
         expect(cf.refundReason).toBe(record.refundReason);
@@ -101,7 +115,8 @@ describe('property', () => {
         const paid = payoutByAccount(payouts);
         for (const e of entries) {
           const amount = paid.get(e.account) ?? 0n;
-          if (record.outcome === 'refunded' || e.option === null) expect(amount).toBe(cf.voidRefund);
+          if (record.outcome === 'refunded' || e.option === null)
+            expect(amount).toBe(cf.voidRefund);
           else if (e.option === record.winner) expect(amount).toBe(cf.winPayout);
           else expect(amount).toBe(cf.rebatePayout);
         }

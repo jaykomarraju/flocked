@@ -2,8 +2,19 @@ import fc from 'fast-check';
 import type { EntryInput, OptionIndex, SettleParams, VoidReason } from '../src/index.js';
 import { VOID_REASONS } from '../src/index.js';
 
-export const STAKES_DEFAULTS: SettleParams = { feeBps: 500, creatorBps: 100, capMultiple: 10, minEntrants: 20 };
-export const FREE_DEFAULTS: SettleParams = { feeBps: 0, creatorBps: 0, capMultiple: 10, minEntrants: 1, creatorAwardBps: 100 };
+export const STAKES_DEFAULTS: SettleParams = {
+  feeBps: 500,
+  creatorBps: 100,
+  capMultiple: 10,
+  minEntrants: 20,
+};
+export const FREE_DEFAULTS: SettleParams = {
+  feeBps: 0,
+  creatorBps: 0,
+  capMultiple: 10,
+  minEntrants: 1,
+  creatorAwardBps: 100,
+};
 export const USDC = 1_000_000n;
 
 export const NUM_RUNS = Number(process.env.FAST_CHECK_RUNS ?? 1000);
@@ -13,11 +24,26 @@ export function addr(i: number): string {
   return `0x${i.toString(16).padStart(40, '0')}`;
 }
 
-export function valid(i: number, option: OptionIndex, stake: bigint, qualifies?: boolean): EntryInput {
-  return { account: addr(i), stake, option, voidReason: null, ...(qualifies === undefined ? {} : { qualifies }) };
+export function valid(
+  i: number,
+  option: OptionIndex,
+  stake: bigint,
+  qualifies?: boolean,
+): EntryInput {
+  return {
+    account: addr(i),
+    stake,
+    option,
+    voidReason: null,
+    ...(qualifies === undefined ? {} : { qualifies }),
+  };
 }
 
-export function voided(i: number, stake: bigint, voidReason: VoidReason = 'decrypt_failed'): EntryInput {
+export function voided(
+  i: number,
+  stake: bigint,
+  voidReason: VoidReason = 'decrypt_failed',
+): EntryInput {
   return { account: addr(i), stake, option: null, voidReason };
 }
 
@@ -27,7 +53,8 @@ export function fixedRound(stake: bigint, n0: number, n1: number, nVoid = 0): En
   let i = 1;
   for (let k = 0; k < n0; k++) out.push(valid(i++, 0, stake));
   for (let k = 0; k < n1; k++) out.push(valid(i++, 1, stake));
-  for (let k = 0; k < nVoid; k++) out.push(voided(i++, stake, VOID_REASONS[k % VOID_REASONS.length]));
+  for (let k = 0; k < nVoid; k++)
+    out.push(voided(i++, stake, VOID_REASONS[k % VOID_REASONS.length]));
   return out;
 }
 
@@ -51,7 +78,14 @@ export const paramsArb: fc.Arbitrary<SettleParams> = fc
 
 /** Realistic params skew: mostly small fees, sometimes extreme. */
 export const realisticParamsArb: fc.Arbitrary<SettleParams> = fc.oneof(
-  { weight: 3, arbitrary: paramsArb.map((p) => ({ ...p, feeBps: p.feeBps % 1001, creatorBps: p.creatorBps % 501 })) },
+  {
+    weight: 3,
+    arbitrary: paramsArb.map((p) => ({
+      ...p,
+      feeBps: p.feeBps % 1001,
+      creatorBps: p.creatorBps % 501,
+    })),
+  },
   { weight: 1, arbitrary: paramsArb },
 );
 
@@ -70,7 +104,13 @@ export const entriesArb: fc.Arbitrary<EntryInput[]> = fc
   .map((shapes) =>
     shapes.map((s, i): EntryInput =>
       s.kind === 0 || s.kind === 1
-        ? { account: addr(i + 1), stake: s.stake, option: s.kind, voidReason: null, qualifies: s.qualifies }
+        ? {
+            account: addr(i + 1),
+            stake: s.stake,
+            option: s.kind,
+            voidReason: null,
+            qualifies: s.qualifies,
+          }
         : { account: addr(i + 1), stake: s.stake, option: null, voidReason: s.kind },
     ),
   );
