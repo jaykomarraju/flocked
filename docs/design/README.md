@@ -66,6 +66,15 @@ From the `Components` page. Code follows these unless a sheet says otherwise.
 - Percentages follow the Decision log rounding: winner rounds down, loser rounds up, "<1%" and ">99%" at the ends.
   A split-bar fill never drops below 24px.
 
+## Screen conventions (Core flow)
+
+- Mobile: mobile header, content with 16px side padding and 24px gaps, five-tab nav bar. Long screens scroll, so
+  their artboards are `fit-content`; overlays and short screens are 844 tall.
+- Tablet and desktop: desktop header (24px side padding on tablet, 64px on desktop) and the mobile content centred
+  in a 560 column. The question goes up to the `display` size (40px), and the countdown and counter share a row.
+- Sheets on mobile become centred 400-wide modals from tablet up (no handle, 2px ink border all round).
+- The 30-day Stakes net sits in the header's balance slot when Stakes is selected.
+
 ## Paper MCP notes
 
 - Without Paper Pro, MCP calls are capped per week. Once capped, writes, `export` and `find_nodes` fail. W2-C.2
@@ -81,3 +90,9 @@ From the `Components` page. Code follows these unless a sheet says otherwise.
   path by id.
 - Reuse the mascot by duplicating `sheep/*` from the Foundations page into a frame, then setting its width and
   height. In dark copies, recolor the leg path (and the shocked pose's shock lines) to `--color-dark-ink`.
+- Don't run `export` calls in parallel: five parallel calls wrote 11 of 45 files and reported none. Run one call at a
+  time (8–10 nodes each) and check the files.
+- A node moved with `move_nodes` into another artboard keeps its world position, so an absolutely positioned
+  overlay ends up offset. Set `left: 0; top: 0` after moving it.
+- Build tablet and desktop by cloning the mobile `content` frame (`<x-paper-clone>` with an inline width) and
+  duplicating the tablet artboard for desktop. Duplicating costs less output than a fresh clone.
