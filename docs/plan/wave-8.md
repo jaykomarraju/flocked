@@ -64,3 +64,8 @@
 - Moderation and boards tests named; UI screenshot suite green in CI.
 - Confirm OA-D2 is frozen before W9-C.
 - Migrations for wave 9: W9-A `0020`, W9-B none, W9-D `0021`.
+
+## Carry-over from W2-Z (Oct 8, 2026)
+
+- **W8-B:** the CHECK `best_stray_streak >= stray_streak` means both columns change in one `UPDATE`.
+- **W8-C:** navigation is five tabs: Today, Archive, Boards, Rooms, You; Submit, Queue, Claims and Settings under You on mobile and in the header on desktop (plus Questions) (Decision log, Oct 8). W8-C also builds the placeholder mascot React components in `packages/shared/mascot` from the Paper `sheep/*` layers (Design_Language "Mascot").

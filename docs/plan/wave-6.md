@@ -65,3 +65,8 @@
 - ID-5, SET-1b (5, 6), PIPE-1 (API, bundles), ALERT-3, AC-4 (API half) proven.
 - Ask the owner to review Cards and notifications in Paper (OA-D4 before W10).
 - Migrations for wave 7: W7-A `0014`, W7-B `0015`, W7-D `0016`.
+
+## Carry-over from W2-Z (Oct 8, 2026)
+
+- **W6-D:** `GET /rounds/:id`, `/rounds/:id/verify`, `/rounds/:id/ws` and `/rounds/:id/card` are `auth: 'none'` in `ENDPOINTS`, but room rounds are members-only. Gate room rounds on membership (make them `optional`) and keep room-round responses out of the unauthenticated edge cache.
+- **W6-A:** `payouts.user_id` is NOT NULL, but a foreign entry (Decision log, Oct 8: `entries.user_id` NULL with `foreign_entry` = 1) has no user. If the guardian lets such a round settle, its payout lives only in the Stakes payout tree and bundle, or W6-A makes `payouts.user_id` nullable in its migration. Decide and test it.

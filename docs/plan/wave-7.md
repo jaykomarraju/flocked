@@ -31,7 +31,7 @@
   - `security_notice` enqueues;
   - `audit_log` rows.
 - **Read first.** `plan.md` §2, §4. `docs/sessions/W6-Z.md`. This section. Spec: "Identity and personhood" (only "Identities", "Merging accounts"), "Compliance and responsible play" (only "Responsible play"), "Data model" (rows `identities`, `merges`, `limits`, `users`).
-- **Owns.** `apps/api/src/identity/**`, `apps/api/src/limits/**`, `apps/api/src/routes/{identity,limits}.ts`, migration `0015`, `apps/api/test/{identity,limits}/**`.
+- **Owns.** `apps/api/src/identity/**`, `apps/api/src/limits/**`, `apps/api/src/routes/limits.ts` and the identity and merge endpoints' handlers in `apps/api/src/routes/me.ts` (they are `me`-module rows in `ENDPOINTS`; replace their stubs and delegate to `src/identity/**`, W2-Z), migration `0015`, `apps/api/test/{identity,limits}/**`.
 - **Required tests.** ID-1 (all). E2E-9 (API-level unit/integration with the test clock). Deletion anonymizes and keeps ledger rows. A merge moves balances atomically with paired ledger rows.
 
 ## W7-C (design): admin console
@@ -63,3 +63,8 @@
 - DO-5, ID-1, PIPE-1 (WS), E2E-1/2/4 (API), E2E-6, E2E-10, E2E-14, AC-1 (local) proven.
 - Ask the owner to review Admin in Paper (OA-D5 before W12). Confirm OA-D1 is frozen before W8-C starts; if it isn't, W8-C waits and W8 runs with A, B and D only.
 - Migrations for wave 8: W8-A `0017`, W8-B `0018`, W8-D `0019`.
+
+## Carry-over from W2-Z (Oct 8, 2026)
+
+- **W7-A:** the WS `refunded` message gains `provisional` and `finalAt` (Decision log, Oct 8; `packages/shared/src/ws.ts`).
+- **W7-B:** see the ownership change above (identity handlers in `routes/me.ts`).

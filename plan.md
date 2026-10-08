@@ -250,11 +250,11 @@ docs/             plan/, prompts/, sessions/, design/, runbooks/, audit/
 
 | Concern | Choice |
 | --- | --- |
-| Runtime | Node ≥ 20.19 (installed: 20.19.5), pnpm 10 (installed: 10.34.5) via `packageManager` |
+| Runtime | Node ≥ 22.23 (`.nvmrc` 22.23; installed: 22.23.1 under nvm, whose shell default is still 20, so run `nvm use` first), pnpm 10 (installed: 10.34.5) via `packageManager`. Moved from Node 20 in W2-A (owner decision): wrangler and Miniflare need Node 22, and `.npmrc` has `engine-strict=true` |
 | Language | TypeScript, `strict`, ESM everywhere |
 | Lint and format | ESLint flat config with typescript-eslint; Prettier |
 | Unit tests | Vitest; fast-check for property tests |
-| Workers tests | `@cloudflare/vitest-pool-workers` (Workers runtime, Miniflare D1/R2/KV/DO/Queues) |
+| Workers tests | `@cloudflare/vitest-plugin` (the renamed `vitest-pool-workers`; `cloudflareTest` plugin; Workers runtime, Miniflare D1/R2/KV/DO/Queues). Copy `apps/api/vitest.config.ts` (D1/DO) or `packages/tlock/vitest.config.ts` (pre-bundled CJS deps) |
 | Worker framework | Hono for routing; zod for validation |
 | Chain | viem in all TypeScript; Foundry 1.7 (forge, anvil, cast) for contracts; OpenZeppelin Contracts 5.x and `@openzeppelin/merkle-tree` |
 | Contracts static analysis | slither and aderyn (from W4-C on) |
@@ -274,7 +274,7 @@ Exact library versions are chosen at install time by the session that adds them 
 | `pnpm check` | Everything a session must keep green: `lint`, `typecheck`, `test`, `contracts:test` |
 | `pnpm lint` / `pnpm typecheck` / `pnpm test` | `pnpm -r` over every workspace package |
 | `pnpm contracts:test` | `forge test --root contracts` (unit, fuzz, invariant, vectors). The CI profile runs as `FOUNDRY_PROFILE=ci forge test` in `contracts/` (doubled fuzz and invariant runs; Foundry 1.7 has no `--profile` flag) |
-| `pnpm contracts:build` | `forge build --root contracts` + ABI codegen into `packages/abi` (from W2) |
+| `pnpm contracts:build` | `forge build --root contracts && node packages/abi/scripts/gen.mjs` (ABI codegen into `packages/abi`) |
 | `pnpm spec "<heading>" [--sub "<label>"]` | Prints one `## ` section of `Product_Spec.md` (or one bold sub-block of it) |
 | `pnpm stack:up` / `pnpm stack:down` | Local stack: drand network, anvil, contract deploy, `wrangler dev` (from W3-D) |
 | `pnpm e2e` | Playwright against the local stack (from W7-D) |
@@ -301,7 +301,7 @@ Exact library versions are chosen at install time by the session that adds them 
 
 ### 4.6 CI
 
-- `.github/workflows/ci.yml` (from W1-A): on push and PR, three jobs. `check`: install with the frozen lockfile, `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm format:check`, and the settle vector-freshness check. `contracts` (from W1-D): Foundry v1.7.1, `forge soldeer install`, `forge fmt --check`, `forge build`, `FOUNDRY_PROFILE=ci forge test`. `properties` (from W1-D): settle's property tests with `FAST_CHECK_RUNS=10000`.
+- `.github/workflows/ci.yml` (from W1-A): on push and PR, three jobs. `check`: install with the frozen lockfile, `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm format:check`, the settle and tlock vector-freshness checks, and the design-tokens schema test. `contracts` (from W1-D): Foundry v1.7.1, `forge soldeer install`, `forge fmt --check`, `forge build`, the ABI freshness check (`node ../packages/abi/scripts/gen.mjs --check`), `FOUNDRY_PROFILE=ci forge test`. `properties` (from W1-D): settle's and tlock's property tests with `FAST_CHECK_RUNS=10000`, selected by file path. Every `pnpm --filter` step uses `--fail-if-no-match` (W2-D), so a renamed package can't make a step pass on nothing.
 - A fresh worktree needs `pnpm install` and `(cd contracts && forge soldeer install)` before `pnpm check` (Soldeer dependencies are gitignored).
 - `e2e.yml` (from W7-D) runs the local stack plus Playwright on `w*-integration` and `main`.
 - `deploy.yml` (from W13-D) deploys to staging on `main`, and to production on manual dispatch with a required reviewer.
@@ -404,7 +404,7 @@ External long poles, started early so they stay off the critical path:
 | ID | Owner action | Unblocks | Needed by | Start by |
 | --- | --- | --- | --- | --- |
 | OA-01 | Open OrbStack once to finish setup (installed by PLAN-0 via Homebrew); confirm `docker run hello-world` works | Local drand network, local stack, e2e | W3 | W1 |
-| OA-02 | Reconnect the Paper desktop app's MCP server to Claude Code so the tools are visible in new sessions. The tools were visible in W1-Z's session (Oct 7, 2026); W2-C confirms they work as its first step | Every design session | W2 | W1 |
+| OA-02 | Reconnect the Paper desktop app's MCP server to Claude Code so the tools are visible in new sessions. **Done:** W2-C used them (Oct 7–8, 2026); the owner upgraded to Paper Pro after W2-C hit the free plan's weekly MCP call limit | Every design session | W2 | W1 |
 | OA-03 | GitHub: allow Actions; add branch protection on `main` requiring CI. **Done Oct 7, 2026 (W1-Z):** Actions enabled; the owner made the repo public (protection needs a paid plan on private repos); with the owner's approval W1-Z added two rulesets on `main`: "no force push or deletion" (no bypass) and "CI required" (`check`, `contracts`, `properties`; repository admins bypass, so Z can push its `--no-ff` merge) | CI, safe merges | W1 (CI), W2 (protection) | W1 |
 | OA-04 | Cloudflare: upgrade to Workers Paid (DOs at scale, Queues, `cpu_ms` 60,000) and create staging/production resources access (API token for deploy workflow) | Staging deploy, queue consumer CPU limits | W13 | W10 |
 | OA-05 | Cloudflare: a **second account** for the watcher, plus an API token for it | Watcher deploy | W14 | W11 |
@@ -473,11 +473,11 @@ Legend: ⬜ not started · 🟡 in progress · ✅ complete · ⛔ blocked. Z se
 | W1-C | `@flocked/settle` | M | ✅ |
 | W1-D | Workspace + CI wiring, vector cross-check | S | ✅ |
 | W1-Z | Consolidate wave 1 | S | ✅ |
-| W2-A | `@flocked/tlock` | M | ⬜ |
-| W2-B | `FlockedAnchor`, deploy scripts, `@flocked/abi` | M | ⬜ |
-| W2-C | Design: foundations + components | M | ⬜ |
-| W2-D | Pinned interfaces: schemas, D1 schema, API skeleton | M | ⬜ |
-| W2-Z | Consolidate wave 2 | S | ⬜ |
+| W2-A | `@flocked/tlock` | M | ✅ |
+| W2-B | `FlockedAnchor`, deploy scripts, `@flocked/abi` | M | ✅ |
+| W2-C | Design: foundations + components (+ W2-C.2) | M | ✅ |
+| W2-D | Pinned interfaces: schemas, D1 schema, API skeleton | M | ✅ |
+| W2-Z | Consolidate wave 2 | M | ✅ |
 | W3-A | API auth and sessions | M | ⬜ |
 | W3-B | RoundDO Free entries | M | ⬜ |
 | W3-C | Design: core round flow | M | ⬜ |
@@ -551,7 +551,7 @@ Legend: ⬜ not started · 🟡 in progress · ✅ complete · ⛔ blocked. Z se
 | ID | Short name | Needed by | Status |
 | --- | --- | --- | --- |
 | OA-01 | Finish OrbStack setup | W3 | ⬜ |
-| OA-02 | Reconnect Paper MCP | W2 | 🟡 |
+| OA-02 | Reconnect Paper MCP | W2 | ✅ |
 | OA-03 | GitHub Actions + branch protection | W1/W2 | ✅ |
 | OA-04 | Cloudflare Workers Paid + deploy token | W13 | ⬜ |
 | OA-05 | Second Cloudflare account (watcher) | W14 | ⬜ |
@@ -592,14 +592,14 @@ Defaults chosen by PLAN-0. Z may revisit any of them with the owner.
 1. **Owner decisions (Oct 7, 2026):** the protocol as proposed; wave 1 bootstrapped without a W0; parallel sessions run in local git worktrees on the owner's Mac, push branches, and run CI; Z merges into `main`. "Production-ready" means production deployed with Free live and Stakes deployed but held behind its launch gates and flags; staging on Base Sepolia is in scope. The design freeze goes surface by surface, and the owner fixes the Paper MCP connection before the first design session. Subagents and multi-agent workflows are allowed within a session's budget. Every session runs on Opus 5.5 with the 50k/100k/150k budgets.
 2. **EIP-712 chain ID** comes from the deployment chain (`block.chainid` in contracts; config in TypeScript). PLAN-0 edited the two affected spec sentences and added a Decision log row.
 3. **Two added workspace packages:** `packages/abi` (generated ABIs and per-env addresses, so TypeScript never hand-copies an ABI) and `e2e/` (Playwright tests + local stack).
-4. **Library choices** as in section 4.2 (Hono, Vitest, vitest-pool-workers, viem, wagmi, react-router, Prettier). The spec names only tlock-js, satori/resvg, OpenZeppelin Merkle, fast-check, Foundry and the Anthropic SDK.
+4. **Library choices** as in section 4.2 (Hono, Vitest, `@cloudflare/vitest-plugin`, viem, wagmi, react-router, Prettier). The spec names only tlock-js, satori/resvg, OpenZeppelin Merkle, fast-check, Foundry and the Anthropic SDK.
 5. **Paymaster policy** is enforced by a small paymaster proxy route in `apps/api` (ERC-7677 paymaster service) that checks calls against the spec's allow list and the 10-per-day cap, then forwards to the provider. The spec's rules don't map onto a provider's built-in allow list alone (approve only immediately before `enter` in the same user operation).
 6. **Email** uses Cloudflare Email Service; **web push** uses VAPID from a Worker; **paging** uses a webhook to whichever paging service the owner picks (OA-18).
 7. **Analytics dashboard** is a tab in the admin console that queries Workers Analytics Engine's SQL API. The spec asks for "one internal dashboard" without naming a tool.
 8. **The local drand network** runs drand's Docker image under OrbStack (installed by PLAN-0; owner finishes setup, OA-01). Unit tests use recorded quicknet beacons so they don't need Docker.
 9. **Time travel in tests:** contract tests use `vm.warp`; local-stack e2e uses anvil `evm_setNextBlockTimestamp` plus a test-only clock override in the API (`FLOCKED_TEST_CLOCK`, enabled only when `ENVIRONMENT=local`). Rule-8 e2e (drand down 24 h) uses that clock, not real waiting.
 10. **Coinbase OAuth, EAS attestation indexer, Farcaster, Anthropic, email and push** are mocked in unit/integration tests and the local stack (local mock servers in `e2e/mocks/`). Real services are exercised in staging only, once the owner actions exist.
-11. **Wave-1 tooling versions:** Node 20.19.5 and pnpm 10.34.5 are installed, and `packageManager` pins pnpm 10. Foundry 1.7.1 is installed; CI uses `foundry-rs/foundry-toolchain` with the same version.
+11. **Tooling versions:** Node 22.23.1 (from W2-A; wave 1 used 20.19.5) and pnpm 10.34.5 are installed, and `packageManager` pins pnpm 10. Foundry 1.7.1 is installed; CI uses `foundry-rs/foundry-toolchain` with the same version. Vitest 5 no longer waits on Node (it needed 22); TypeScript 7 still waits on typescript-eslint.
 12. **Design export location:** tokens at `packages/shared/design-tokens.json` (owned by design sessions; schema pinned in `docs/plan/wave-2.md`), screen inventory at `docs/design/screens.md`, PNGs at `docs/design/exports/<surface>/<artboard-name>.png`. Exports double as the Playwright screenshot baselines.
 13. **Staging soak length** is 7 daily rounds (the spec sets none).
 14. **Watcher signing key** (for signed verdicts) is another owner-held key, folded into OA-15.

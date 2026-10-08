@@ -10,23 +10,26 @@ Light (default):
 - --bg: #FAF7F2 (warm off-white)
 - --surface: #FFFFFF
 - --ink: #141414 (near-black, all primary text)
-- --muted: #8A8A8A (secondary text)
+- --muted: #6E6E6E (secondary text; 4.77:1 on --bg)
 - --line: #E6E1D8 (borders, dividers)
 - --accent: #FF4F2E (tomato red-orange — the ONLY accent)
 - --accent-ink: #FFFFFF (text on accent)
+- --scrim: #141414 at 40% (dims the page behind sheets and dialogs)
 
 Dark:
-- --bg: #121212, --surface: #1C1C1C, --ink: #F5F2EC, --muted: #9A9A9A, --line: #2C2C2C, --accent: #FF5A3A
+- --bg: #121212, --surface: #1C1C1C, --ink: #F5F2EC, --muted: #9A9A9A, --line: #2C2C2C, --accent: #FF5A3A, --accent-ink: #121212, --scrim: #000000 at 60%
 
 Rules:
 - Use the accent sparingly: the winning bar on reveal, the primary CTA, the "UNFLOCKED" result, and streak highlights. Nothing else.
 - Use no gradients and no drop shadows. Separate surfaces with flat fills and 1.5–2px borders in --line or --ink.
 - Losing states stay monochrome (ink on bg). Winning states get the accent.
+- Accent-coloured text only at 24px or larger (it is 3.07:1 on light --bg). For smaller accent emphasis, use an accent fill with a CTA-size label, as the streak pill does.
 
 ## Typography
 - Headlines and questions: Fredoka (600–700), large and chunky. The daily question is the hero at 32–40px on mobile.
 - Body and UI: Inter (400–600).
 - Numbers (percentages, stakes, timers): Inter with tabular figures.
+- Labels on the accent fill are Fredoka 700 at 20px or larger (light --accent-ink on --accent is 3.28:1, large text only).
 - Use sentence case everywhere. ALL CAPS only for result lines: "UNFLOCKED", "GOT FLOCKED".
 
 ## Shape and layout
@@ -38,6 +41,7 @@ Rules:
 ## Mascot
 - One smug, unbothered sheep: simple flat shapes, thick rounded outlines in --ink, a white wool body, half-closed eyes, a slight smirk.
 - Poses needed: neutral, smug (win), walking away alone (win animation), shocked (loss), a flock of identical sheep (the "got flocked" state).
+- The sheep keeps #141414 outlines and white wool in both themes. In dark mode only strokes outside the wool (legs, shock lines) use dark --ink.
 - Until final art exists, build simple placeholder SVGs in this style as React components in packages/shared/mascot. Keep it to 2 colors (ink + white) plus the accent where needed.
 
 ## Motion
@@ -52,6 +56,10 @@ Short, dry, deadpan. Copy should never explain the joke and never use exclamatio
 - Sealed: "Your pick is sealed. Nobody can see it. Not even us."
 - Empty state: "No question yet. The sheep are deliberating."
 - Error: "Something broke. The flock is looking into it."
+- Refunded (tie only): "A dead heat. Nobody strayed, so everyone gets their stake back."
+- Offline: "You're offline. Nothing can be sealed until you're back."
+- Entry rejected at close: "This round just closed. Your pick wasn't sent."
+- Daily cap: "You've hit today's cap. The flock will still be here tomorrow."
 
 ## Share cards
 - Follow the same tokens: bg background, ink text, and the accent only on the winning bar and the "UNFLOCKED" line.

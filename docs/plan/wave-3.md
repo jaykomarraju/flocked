@@ -2,7 +2,7 @@
 
 **Goal.** Sign-in and sessions work. The RoundDO accepts sealed Free entries and returns signed receipts. The core round flow is designed. A local stack (drand, anvil, contracts, `wrangler dev`) runs a real Free entry end to end.
 
-**Base.** Tag `wave-2`. **Hold points:** OA-01 (OrbStack working) before W3-D. OA-02 before W3-C.
+**Base.** Tag `wave-2`. **Hold points:** OA-01 (OrbStack working) before W3-D. OA-02 is done (Paper Pro).
 
 **Migrations reserved:** W3-A `0002_auth.sql`, W3-B `0003_round_do.sql`, W3-D `0004_*` (use only if needed).
 
@@ -28,7 +28,7 @@
 - **Role / size:** build, M.
 - **Objective.** Implement RoundDO's Free path: init from the locked config, the commit protocol (validation, dedupe, `seq` reservation, atomic points batch, leaf, EIP-712 receipt), counters, the alarm chain (open, `closing_soon`/`streak_at_risk` hooks that just enqueue, close, beacon-time settle enqueue, rule-8 alarm), close (drain in-flight, reconcile leaves against D1, build the commitment root with `freeCommitmentTree`), and `POST /rounds/:id/entries`. Also the daily grant on first entry.
 - **Read first.** `plan.md` §2, §4. `docs/sessions/W2-Z.md`. This section. Spec: "Real-time and the reveal" (only "RoundDO responsibilities"), "Sealed picks (timelock encryption)" (only "Free mode specifics", "Invalid entries", "Canonical ciphertext header"), "Data model" (rows `entries`, `round_modes`, `limits`; "Atomic points movements"), "Modes: Free and Stakes" (table), "Compliance and responsible play" (only "Responsible play").
-- **Owns.** `apps/api/src/do/round-do.ts`, `apps/api/src/rounds/**`, `apps/api/src/crypto/receipt.ts`, `apps/api/src/routes/entries.ts`, `apps/api/migrations/0003_round_do.sql`, `apps/api/test/round-do/**`.
+- **Owns.** `apps/api/src/do/round-do.ts`, `apps/api/src/rounds/**`, `apps/api/src/crypto/receipt.ts`, `apps/api/src/routes/entries.ts`, `apps/api/migrations/0003_round_do.sql`, `apps/api/test/round-do/**`. For the tlock fix (W2-Z): `packages/tlock/src/{seal,classify}.ts`, `packages/tlock/test/**`, `packages/tlock/README.md`. For the receipt fixture: `packages/abi/scripts/receipt-fixture.mjs`, `packages/abi/test/**`.
 - **Must not touch.** WebSocket handling (W7-A owns `src/ws/**`; leave a `broadcast()` no-op hook), Stakes ingest beyond the RPC stub.
 - **Required tests.** DO-1..4 and DO-5 (alarm chain half). A close-boundary race test with concurrent entries at `closesAt` (DO-3). Receipt verification against the root and the signer address. Insufficient balance leaves no entry, ledger row or `seq` gap. Room membership check against `room_members`.
 - **Acceptance checks.** Every acknowledged entry is in the root. The non-canonical header and out-of-range stake are rejected at submit.
@@ -40,7 +40,7 @@
 - **Objective.** Design every screen and state of the core round flow in Paper, at mobile, tablet and desktop: onboarding (three cards), sign-in (Farcaster, wallet, email; inside the mini app and in the browser), Today (Free and Stakes; signed out and signed in; Stakes hidden if ineligible; non-default config warning; DST notice), the sealing and submitting state, Sealed (pick known, pick lost from local storage), Unsealing countdown, Counting the flock, Reveal (win, loss, refund, Stakes provisional "Final at", mode toggle), "The next question is already live", Stakes entry (verify with Coinbase, pending transaction, error, mismatch-refusal), Claims (list, Claim all, empty, pending), and the global states (loading, error, offline, empty "The sheep are deliberating", blocked region, self-excluded).
 - **Read first.** `plan.md` §5.4. `docs/design/README.md`, `docs/design/screens.md`. `Design_Language.md`. Spec: "Client app", "Real-time and the reveal" (only "Reveal choreography"), "Modes: Free and Stakes", "Identity and personhood" (only the first paragraph and "Personhood (verified Coinbase sign-in)" Flow bullet), "Compliance and responsible play". Schemas: `packages/shared/src/api/{rounds,entries,claims,me}.ts`, `packages/shared/src/ws.ts`.
 - **First step.** Confirm the Paper MCP tools; if they're missing, stop as `blocked`.
-- **Owns.** Paper page `Core flow`; `docs/design/screens.md` (core section); `docs/design/exports/core/**`.
+- **Owns.** Paper page `Core flow`; `docs/design/screens.md`; `docs/design/exports/{core,foundations,components}/**`; for the colour decisions (W2-Z) also the Paper `Foundations` and `Components` pages, `packages/shared/design-tokens.json`, and the `scrim` key in `packages/shared/src/tokens.ts` and `packages/shared/test/tokens.test.ts`.
 - **Definition of done.** Every state listed has an artboard named per P2.3 at all three breakpoints (desktop may reuse the tablet layout centered, but it still needs an artboard), with an exported PNG and an inventory row. Motion notes for the reveal are on the artboards.
 - **Open questions.** Where the 30-day Stakes net result sits on Today. Where the responsible-gambling link sits in Stakes onboarding. Record the choices.
 
@@ -63,3 +63,10 @@
 - Ask the owner to review core flow in Paper (OA-D2 needed before W9).
 - Migrations reserved for wave 4: W4-A `0005`, W4-B `0006`, W4-D `0007`.
 - Confirm the audit-prep slot (W4-C) with the owner and that an auditor is booked (OA-20).
+
+## Changes from W2-Z (Oct 8, 2026)
+
+- **W3-A:** `src/points/` `grantMovement` with `onlyIfBalanceBelow` was fixed so a retried grant can't credit twice. The session middleware goes in `src/app.ts` before the `/api/v1` mount.
+- **W3-B:** (1) tlock fix: `classify` must return `decrypt_failed` when the stanza's `U` isn't a canonical compressed G2 point (noble reduces coordinates ≥ p silently, so such a ciphertext classifies as valid today; spec "Invalid entries" as edited Oct 8), and environment errors (`TypeError`, `ReferenceError`) must throw rather than turn into VOIDs, or a startup self-test must decrypt the committed fixture. (2) Cap ciphertexts at 2,048 bytes at submit, as the contract does. (3) A retried stake that already committed fails on the balance CHECK before the entry/ledger unique keys, so on any batch failure look up the existing entry before answering. (4) A daily grant skipped at ≥ 1,000 is final for the game day. (5) Build receipts with `@flocked/shared`'s `eip712.ts`, and switch `packages/abi/scripts/receipt-fixture.mjs` to settle's `userIdHash` (bytes16 + binary ULID; it hashes the string today).
+- **W3-C:** before the core flow, apply the colour decisions: light `muted` `#6E6E6E`; a `scrim` token (light `#141414` at 40%, dark `#000000` at 60%); dark `accentInk` stays `#121212`. Update `design-tokens.json`, the `tokens.ts` schema and test (the CI tokens check is strict), the Paper tokens and the affected Foundations and Components sheets, and re-export them. Apply the rules for text on and in the accent (Design_Language "Typography" and "Color tokens"). Today shows Stakes to unverified users with "Verify with Coinbase" and hides it only for region, age and self-exclusion; the navigation is five tabs. Draft one refund line per refund reason (rules 1–8) on the reveal artboards for W3-Z to bring to the owner.
+- **W3-D:** confirm `decryptWithSignature` under `wrangler dev` (the esbuild bundle, not Vitest). `wrangler dev` needs an `apps/web/dist` directory for the assets binding. The stack CI job runs on `ubuntu-latest`, which moves to Ubuntu 26 from Oct 19, 2026; pin `ubuntu-24.04` if the drand image or OrbStack-free Docker setup breaks.

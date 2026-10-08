@@ -52,3 +52,9 @@
 - PIPE-2, PIPE-3, SET-1b (4), ALERT-2/4/6/8 detection proven.
 - Tag `audit-candidate-1` on the merge commit. Tell the owner the audit package is ready (OA-20): `docs/audit/package.md`.
 - Migrations for wave 5: W5-A `0008`, W5-B `0009`, W5-D `0010`.
+
+## Carry-over from W2-Z (Oct 8, 2026)
+
+- **W4-A:** add `UNIQUE (closes_at) WHERE kind = 'daily'` (or equivalent) on `rounds` in `0005`, so overlapping cron runs can't create two daily rounds. Config validation runs `checkTargetRound` on any non-default close or `beaconDelay` (Decision log, Oct 8). Cap the Free `stakeMax` in `packages/shared/src/config.ts` at 2^53 − 1 (it's UINT64 today, but points need safe integers). `anchors.block_timestamp` is Unix seconds. AnchorDO gas per item (W2-B): about 75k `lock`, 55k `commit`, 73k `anchorManifest`.
+- **W4-B:** an `Entered` event with no matching ticket is stored with `user_id` NULL and the foreign flag, raises `ALERT_FOREIGN_EVENT`, and holds that round's settlement for the guardian (Decision log, Oct 8; the columns are in `0001`).
+- **W4-C (audit prep):** escrow nits from the W2-Z review: `GuardianReplaced` has no `previous` field and admin replacement doesn't emit `GuardianTransferred`; `_setRoleAdmin(GUARDIAN_ROLE, GUARDIAN_ROLE)` is dead. `packages/abi/scripts/gen.mjs`'s source hash leaves out `foundry.toml` and `remappings.txt` (CI's `--check` still catches drift). `anchorManifest` needs a lock but not a commit (now in the spec). Confirm the CREATE2 factory exists on Base Sepolia and Base (also W14-A).

@@ -69,7 +69,7 @@ export function commitment(ct: Uint8Array): `0x${string}`;   // keccak256(ct)
 
 D implements the following. They are the pinned interfaces wave 3's parallel sessions build against.
 
-- `packages/shared/src/api/` holds zod request/response schemas for **every** endpoint in the spec's API table, grouped by file (`auth.ts`, `me.ts`, `rounds.ts`, `entries.ts`, `claims.ts`, `questions.ts`, `boards.ts`, `rooms.ts`, `cards.ts`, `admin.ts`, `limits.ts`, `push.ts`), plus `errors.ts` (the `{error:{code,message}}` envelope and an `ErrorCode` enum). Money is a decimal-string `bigint` on the wire. Beacon-math times are Unix seconds; other times are epoch ms.
+- `packages/shared/src/api/` holds zod request/response schemas for **every** endpoint in the spec's API table, grouped by file (`auth.ts`, `me.ts`, `rounds.ts`, `entries.ts`, `claims.ts`, `questions.ts`, `boards.ts`, `rooms.ts`, `cards.ts`, `admin.ts`, `limits.ts`, `push.ts`), plus `errors.ts` (the `{error:{code,message}}` envelope and an `ErrorCode` enum). Money is a decimal-string `bigint` on the wire. Beacon-math and onchain times (ticket `expiry`, receipt `closesAt`, `stakes_tickets.expiry`, `anchors.block_timestamp`) are Unix seconds; other times are epoch ms (wording fixed by W2-Z).
 - `packages/shared/src/ws.ts`: discriminated union for `state`, `counts`, `closed`, `revealing`, `revealed`, `refunded` (spec "Real-time and the reveal").
 - `packages/shared/src/queues.ts`: message shapes for `settle` (`{roundId, mode, idempotencyKey}`), `decrypt-daily`/`decrypt-rooms` (`{roundId, mode, chunkKey}`), `cards` (`{roundId, mode, userId?, kind, variants}`), `notify` (`{event, userId, dedupeKey, payload}`).
 - `packages/shared/src/config.ts`: the locked `config_json` schema (per-mode stake rules, fees, cap, `minEntrants`, `beaconDelay`, creator address, `free.creatorAwardBps`, award recipient). Also canonical JSON (RFC 8785), `freeConfigHash`, and `questionHash` = keccak256(abi.encode(string prompt, string label0, string emoji0, string label1, string emoji1)) over NFC-normalized, trimmed strings with "" for no emoji. Record `questionHash`'s encoding as a spec issue for Z to confirm.
@@ -93,6 +93,14 @@ D implements the following. They are the pinned interfaces wave 3's parallel ses
 - `contracts/test/TargetRound.t.sol` replays `packages/tlock/vectors/target-round.json` through `createRound` (TL-4).
 
 ---
+
+### As built (W2-Z, Oct 8, 2026)
+
+P2.1–P2.4 were built as pinned, with these additions; the details are in each handoff's "Deviations".
+- **P2.1:** vectors add `id`, `now`, `gameDay` and `contractError`; `TargetRoundError` = `invalid_round`, `beacon_too_early`, `beacon_too_late`, `invalid_delay`, `not_first_round`, `beacon_in_past`, `wrong_daily_close`; extra exports (`TARGET_ROUND_ERRORS`, `isDailyClose`, `PLAINTEXT_LENGTH`, `PLAINTEXT_VERSION`, `toBase64Url`, `fromBase64Url`). `encryptPick` refuses non-34-byte plaintexts; `classify` throws on a non-16-byte `roundRef`.
+- **P2.2 / P1.3:** escrow adds `transferGuardian`, `guardian()`, `GuardianTransferred`, `SingleGuardian`; anchor adds `getAnchor`, `receiptDigest`, `verifyReceipt`, `domainSeparator`, `operationId`, `timelockReadyAt`, `setReceiptSigner(0)`, `SKIP_*`. `lock` requires `now < closesAt`; `anchorManifest` reverts. `addressesFor(chainId, local?)`; committed data in `packages/abi/src/deployments.ts`.
+- **P2.3:** dark `accentInk` `#121212`; 13 type roles, 7 motion tokens. Owner decisions (Oct 8) change light `muted` to `#6E6E6E` and add a `scrim` token (W3-C applies them).
+- **P2.4:** `EndpointDef` adds `params`, `query`, `responseType`; all paths under `/api/v1`; wire primitives end in `Schema`; `raiseAlert(env, code, data)`; lowercase addresses; uppercase ULIDs; `winLine`/`lossLine(count, total)` via `formatShare`; `@cloudflare/vitest-plugin`. `MODE_CODES` = `{ free: 0, stakes: 1 }`.
 
 ## W2-A: `@flocked/tlock`
 
