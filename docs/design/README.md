@@ -46,3 +46,21 @@ changes, change it in both places, and only after a Z-raised decision for colors
 - Text on the accent uses the `cta` role (Fredoka 700, 20px) or larger.
 - Accent-colored text is ≥ 24px.
 - Interactive boundaries use ink borders. `line` is only for dividers.
+
+## Component conventions
+
+From the `Components` page. Code follows these unless a sheet says otherwise.
+
+- Hover: the fill changes to `line`. Border and label stay.
+- Pressed: scale 0.97 (`motion.press`). Paper doesn't render transforms, so sheets draw it as a box 3% smaller.
+- Selected (option card, toggle segment): `ink` fill, `bg` label. The option card's radio also gets a check, so the
+  pick never relies on color alone.
+- Disabled: `bg` fill, 2px dashed `muted` border, `muted` label, not focusable.
+- Focus: the foundation ring (2px ink outline, 3px offset), on focus-visible only.
+
+## Paper MCP limits
+
+Without Paper Pro, MCP calls are capped per week. Once capped, writes, `export` and `find_nodes` fail. W2-C.2 hit
+the cap after about 55 calls (on top of W2-C's foundations work). Budget calls per sheet, and prefer one
+`write_html` per section over many small ones.
+

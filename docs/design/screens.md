@@ -36,13 +36,14 @@ boundaries. Ratios are computed from the token hex values.
 
 ## Components
 
-Paper page `Components`. Freeze: OA-D1. Each sheet has a light and a dark artboard. The component sheets are
-planned below and get built in W2-C.2.
+Paper page `Components`. Freeze: OA-D1. Each sheet has a light and a dark artboard. `option-card` and `actions`
+are built in light and dark (W2-C.2) but not exported yet: the Paper MCP hit its weekly limit. The other seven
+sheets are planned and continue in W2-C.3.
 
 | Artboard | Spec heading | Route or component | States covered | Export | Freeze |
 | --- | --- | --- | --- | --- | --- |
-| `components/option-card/{light,dark}/desktop` | Client app (Today, Reveal) | option card | idle, hover, pressed, selected, disabled, revealed-win, revealed-loss | `exports/components/option-card__{light,dark}__desktop.png` | draft |
-| `components/actions/{light,dark}/desktop` | Client app (Today) | primary CTA pill, secondary pill, mode toggle, tabs | default, pressed, disabled, loading; toggle Free/Stakes/Stakes hidden; tabs | `exports/components/actions__{light,dark}__desktop.png` | draft |
+| `components/option-card/{light,dark}/desktop` | Client app (Today, Reveal) | option card | idle, hover, pressed, selected, focus, disabled, revealed-win, revealed-loss (with "Your pick" pill), rounding note | pending (`exports/components/option-card__{light,dark}__desktop.png`) | draft (built) |
+| `components/actions/{light,dark}/desktop` | Client app (Today) | primary CTA pill, secondary pill, mode toggle, tabs | CTA default, pressed, loading, disabled; secondary default, hover/pressed, disabled, small; toggle Free, Stakes, Stakes hidden (static label); tabs active, rest, hover | pending (`exports/components/actions__{light,dark}__desktop.png`) | draft (built) |
 | `components/stake-selector/{light,dark}/desktop` | Client app (Today) | stake selector | Free presets + slider; Stakes fixed stake | `exports/components/stake-selector__{light,dark}__desktop.png` | draft |
 | `components/round-status/{light,dark}/desktop` | Client app (Today, Sealed, Reveal) | countdown, entrant/pool counter, padlock sealed badge, split bars | bars equal, end states, win accent | `exports/components/round-status__{light,dark}__desktop.png` | draft |
 | `components/result-card/{light,dark}/desktop` | Client app (Reveal); Decision log (voice lines) | result card | unflocked, got flocked, refunded, provisional with "Final at" | `exports/components/result-card__{light,dark}__desktop.png` | draft |
