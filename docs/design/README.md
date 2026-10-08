@@ -74,6 +74,12 @@ From the `Components` page. Code follows these unless a sheet says otherwise.
   in a 560 column. The question goes up to the `display` size (40px), and the countdown and counter share a row.
 - Sheets on mobile become centred 400-wide modals from tablet up (no handle, 2px ink border all round).
 - The 30-day Stakes net sits in the header's balance slot when Stakes is selected.
+- With the 30-day net in the slot, the tablet header only fits if the links don't shrink: header gap 32, links
+  gap 20, each link `flexShrink: 0` (W3-C.2 fixed this on the Stakes tablets).
+- Pages reached from You (Claims): mobile nav has You active; the desktop header shows no active link.
+- Reveal artboards end in a `notes (not part of the screen)` band (motion notes, refund lines). Crop it when using
+  the PNG as a baseline.
+- Rows sit 1200 apart on the canvas; a row whose mobile artboard runs past ~1100 takes two slots.
 
 ## Paper MCP notes
 
@@ -94,5 +100,10 @@ From the `Components` page. Code follows these unless a sheet says otherwise.
   time (8–10 nodes each) and check the files.
 - A node moved with `move_nodes` into another artboard keeps its world position, so an absolutely positioned
   overlay ends up offset. Set `left: 0; top: 0` after moving it.
-- Build tablet and desktop by cloning the mobile `content` frame (`<x-paper-clone>` with an inline width) and
-  duplicating the tablet artboard for desktop. Duplicating costs less output than a fresh clone.
+- Build tablet and desktop by duplicating a header-only shell artboard and then `duplicate_nodes` the mobile
+  `content` into it (`parentId`). That returns a compact id map; an `<x-paper-clone>` returns every created node.
+- `duplicate_nodes` id maps can be wrong. In W3-C.2, copies of artboards whose children had been reordered with
+  `move_nodes` came back with ids pointing at the wrong nodes (a bar track got the sheep's size). Check the copy with
+  `get_tree_summary` before editing by id.
+- A `duplicate_nodes` into an artboard with `parentId` sometimes lands at index 0, above the header, and reordered
+  children can come back in their original order. Screenshot each copy and fix the order with `move_nodes`.

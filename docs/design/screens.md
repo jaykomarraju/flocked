@@ -80,10 +80,31 @@ Exports are at `exports/core/<screen>__<state>__<breakpoint>.png`.
 | `core/today/sealing/{mobile,tablet,desktop}` | Client app (Entry flow (Free) step 2) | `/` | CTA loading "Sealing", other option disabled, note | `exports/core/today__sealing__{mobile,tablet,desktop}.png` | review |
 | `core/sealed/pick-known/{mobile,tablet,desktop}` | Client app (Sealed) | `/` (state) | sealed badge, locked pick and stake, voice line, countdown to reveal, "Remind me", "Invite friends" | `exports/core/sealed__pick-known__{mobile,tablet,desktop}.png` | review |
 | `core/sealed/pick-lost/{mobile,tablet,desktop}` | Client app (Sealed); Entry flow (Free) step 2 (local storage) | `/` (state) | sealed entry whose plaintext isn't on this device: "Pick not on this device" | `exports/core/sealed__pick-lost__{mobile,tablet,desktop}.png` | review |
+| `core/reveal/unsealing/{mobile,tablet,desktop}` | Real-time and the reveal (Reveal choreography); Client app (Reveal) | `/` (state) | after close, before the beacon: "Unsealing in 1:42", final count (no live dot), equal ink bars with "Your pick", note | `exports/core/reveal__unsealing__{mobile,tablet,desktop}.png` | review |
+| `core/reveal/counting/{mobile,tablet,desktop}` | Real-time and the reveal (Reveal choreography) | `/` (state) | after the beacon, until `revealed`: "Counting the flock…", equal bars, note | `exports/core/reveal__counting__{mobile,tablet,desktop}.png` | review |
+| `core/reveal/win/{mobile,tablet,desktop}` | Client app (Reveal); Design_Language (Motion, Voice) | `/` (state) | Free win, end state: 62/38 split, accent on the winning bar, UNFLOCKED card (winLine(38)), share-card preview, Share, "The next question is already live"; motion notes band | `exports/core/reveal__win__{mobile,tablet,desktop}.png` | review |
+| `core/reveal/loss/{mobile,tablet,desktop}` | Client app (Reveal); Design_Language (Motion, Voice) | `/` (state) | Free loss: winning bar still gets the accent, your side ink, GOT FLOCKED card (lossLine(62)), shocked sheep; motion notes (flock slides in) | `exports/core/reveal__loss__{mobile,tablet,desktop}.png` | review |
+| `core/reveal/refund/{mobile,tablet,desktop}` | Settlement and payout math (Refund rules); `reasons.ts` | `/` (state) | headcount tie: 50/50, no accent, "Refunded" card with rule 3's line, stake returned; notes band with motion notes and all 8 refund lines | `exports/core/reveal__refund__{mobile,tablet,desktop}.png` | review |
+| `core/reveal/provisional/{mobile,tablet,desktop}` | Real-time and the reveal (Stakes "Final at"); Compliance (30-day net) | `/` (state) | Stakes win before final: 59/41, "Provisional. Final at 11:03pm" chip, "Payout, once final 11.75 USDC", 30-day net in the header; notes (veto re-renders as refunded) | `exports/core/reveal__provisional__{mobile,tablet,desktop}.png` | review |
+| `core/reveal/mode-toggle/{mobile,tablet,desktop}` | Modes: Free and Stakes (Rules shared by both modes) | `/` (state) | a Free player toggled to Stakes: Stakes split without "Your pick", "You didn't play Stakes this round", totals, link back; notes band | `exports/core/reveal__mode-toggle__{mobile,tablet,desktop}.png` | review |
+| `core/reveal/next-live/{mobile,tablet,desktop}` | Real-time and the reveal (next round open during the reveal); `GET /rounds/today` (`previousRoundId`) | `/` | Today for the next round (Oct 9, no pick yet, CTA disabled) with a "Last round: Unflocked, +38 points · See the reveal" strip | `exports/core/reveal__next-live__{mobile,tablet,desktop}.png` | review |
+| `core/stakes-entry/verify-sheet/{mobile,tablet,desktop}` | Client app (Entry flow (Stakes) step 1); Compliance (Age and terms, Responsible play) | sheet (mobile), modal (tablet up) over unverified Stakes Today | "Stakes needs a verified account", 18+ and terms checkboxes, "Verify with Coinbase", "Not now", footer "18+ only · Responsible play" | `exports/core/stakes-entry__verify-sheet__{mobile,tablet,desktop}.png` | review |
+| `core/stakes-entry/pending/{mobile,tablet,desktop}` | Client app (Entry flow (Stakes) step 3) | `/` | user operation sent: CTA loading "Confirming", other option disabled, "Waiting for Base to include your entry" | `exports/core/stakes-entry__pending__{mobile,tablet,desktop}.png` | review |
+| `core/stakes-entry/error/{mobile,tablet,desktop}` | Client app (Entry flow); feedback sheet (error) | `/` | entry failed: VOICE.error box with Retry above the CTA, selection kept, CTA live | `exports/core/stakes-entry__error__{mobile,tablet,desktop}.png` | review |
+| `core/stakes-entry/mismatch/{mobile,tablet,desktop}` | Sealed picks (Round config check) | `/` | onchain config differs from the published one: ink-bordered refusal notice with error icon and "See what doesn't match", CTA disabled | `exports/core/stakes-entry__mismatch__{mobile,tablet,desktop}.png` | review |
+| `core/claims/list/{mobile,tablet,desktop}` | Client app (Claims); `api/claims.ts` | `/claims` | "Ready to claim 17.67 USDC" with "Claim all", rows (won, refunded ready; one not open until 11:03pm), destination wallet note | `exports/core/claims__list__{mobile,tablet,desktop}.png` | review |
+| `core/claims/claim-all/{mobile,tablet,desktop}` | Client app (Claims) | sheet (mobile), modal (tablet up) | confirm "Claim 17.67 USDC": the two ready payouts, wallet, the one that opens later, CTA "Claim 17.67 USDC", "Not now" | `exports/core/claims__claim-all__{mobile,tablet,desktop}.png` | review |
+| `core/claims/pending/{mobile,tablet,desktop}` | Client app (Claims) | `/claims` | claim transaction in flight: CTA loading "Claiming", rows "Claiming", "Waiting for Base to confirm" | `exports/core/claims__pending__{mobile,tablet,desktop}.png` | review |
+| `core/claims/empty/{mobile,tablet,desktop}` | Client app (Claims) | `/claims` | nothing to claim: neutral sheep, "Nothing to claim. The flock owes you nothing.", "Back to Today" | `exports/core/claims__empty__{mobile,tablet,desktop}.png` | review |
+| `core/global/loading/{mobile,tablet,desktop}` | Client app; feedback sheet (skeleton) | `/` | Today skeleton, line-filled blocks, no shimmer | `exports/core/global__loading__{mobile,tablet,desktop}.png` | review |
+| `core/global/error/{mobile,tablet,desktop}` | Client app; Design_Language (Voice: Error) | `/` | page failed to load: shocked sheep, VOICE.error, "Retry" | `exports/core/global__error__{mobile,tablet,desktop}.png` | review |
+| `core/global/offline/{mobile,tablet,desktop}` | Client app; Design_Language (Voice: Offline) | `/` | offline banner under the header (in the column from tablet up), CTA disabled, countdown keeps running | `exports/core/global__offline__{mobile,tablet,desktop}.png` | review |
+| `core/global/empty/{mobile,tablet,desktop}` | Client app; Design_Language (Voice: Empty state) | `/` | no round (schedule gap): neutral sheep, "No question yet. The sheep are deliberating.", "See past rounds" | `exports/core/global__empty__{mobile,tablet,desktop}.png` | review |
+| `core/global/blocked-region/{mobile,tablet,desktop}` | Compliance (Geo-fencing); Client app (Today) | `/` | Stakes hidden by region: static "Free" label instead of the mode toggle, otherwise Free Today | `exports/core/global__blocked-region__{mobile,tablet,desktop}.png` | review |
+| `core/global/self-excluded/{mobile,tablet,desktop}` | Compliance (Responsible play: self-exclusion) | `/` | static "Free" label, break notice "You're on a break until Nov 7." with "Claims and refunds still work", both options disabled, no stake or CTA | `exports/core/global__self-excluded__{mobile,tablet,desktop}.png` | review |
 
-Still to draw (W3-C.2): Unsealing countdown, Counting the flock, Reveal (win, loss, refund, Stakes provisional
-"Final at", mode toggle) with motion notes and the refund lines, "The next question is already live", Stakes entry
-(verify sheet, pending, error, mismatch refusal), Claims (list, Claim all, empty, pending) and the global states.
+On the canvas, W3-C.2 rows start at y 18000. Reveal rows with a notes band (win, loss, refund, provisional,
+mode-toggle) take two 1200 slots because their mobile artboards run to about 1,600–1,900px tall.
 
 ### Core flow decisions (W3-C)
 
@@ -96,3 +117,35 @@ Still to draw (W3-C.2): Unsealing countdown, Counting the flock, Reveal (win, lo
 - **Notices on Today:** a non-default config gets a 2px ink-bordered notice above the question (it changes the
   stakes, so it is the loudest thing after the question). The DST notice uses the read-only style (1.5px line
   border). Neither uses the accent.
+
+### Core flow decisions (W3-C.2)
+
+- **Notes bands:** reveal artboards (win, loss, refund, provisional, mode-toggle) end in a band below the screen
+  (`notes (not part of the screen)`: surface fill, 2px dashed muted top border) with the motion notes, and on refund
+  the eight refund lines. The band is part of the export, so crop it when using these PNGs as screenshot baselines.
+- **Reveal layout:** question, split bars (option order, never sorted; ink "Your pick" pill on your side), result
+  card, share-card preview with the accent Share CTA (the one primary action), then "The next question is already
+  live" as a tappable card with the next question and its close countdown. Bars are the reveal visual; the revealed
+  option-card states stay for Round detail.
+- **Accent on a loss:** the winning bar still fills with the accent (it is the winning bar); your side and the GOT
+  FLOCKED card stay monochrome.
+- **Unsealing countdown:** "Unsealing in 1:42" in m:ss, as the spec writes it (never above 10:00, since beaconDelay ≤
+  600s). Close and reveal countdowns keep hh:mm:ss. The counter loses its live dot once entries close.
+- **Refunds without a tally:** rules 1, 2, 3 and 5 keep the split (one-sided reads 100% / 0%); rules 4, 6, 7 and 8
+  replace the bars with the final entrant count.
+- **Mode toggle:** the reveal opens on the mode you played; the other mode's segment is disabled until that mode
+  reveals. Switching cross-fades the split; each mode's bars animate once per round per device. No result card or
+  Share for a mode you didn't play.
+- **Next question live:** besides the closing card on the reveal, Today for the next round shows a read-only "Last
+  round" strip with the result and "See the reveal" while `previousRoundId` is set. The CTA stays disabled until a
+  pick.
+- **Verification sheet:** carries the 18+ attestation and terms acceptance as two checkboxes (Compliance "Age and
+  terms"); "Verify with Coinbase" is disabled until both are ticked (drawn ticked). Footer: "18+ only · Responsible
+  play".
+- **Stakes errors:** a failed entry shows the feedback error box above the CTA and keeps the selection; a config
+  mismatch reuses the config notice slot with the error icon, and the CTA is disabled.
+- **Claims:** a Stakes surface, so the header shows the 30-day net; mobile nav has You active, and the desktop header
+  has no active link (Claims is reached from the avatar). "Claim all" claims only ready payouts and confirms first in
+  a sheet (modal from tablet up), because the destination wallet and the not-yet-open payout need saying.
+- **Global states:** blocked region and self-exclusion both swap the toggle for the static "Free" label. Self-exclusion
+  keeps the question visible with both options disabled and no CTA; loading, error and empty keep the header and nav.
