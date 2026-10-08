@@ -1,0 +1,237 @@
+{
+  "valid": {
+    "CreateRoomRequestSchema": [
+      {
+        "name": "Night owls",
+        "questionSource": "custom"
+      }
+    ],
+    "CreateRoomResponseSchema": [
+      {
+        "room": {
+          "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CM",
+          "name": "Night owls",
+          "ownerUserId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+          "inviteCode": "owl-2026",
+          "questionSource": "daily",
+          "memberCount": 4,
+          "createdAt": 1791468191250
+        }
+      }
+    ],
+    "JoinRoomRequestSchema": [
+      {
+        "inviteCode": "owl-2026"
+      }
+    ],
+    "JoinRoomResponseSchema": [
+      {
+        "room": {
+          "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CM",
+          "name": "Night owls",
+          "ownerUserId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+          "inviteCode": "owl-2026",
+          "questionSource": "daily",
+          "memberCount": 5,
+          "createdAt": 1791468191250
+        }
+      }
+    ],
+    "RoomDetailResponseSchema": [
+      {
+        "room": {
+          "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CM",
+          "name": "Night owls",
+          "ownerUserId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+          "inviteCode": "owl-2026",
+          "questionSource": "daily",
+          "memberCount": 4,
+          "createdAt": 1791468191250
+        },
+        "members": [
+          {
+            "user": {
+              "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+              "handle": "woolly",
+              "displayName": "Woolly",
+              "avatarUrl": "https://img.example/u/woolly.png"
+            },
+            "role": "owner",
+            "joinedAt": 1791468191250,
+            "balance": "640"
+          },
+          {
+            "user": {
+              "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CF",
+              "handle": "baa-baa",
+              "displayName": null,
+              "avatarUrl": null
+            },
+            "role": "member",
+            "joinedAt": 1791468191250,
+            "balance": "500"
+          }
+        ],
+        "currentRound": {
+          "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CW",
+          "kind": "room",
+          "roomId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CM",
+          "gameDay": "2026-10-08",
+          "status": "open",
+          "question": {
+            "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CG",
+            "prompt": "Pineapple on pizza?",
+            "options": [
+              {
+                "label": "Pineapple",
+                "emoji": "🍍"
+              },
+              {
+                "label": "No pineapple",
+                "emoji": ""
+              }
+            ],
+            "category": "food",
+            "author": {
+              "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+              "handle": "woolly",
+              "displayName": "Woolly",
+              "avatarUrl": "https://img.example/u/woolly.png"
+            }
+          },
+          "opensAt": 1791421200,
+          "closesAt": 1791507600,
+          "beaconRound": 32901452,
+          "beaconTime": 1791507720,
+          "lockedAt": 1791400000000,
+          "config": {
+            "beaconDelay": 120,
+            "free": {
+              "stakeMin": "10",
+              "stakeMax": "100",
+              "presets": ["10", "25", "50", "100"],
+              "feeBps": 0,
+              "creatorBps": 0,
+              "capMultiple": 10,
+              "minEntrants": 1,
+              "creatorAwardBps": 0,
+              "awardRecipient": null,
+              "configHash": "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            },
+            "overrides": []
+          },
+          "modes": {
+            "free": {
+              "status": "pending",
+              "entrantCount": 153,
+              "pool": "8150",
+              "chainRoundId": null,
+              "revealedAt": null,
+              "claimsOpenAt": null,
+              "finalAt": null,
+              "refundReason": null,
+              "settlement": null
+            }
+          }
+        },
+        "leaderboard": [
+          {
+            "rank": 1,
+            "user": {
+              "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+              "handle": "woolly",
+              "displayName": "Woolly",
+              "avatarUrl": "https://img.example/u/woolly.png"
+            },
+            "balance": "640"
+          },
+          {
+            "rank": 2,
+            "user": {
+              "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CF",
+              "handle": "baa-baa",
+              "displayName": null,
+              "avatarUrl": null
+            },
+            "balance": "500"
+          }
+        ]
+      }
+    ],
+    "SetRoomQuestionRequestSchema": [
+      {
+        "prompt": "Cats or dogs?",
+        "options": [
+          {
+            "label": "Cats",
+            "emoji": "🐈"
+          },
+          {
+            "label": "Dogs",
+            "emoji": "🐕"
+          }
+        ],
+        "category": "life"
+      }
+    ],
+    "SetRoomQuestionResponseSchema": [
+      {
+        "question": {
+          "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CG",
+          "prompt": "Pineapple on pizza?",
+          "options": [
+            {
+              "label": "Pineapple",
+              "emoji": "🍍"
+            },
+            {
+              "label": "No pineapple",
+              "emoji": ""
+            }
+          ],
+          "category": "food",
+          "status": "scheduled",
+          "score": 14,
+          "author": {
+            "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+            "handle": "woolly",
+            "displayName": "Woolly",
+            "avatarUrl": "https://img.example/u/woolly.png"
+          },
+          "createdAt": 1791468191250
+        },
+        "moderation": {
+          "outcome": "queued",
+          "reason": null
+        },
+        "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CW"
+      }
+    ]
+  },
+  "invalid": {
+    "CreateRoomRequestSchema": [
+      {
+        "why": "empty name",
+        "value": {
+          "name": "",
+          "questionSource": "daily"
+        }
+      },
+      {
+        "why": "unknown source",
+        "value": {
+          "name": "x",
+          "questionSource": "random"
+        }
+      }
+    ],
+    "JoinRoomRequestSchema": [
+      {
+        "why": "too short",
+        "value": {
+          "inviteCode": "ab"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,140 @@
+[
+  {
+    "type": "state",
+    "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+    "status": "open",
+    "opensAt": 1791421200,
+    "closesAt": 1791507600,
+    "beaconRound": 32901452,
+    "beaconTime": 1791507720,
+    "serverTime": 1791468191250,
+    "modes": {
+      "free": {
+        "status": "pending",
+        "entrantCount": 153,
+        "pool": "8150",
+        "revealedAt": null,
+        "claimsOpenAt": null,
+        "refundReason": null,
+        "result": null
+      },
+      "stakes": {
+        "status": "pending",
+        "entrantCount": 37,
+        "pool": "185000000",
+        "revealedAt": null,
+        "claimsOpenAt": null,
+        "refundReason": null,
+        "result": null
+      }
+    }
+  },
+  {
+    "type": "state",
+    "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+    "status": "closed",
+    "opensAt": 1791421200,
+    "closesAt": 1791507600,
+    "beaconRound": 32901452,
+    "beaconTime": 1791507720,
+    "serverTime": 1791515000000,
+    "modes": {
+      "free": {
+        "status": "settled",
+        "entrantCount": 153,
+        "pool": "8150",
+        "revealedAt": 1791507780000,
+        "claimsOpenAt": null,
+        "refundReason": null,
+        "result": {
+          "winningOption": 0,
+          "tally": [
+            {
+              "headcount": 41,
+              "total": "2050"
+            },
+            {
+              "headcount": 112,
+              "total": "6100"
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "type": "counts",
+    "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+    "modes": {
+      "free": {
+        "entrantCount": 154,
+        "pool": "8200"
+      },
+      "stakes": {
+        "entrantCount": 37,
+        "pool": "185000000"
+      }
+    }
+  },
+  {
+    "type": "counts",
+    "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+    "modes": {
+      "free": {
+        "entrantCount": 3,
+        "pool": "150"
+      }
+    }
+  },
+  {
+    "type": "closed",
+    "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+    "closesAt": 1791507600,
+    "beaconRound": 32901452,
+    "beaconTime": 1791507720
+  },
+  {
+    "type": "revealing",
+    "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+    "mode": "free"
+  },
+  {
+    "type": "revealed",
+    "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+    "mode": "free",
+    "winningOption": 0,
+    "tally": [
+      {
+        "headcount": 41,
+        "total": "2050"
+      },
+      {
+        "headcount": 112,
+        "total": "6100"
+      }
+    ]
+  },
+  {
+    "type": "revealed",
+    "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+    "mode": "stakes",
+    "winningOption": 1,
+    "tally": [
+      {
+        "headcount": 25,
+        "total": "125000000"
+      },
+      {
+        "headcount": 12,
+        "total": "60000000"
+      }
+    ],
+    "claimsOpenAt": 1791514980000
+  },
+  {
+    "type": "refunded",
+    "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+    "mode": "stakes",
+    "refundReason": 5
+  }
+]

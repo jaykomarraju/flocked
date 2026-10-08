@@ -1,0 +1,540 @@
+{
+  "valid": {
+    "MeResponseSchema": [
+      {
+        "user": {
+          "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+          "handle": "woolly",
+          "displayName": "Woolly",
+          "avatarUrl": "https://img.example/u/woolly.png",
+          "role": "user",
+          "status": "active",
+          "refCode": "Rf7kQ2",
+          "createdAt": 1791468191250
+        },
+        "prefs": {
+          "showCardAmounts": false,
+          "showStakesNet": false,
+          "creatorPayoutWallet": "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"
+        },
+        "notificationPrefs": [
+          {
+            "channel": "webpush",
+            "event": "question_live",
+            "enabled": true
+          },
+          {
+            "channel": "email",
+            "event": "streak_at_risk",
+            "enabled": false
+          }
+        ],
+        "identities": [
+          {
+            "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CK",
+            "provider": "wallet",
+            "externalId": "0x1111111111111111111111111111111111111111",
+            "verifiedAt": 1791468191250
+          },
+          {
+            "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CP",
+            "provider": "coinbase",
+            "externalId": null,
+            "verifiedAt": 1791468191250
+          }
+        ],
+        "merges": [
+          {
+            "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CJ",
+            "status": "pending",
+            "keptUserId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+            "losingUserId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CF",
+            "provider": "farcaster",
+            "otherHandle": "baa-baa",
+            "createdAt": 1791468191250,
+            "expiresAt": 1791554591250,
+            "confirmedAt": null
+          }
+        ],
+        "balances": {
+          "global": "1240",
+          "rooms": [
+            {
+              "roomId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CM",
+              "balance": "500"
+            }
+          ]
+        },
+        "limits": {
+          "dailyStakeCap": "25000000",
+          "pendingCap": "50000000",
+          "pendingCapEffectiveAt": 1791515000000,
+          "selfExclusion": {
+            "startedAt": null,
+            "until": null,
+            "permanent": false,
+            "liftRequestedAt": null,
+            "liftEffectiveAt": null
+          },
+          "excluded": false,
+          "questionBlockUntil": null
+        },
+        "flags": {
+          "stakes_enabled": true
+        },
+        "tos": {
+          "currentVersion": "2026-10-01",
+          "acceptedVersion": "2026-10-01",
+          "acceptedAt": 1791468191250,
+          "ageAttestedAt": 1791468191250
+        },
+        "verification": {
+          "personVerified": true,
+          "verifiedAt": 1791468191250,
+          "country": "US"
+        },
+        "stakes": {
+          "eligible": false,
+          "reasons": ["geo_blocked"]
+        }
+      }
+    ],
+    "UpdateMeRequestSchema": [
+      {
+        "handle": "woolly"
+      },
+      {
+        "displayName": null,
+        "prefs": {
+          "creatorPayoutWallet": null
+        }
+      },
+      {
+        "notificationPrefs": [
+          {
+            "channel": "farcaster",
+            "event": "closing_soon",
+            "enabled": false
+          }
+        ],
+        "prefs": {
+          "showCardAmounts": true,
+          "showStakesNet": true
+        }
+      }
+    ],
+    "AcceptTosRequestSchema": [
+      {
+        "tosVersion": "2026-10-01",
+        "ageAttested": true
+      }
+    ],
+    "AcceptTosResponseSchema": [
+      {
+        "tos": {
+          "currentVersion": "2026-10-01",
+          "acceptedVersion": "2026-10-01",
+          "acceptedAt": 1791468191250,
+          "ageAttestedAt": 1791468191250
+        }
+      }
+    ],
+    "LinkIdentityRequestSchema": [
+      {
+        "provider": "wallet",
+        "message": "flocked.app wants you to sign in...",
+        "signature": "0x1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b"
+      },
+      {
+        "provider": "farcaster",
+        "token": "eyJ.e30.sig"
+      }
+    ],
+    "LinkResultSchema": [
+      {
+        "status": "linked",
+        "identity": {
+          "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CK",
+          "provider": "wallet",
+          "externalId": "0x1111111111111111111111111111111111111111",
+          "verifiedAt": 1791468191250
+        }
+      },
+      {
+        "status": "merge_pending",
+        "merge": {
+          "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CJ",
+          "status": "pending",
+          "keptUserId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+          "losingUserId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CF",
+          "provider": "farcaster",
+          "otherHandle": "baa-baa",
+          "createdAt": 1791468191250,
+          "expiresAt": 1791554591250,
+          "confirmedAt": null
+        }
+      }
+    ],
+    "ConfirmMergeRequestSchema": [
+      {
+        "provider": "email",
+        "email": "other@example.com",
+        "code": "99887766"
+      },
+      {
+        "provider": "farcaster",
+        "token": "eyJ.e30.sig"
+      }
+    ],
+    "ConfirmMergeResponseSchema": [
+      {
+        "merge": {
+          "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CJ",
+          "status": "confirmed",
+          "keptUserId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+          "losingUserId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CF",
+          "provider": "farcaster",
+          "otherHandle": "baa-baa",
+          "createdAt": 1791468191250,
+          "expiresAt": 1791554591250,
+          "confirmedAt": 1791507600000
+        }
+      }
+    ],
+    "UnlinkIdentityResponseSchema": [
+      {
+        "identities": [
+          {
+            "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CK",
+            "provider": "wallet",
+            "externalId": "0x1111111111111111111111111111111111111111",
+            "verifiedAt": 1791468191250
+          }
+        ]
+      }
+    ],
+    "AddEmailRequestSchema": [
+      {
+        "email": "woolly@example.com"
+      }
+    ],
+    "AddEmailResponseSchema": [
+      {
+        "email": "woolly@example.com",
+        "codeExpiresAt": 1791468791250
+      }
+    ],
+    "VerifyEmailRequestSchema": [
+      {
+        "email": "woolly@example.com",
+        "code": "04815162"
+      }
+    ],
+    "StartPersonhoodResponseSchema": [
+      {
+        "authorizeUrl": "https://login.coinbase.com/oauth2/auth?client_id=x&state=y"
+      }
+    ],
+    "PersonhoodCallbackQuerySchema": [
+      {
+        "state": "st-1",
+        "code": "c0de"
+      },
+      {
+        "state": "st-1",
+        "error": "access_denied",
+        "error_description": "User denied"
+      }
+    ],
+    "PersonhoodCallbackResponseSchema": [
+      {
+        "status": "verified",
+        "verifiedAt": 1791468191250,
+        "country": "US"
+      },
+      {
+        "status": "merge_pending",
+        "merge": {
+          "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CJ",
+          "status": "pending",
+          "keptUserId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+          "losingUserId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CF",
+          "provider": "farcaster",
+          "otherHandle": "baa-baa",
+          "createdAt": 1791468191250,
+          "expiresAt": 1791554591250,
+          "confirmedAt": null
+        }
+      },
+      {
+        "status": "failed",
+        "reason": "country_mismatch"
+      }
+    ],
+    "ReferralsResponseSchema": [
+      {
+        "refCode": "Rf7kQ2",
+        "referrals": [
+          {
+            "status": "rewarded",
+            "refereeHandle": "baa-baa",
+            "qualifiedRoundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+            "createdAt": 1791468191250,
+            "rewardedAt": 1791507780000
+          },
+          {
+            "status": "pending",
+            "refereeHandle": null,
+            "qualifiedRoundId": null,
+            "createdAt": 1791468191250,
+            "rewardedAt": null
+          }
+        ],
+        "rewardTotal": "100"
+      }
+    ],
+    "DeleteMeResponseSchema": [
+      {
+        "ok": true
+      }
+    ]
+  },
+  "invalid": {
+    "UpdateMeRequestSchema": [
+      {
+        "why": "empty update",
+        "value": {}
+      },
+      {
+        "why": "uppercase handle",
+        "value": {
+          "handle": "Woolly"
+        }
+      },
+      {
+        "why": "checksummed payout wallet",
+        "value": {
+          "prefs": {
+            "creatorPayoutWallet": "0xAbCdEfabcdefabcdefabcdefabcdefabcdefabcd"
+          }
+        }
+      }
+    ],
+    "AcceptTosRequestSchema": [
+      {
+        "why": "age not attested",
+        "value": {
+          "tosVersion": "v1",
+          "ageAttested": false
+        }
+      }
+    ],
+    "LinkIdentityRequestSchema": [
+      {
+        "why": "email is linked via /me/email",
+        "value": {
+          "provider": "email",
+          "email": "a@b.co",
+          "code": "12345678"
+        }
+      }
+    ],
+    "MeResponseSchema": [
+      {
+        "why": "balance as a number",
+        "value": {
+          "user": {
+            "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+            "handle": "woolly",
+            "displayName": "Woolly",
+            "avatarUrl": "https://img.example/u/woolly.png",
+            "role": "user",
+            "status": "active",
+            "refCode": "Rf7kQ2",
+            "createdAt": 1791468191250
+          },
+          "prefs": {
+            "showCardAmounts": false,
+            "showStakesNet": false,
+            "creatorPayoutWallet": "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"
+          },
+          "notificationPrefs": [
+            {
+              "channel": "webpush",
+              "event": "question_live",
+              "enabled": true
+            },
+            {
+              "channel": "email",
+              "event": "streak_at_risk",
+              "enabled": false
+            }
+          ],
+          "identities": [
+            {
+              "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CK",
+              "provider": "wallet",
+              "externalId": "0x1111111111111111111111111111111111111111",
+              "verifiedAt": 1791468191250
+            },
+            {
+              "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CP",
+              "provider": "coinbase",
+              "externalId": null,
+              "verifiedAt": 1791468191250
+            }
+          ],
+          "merges": [
+            {
+              "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CJ",
+              "status": "pending",
+              "keptUserId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+              "losingUserId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CF",
+              "provider": "farcaster",
+              "otherHandle": "baa-baa",
+              "createdAt": 1791468191250,
+              "expiresAt": 1791554591250,
+              "confirmedAt": null
+            }
+          ],
+          "balances": {
+            "global": 1240,
+            "rooms": []
+          },
+          "limits": {
+            "dailyStakeCap": "25000000",
+            "pendingCap": "50000000",
+            "pendingCapEffectiveAt": 1791515000000,
+            "selfExclusion": {
+              "startedAt": null,
+              "until": null,
+              "permanent": false,
+              "liftRequestedAt": null,
+              "liftEffectiveAt": null
+            },
+            "excluded": false,
+            "questionBlockUntil": null
+          },
+          "flags": {
+            "stakes_enabled": true
+          },
+          "tos": {
+            "currentVersion": "2026-10-01",
+            "acceptedVersion": "2026-10-01",
+            "acceptedAt": 1791468191250,
+            "ageAttestedAt": 1791468191250
+          },
+          "verification": {
+            "personVerified": true,
+            "verifiedAt": 1791468191250,
+            "country": "US"
+          },
+          "stakes": {
+            "eligible": false,
+            "reasons": ["geo_blocked"]
+          }
+        }
+      },
+      {
+        "why": "createdAt in seconds",
+        "value": {
+          "user": {
+            "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+            "handle": "woolly",
+            "displayName": "Woolly",
+            "avatarUrl": "https://img.example/u/woolly.png",
+            "role": "user",
+            "status": "active",
+            "refCode": "Rf7kQ2",
+            "createdAt": 1791468191
+          },
+          "prefs": {
+            "showCardAmounts": false,
+            "showStakesNet": false,
+            "creatorPayoutWallet": "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"
+          },
+          "notificationPrefs": [
+            {
+              "channel": "webpush",
+              "event": "question_live",
+              "enabled": true
+            },
+            {
+              "channel": "email",
+              "event": "streak_at_risk",
+              "enabled": false
+            }
+          ],
+          "identities": [
+            {
+              "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CK",
+              "provider": "wallet",
+              "externalId": "0x1111111111111111111111111111111111111111",
+              "verifiedAt": 1791468191250
+            },
+            {
+              "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CP",
+              "provider": "coinbase",
+              "externalId": null,
+              "verifiedAt": 1791468191250
+            }
+          ],
+          "merges": [
+            {
+              "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CJ",
+              "status": "pending",
+              "keptUserId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+              "losingUserId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CF",
+              "provider": "farcaster",
+              "otherHandle": "baa-baa",
+              "createdAt": 1791468191250,
+              "expiresAt": 1791554591250,
+              "confirmedAt": null
+            }
+          ],
+          "balances": {
+            "global": "1240",
+            "rooms": [
+              {
+                "roomId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CM",
+                "balance": "500"
+              }
+            ]
+          },
+          "limits": {
+            "dailyStakeCap": "25000000",
+            "pendingCap": "50000000",
+            "pendingCapEffectiveAt": 1791515000000,
+            "selfExclusion": {
+              "startedAt": null,
+              "until": null,
+              "permanent": false,
+              "liftRequestedAt": null,
+              "liftEffectiveAt": null
+            },
+            "excluded": false,
+            "questionBlockUntil": null
+          },
+          "flags": {
+            "stakes_enabled": true
+          },
+          "tos": {
+            "currentVersion": "2026-10-01",
+            "acceptedVersion": "2026-10-01",
+            "acceptedAt": 1791468191250,
+            "ageAttestedAt": 1791468191250
+          },
+          "verification": {
+            "personVerified": true,
+            "verifiedAt": 1791468191250,
+            "country": "US"
+          },
+          "stakes": {
+            "eligible": false,
+            "reasons": ["geo_blocked"]
+          }
+        }
+      }
+    ]
+  }
+}

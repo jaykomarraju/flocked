@@ -1,0 +1,29 @@
+{
+  "description": "EIP-712 digests from @flocked/shared (ticket: FlockedEscrow, receipt: FlockedAnchor); see packages/shared/test/eip712-fixture.ts",
+  "chainId": "84532",
+  "escrow": "0x00000000000000000000000000000000000e5c00",
+  "anchor": "0x00000000000000000000000000000000000A2c00",
+  "ticket": {
+    "roundId": "7",
+    "wallet": "0x00000000000000000000000000000000000A11cE",
+    "personTag": "0xa396f3134450433348b8bd0dbca900ff6b4d387fce755b07964d5a057a44fe19",
+    "expiry": "1791421200"
+  },
+  "ticketDigest": "0xf4fa774a56ef8bf1e072595fc25e223c42a0f84e2f57d9d7b9430fe0285eb94c",
+  "receipt": {
+    "roundId": "0x0199bf83dc742ed1d154963611a0705e",
+    "mode": "0",
+    "userIdHash": "0xbf33d9caa1cd5ca1df8977aef35d9ba7df1481936c56bdd3027222a1f89ef164",
+    "stake": "250",
+    "commitment": "0x043502c5dae5c8aea91afd10cce363be4484c027ebb55c17a3125eda62f7827f",
+    "seq": "41",
+    "closesAt": "1791421200",
+    "beaconRound": "32872652"
+  },
+  "receiptDigest": "0x6b1e5f654d67b644d688d8cb233d0eab41a6c27c8235efc66f21759b91942904",
+  "roundUlid": "01K6ZR7Q3M5V8X2N4P6R8T0W2Y",
+  "roundKeys": {
+    "free": "0xb57bff9213886987ca25056c2a6072a6aa9573a8206a2bea2b47806d9ab6bfbe",
+    "stakes": "0x8d25c716e05b58163f4581442c940c2e048fc640c357babbd82800a255d376ed"
+  }
+}

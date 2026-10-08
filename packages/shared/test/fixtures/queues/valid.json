@@ -1,0 +1,155 @@
+{
+  "settle": [
+    {
+      "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+      "mode": "free",
+      "idempotencyKey": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD:free"
+    },
+    {
+      "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+      "mode": "stakes",
+      "idempotencyKey": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD:stakes"
+    }
+  ],
+  "decrypt-daily": [
+    {
+      "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+      "mode": "stakes",
+      "chunkKey": "bundles/01K6Z8Y4N2R7VQ3M5T9W1XB0CD/stakes/chunk-0.json"
+    }
+  ],
+  "decrypt-rooms": [
+    {
+      "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CW",
+      "mode": "free",
+      "chunkKey": "bundles/01K6Z8Y4N2R7VQ3M5T9W1XB0CW/free/chunk-0.json"
+    }
+  ],
+  "cards": [
+    {
+      "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+      "mode": "free",
+      "userId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+      "kind": "result",
+      "variants": ["og", "embed", "square"]
+    },
+    {
+      "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+      "mode": "free",
+      "userId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+      "kind": "teaser",
+      "variants": ["embed"]
+    },
+    {
+      "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+      "mode": "stakes",
+      "kind": "round",
+      "variants": ["og", "square"]
+    }
+  ],
+  "notify": [
+    {
+      "event": "question_live",
+      "userId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+      "dedupeKey": "question_live:01K6Z8Y4N2R7VQ3M5T9W1XB0CD:01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+      "payload": {
+        "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+        "gameDay": "2026-10-08"
+      }
+    },
+    {
+      "event": "closing_soon",
+      "userId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+      "dedupeKey": "closing_soon:01K6Z8Y4N2R7VQ3M5T9W1XB0CD:01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+      "payload": {
+        "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+        "closesAt": 1791507600
+      }
+    },
+    {
+      "event": "outcome",
+      "userId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+      "dedupeKey": "outcome:2026-10-08:01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+      "payload": {
+        "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+        "gameDay": "2026-10-08",
+        "mode": "free",
+        "result": "win",
+        "amount": "87",
+        "nextRoundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CY"
+      }
+    },
+    {
+      "event": "outcome",
+      "userId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CF",
+      "dedupeKey": "outcome:2026-10-08:01K6Z8Y4N2R7VQ3M5T9W1XB0CF",
+      "payload": {
+        "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+        "gameDay": "2026-10-08",
+        "mode": "free",
+        "result": "loss",
+        "amount": "-50",
+        "nextRoundId": null
+      }
+    },
+    {
+      "event": "payout_claimable",
+      "userId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+      "dedupeKey": "payout_claimable:01K6Z8Y4N2R7VQ3M5T9W1XB0CD:stakes:01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+      "payload": {
+        "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+        "mode": "stakes",
+        "amount": "9612000",
+        "claimsOpenAt": 1791514980000
+      }
+    },
+    {
+      "event": "refunded",
+      "userId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+      "dedupeKey": "refunded:01K6Z8Y4N2R7VQ3M5T9W1XB0CD:stakes:01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+      "payload": {
+        "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+        "mode": "stakes",
+        "refundReason": 5
+      }
+    },
+    {
+      "event": "question_used",
+      "userId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+      "dedupeKey": "question_used:01K6Z8Y4N2R7VQ3M5T9W1XB0CG:scheduled",
+      "payload": {
+        "questionId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CG",
+        "stage": "scheduled",
+        "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD"
+      }
+    },
+    {
+      "event": "streak_at_risk",
+      "userId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+      "dedupeKey": "streak_at_risk:01K6Z8Y4N2R7VQ3M5T9W1XB0CD:01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+      "payload": {
+        "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+        "strayStreak": 3,
+        "closesAt": 1791507600
+      }
+    },
+    {
+      "event": "question_edited",
+      "userId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+      "dedupeKey": "question_edited:01K6Z8Y4N2R7VQ3M5T9W1XB0CX",
+      "payload": {
+        "questionId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CG",
+        "auditId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CX"
+      }
+    },
+    {
+      "event": "security_notice",
+      "userId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+      "dedupeKey": "security_notice:n-1",
+      "payload": {
+        "noticeId": "n-1",
+        "kind": "identity_linked"
+      }
+    }
+  ]
+}

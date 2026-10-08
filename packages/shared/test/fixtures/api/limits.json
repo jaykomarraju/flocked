@@ -1,0 +1,72 @@
+{
+  "valid": {
+    "SetLimitsRequestSchema": [
+      {
+        "dailyStakeCap": "25000000"
+      },
+      {
+        "selfExclusion": "30d"
+      },
+      {
+        "dailyStakeCap": "0",
+        "selfExclusion": "permanent"
+      }
+    ],
+    "SetLimitsResponseSchema": [
+      {
+        "limits": {
+          "dailyStakeCap": "25000000",
+          "pendingCap": "50000000",
+          "pendingCapEffectiveAt": 1791515000000,
+          "selfExclusion": {
+            "startedAt": null,
+            "until": null,
+            "permanent": false,
+            "liftRequestedAt": null,
+            "liftEffectiveAt": null
+          },
+          "excluded": false,
+          "questionBlockUntil": null
+        }
+      }
+    ],
+    "ExclusionLiftResponseSchema": [
+      {
+        "limits": {
+          "dailyStakeCap": null,
+          "pendingCap": null,
+          "pendingCapEffectiveAt": null,
+          "selfExclusion": {
+            "startedAt": 1775000000000,
+            "until": null,
+            "permanent": true,
+            "liftRequestedAt": 1791468191250,
+            "liftEffectiveAt": 1792072991250
+          },
+          "excluded": true,
+          "questionBlockUntil": null
+        }
+      }
+    ]
+  },
+  "invalid": {
+    "SetLimitsRequestSchema": [
+      {
+        "why": "empty",
+        "value": {}
+      },
+      {
+        "why": "cap as a number",
+        "value": {
+          "dailyStakeCap": 25000000
+        }
+      },
+      {
+        "why": "unknown period",
+        "value": {
+          "selfExclusion": "1d"
+        }
+      }
+    ]
+  }
+}

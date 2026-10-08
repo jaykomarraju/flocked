@@ -1,0 +1,54 @@
+{
+  "valid": {
+    "SharePageParamsSchema": [
+      {
+        "shareId": "rs4Np7Vb2C"
+      }
+    ],
+    "SharePageResponseSchema": [
+      "<!doctype html><html><head><meta property=\"og:image\" content=\"https://flocked.app/cards/rs4Np7Vb2C/og.png\"></head></html>"
+    ],
+    "CardImageParamsSchema": [
+      {
+        "shareId": "rs4Np7Vb2C",
+        "variant": "og.png"
+      },
+      {
+        "shareId": "rs4Np7Vb2C",
+        "variant": "square.png"
+      }
+    ],
+    "RoundCardParamsSchema": [
+      {
+        "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+        "variant": "embed.png"
+      }
+    ]
+  },
+  "invalid": {
+    "CardImageParamsSchema": [
+      {
+        "why": "variant without extension",
+        "value": {
+          "shareId": "rs4Np7Vb2C",
+          "variant": "og"
+        }
+      },
+      {
+        "why": "unknown variant",
+        "value": {
+          "shareId": "rs4Np7Vb2C",
+          "variant": "story.png"
+        }
+      }
+    ],
+    "SharePageParamsSchema": [
+      {
+        "why": "too short",
+        "value": {
+          "shareId": "abc"
+        }
+      }
+    ]
+  }
+}

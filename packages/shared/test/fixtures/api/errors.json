@@ -1,0 +1,38 @@
+{
+  "valid": {
+    "ErrorEnvelopeSchema": [
+      {
+        "error": {
+          "code": "round_closed",
+          "message": "This round has closed."
+        }
+      },
+      {
+        "error": {
+          "code": "not_implemented",
+          "message": "Not implemented"
+        }
+      }
+    ]
+  },
+  "invalid": {
+    "ErrorEnvelopeSchema": [
+      {
+        "why": "unknown code",
+        "value": {
+          "error": {
+            "code": "teapot",
+            "message": "x"
+          }
+        }
+      },
+      {
+        "why": "flat shape",
+        "value": {
+          "code": "bad_request",
+          "message": "x"
+        }
+      }
+    ]
+  }
+}
