@@ -304,6 +304,23 @@ describe('grant (with ledger ref)', () => {
     expect(await ledgerCount(db, u)).toBe(ledgerBefore);
   });
 
+  it('retrying a committed grant that crossed the threshold does not credit again', async () => {
+    const u = await newPlayer(950);
+    const grant = grantMovement(db, {
+      userId: u,
+      scope: GLOBAL_SCOPE,
+      amount: 100,
+      reason: 'daily_grant',
+      refId: 'round-c',
+      now: tick(),
+      onlyIfBalanceBelow: 1000,
+    });
+    expect((await applyMovement(db, grant)).status).toBe('applied');
+    expect(await balanceOf(db, u)).toBe(1050);
+    expect((await applyMovement(db, grant)).status).not.toBe('applied');
+    expect(await balanceOf(db, u)).toBe(1050);
+  });
+
   it('room grant for a member without a balance row (balance 0 < 1,000)', async () => {
     const u = newUlid(tick());
     const out = await applyMovement(

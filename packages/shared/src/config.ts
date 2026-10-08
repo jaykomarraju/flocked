@@ -212,7 +212,7 @@ export type StakesLockedConfig = z.infer<typeof StakesLockedConfigSchema>;
 /**
  * Launch defaults for a daily round (spec: "Modes: Free and Stakes", "Settlement and payout math",
  * "Round lifecycle" › Timing). Rooms differ: Stakes rooms use minEntrants 3 and rooms pay no creator award.
- * Clients flag any locked value that differs. The Free presets are not in the spec.
+ * Clients flag any locked value that differs.
  */
 export const LOCKED_CONFIG_DEFAULTS = {
   beaconDelay: 120,

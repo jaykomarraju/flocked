@@ -159,7 +159,7 @@ const INSERT_LEDGER_IF_BELOW =
   'WHERE user_id = ?2 AND scope = ?3) < ?8';
 const CREDIT_IF_LEDGER_ROW =
   'UPDATE point_balances SET balance = balance + ?1, updated_at = ?2 WHERE user_id = ?3 AND scope = ?4 ' +
-  'AND EXISTS (SELECT 1 FROM points_ledger WHERE id = ?5)';
+  'AND balance < ?6 AND EXISTS (SELECT 1 FROM points_ledger WHERE id = ?5)';
 
 /**
  * A debit: spec steps 1, 2, [3], 4. An insufficient balance fails step 2's CHECK and rolls back
@@ -201,8 +201,9 @@ export function creditMovement(db: D1Database, input: CreditInput): PointsMoveme
 
 /**
  * A house grant with its ledger ref. With `onlyIfBalanceBelow`, the ledger row is inserted only
- * while the balance is below the threshold, and the balance moves only if that row exists, so the
- * pair stays consistent; `applyMovement` then reports `skipped`.
+ * while the balance is below the threshold, and the balance moves only if that row exists and the
+ * balance is still below it, so the pair stays consistent and a retry of a committed grant can't
+ * credit twice; `applyMovement` then reports `skipped`.
  */
 export function grantMovement(db: D1Database, input: GrantInput): PointsMovement {
   if (input.onlyIfBalanceBelow === undefined) return creditMovement(db, input);
@@ -216,7 +217,7 @@ export function grantMovement(db: D1Database, input: GrantInput): PointsMovement
     db
       .prepare(INSERT_LEDGER_IF_BELOW)
       .bind(id, userId, scope, amount, reason, refId, now, onlyIfBalanceBelow),
-    db.prepare(CREDIT_IF_LEDGER_ROW).bind(amount, now, userId, scope, id),
+    db.prepare(CREDIT_IF_LEDGER_ROW).bind(amount, now, userId, scope, id, onlyIfBalanceBelow),
   ];
   return { statements, ledgerIndexes: [1], ledgerIds: [id] };
 }

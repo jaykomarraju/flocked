@@ -80,6 +80,7 @@ const SPEC_COLUMNS: Record<string, readonly string[]> = {
     'round_id',
     'mode',
     'user_id',
+    'foreign_entry',
     'wallet',
     'person_tag',
     'stake',
@@ -169,7 +170,7 @@ const SPEC_COLUMNS: Record<string, readonly string[]> = {
   ],
   indexer_state: ['chain_id', 'contract', 'last_block_number', 'last_block_hash', 'updated_at'],
   anchors: ['id', 'kind', 'round_keys_json', 'tx_hash', 'block_timestamp', 'created_at'],
-  audit_log: ['id', 'actor', 'action', 'target', 'data_json', 'created_at'],
+  audit_log: ['id', 'actor', 'actor_user_id', 'action', 'target', 'data_json', 'created_at'],
 };
 
 /** Primary keys the spec names ("PK (...)", or "(PK)" on a column). */

@@ -27,6 +27,10 @@ export const VOICE = {
   sealed: 'Your pick is sealed. Nobody can see it. Not even us.',
   emptyState: 'No question yet. The sheep are deliberating.',
   error: 'Something broke. The flock is looking into it.',
+  refundedTie: 'A dead heat. Nobody strayed, so everyone gets their stake back.',
+  offline: "You're offline. Nothing can be sealed until you're back.",
+  entryClosed: "This round just closed. Your pick wasn't sent.",
+  dailyCap: "You've hit today's cap. The flock will still be here tomorrow.",
 } as const;
 export type VoiceLine = keyof typeof VOICE;
 

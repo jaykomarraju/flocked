@@ -342,9 +342,6 @@ const AUTH_MAP: Record<string, readonly string[]> = {
   owner: ['user'],
 };
 
-/** In ENDPOINTS but not in the spec's table: pinned by plan wave 10. */
-const PLAN_ONLY = new Set(['POST /paymaster']);
-
 describe("ENDPOINTS matches the spec's API table", () => {
   const rows = specApiRows();
   const explicit = rows.filter((r) => r.method !== '*');
@@ -370,14 +367,10 @@ describe("ENDPOINTS matches the spec's API table", () => {
     }
   });
 
-  it('has no entry outside the table except the `/admin/*` expansion and plan-pinned routes', () => {
+  it('has no entry outside the table except the `/admin/*` expansion', () => {
     for (const e of ENDPOINTS) {
       const k = key(e.method, specPathOf(e));
       const hits = explicit.filter((r) => matchesRow(e, r)).length;
-      if (PLAN_ONLY.has(k)) {
-        expect(hits, k).toBe(0);
-        continue;
-      }
       expect(hits === 1 || (hits === 0 && underWildcard(e)), k).toBe(true);
     }
   });

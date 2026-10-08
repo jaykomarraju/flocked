@@ -9,6 +9,7 @@ describe('alerts', () => {
       'ALERT_SETTLEMENT_FAILED',
       'ALERT_COMMIT_LATE',
       'ALERT_SAFE_HEAD_LAG',
+      'ALERT_BEACON_LATE',
       'ALERT_INDEXER_LAG',
       'ALERT_VOID_RATE',
       'ALERT_DO_ERROR',
@@ -30,11 +31,15 @@ describe('alerts', () => {
     expect(ALERTS.ALERT_COMMIT_LATE.threshold).toBe('min(closesAt + 90 s, beaconTime − 30 s)');
     expect(ALERTS.ALERT_SAFE_HEAD_LAG.threshold).toBe('beaconTime + 60 s');
     expect(ALERTS.ALERT_INDEXER_LAG.threshold).toBe('150 s');
+    expect(ALERTS.ALERT_BEACON_LATE.threshold).toBe('beaconTime + 600 s');
+    expect(ALERTS.ALERT_BEACON_LATE.severity).toBe('page');
+    expect(ALERTS.ALERT_VOID_RATE.threshold).toBe("VOIDs > 2% of a mode's entries and ≥ 10 VOIDs");
   });
 
   it('isAlertCode', () => {
     expect(isAlertCode('ALERT_WATCHER')).toBe(true);
-    expect(isAlertCode('ALERT_BEACON_LATE')).toBe(false);
+    expect(isAlertCode('ALERT_BEACON_LATE')).toBe(true);
+    expect(isAlertCode('ALERT_NOT_A_CODE')).toBe(false);
     expect(isAlertCode(1)).toBe(false);
   });
 });

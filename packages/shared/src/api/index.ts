@@ -86,7 +86,7 @@ const PNG_VARIANT = ':variant{(?:og|embed|square)\\.png}';
 /**
  * Every endpoint, in the order of the spec's API table. The table's `* /admin/*` row ("See Admin
  * console") is expanded into the drafted admin endpoints right after `POST /admin/users/:id/role`.
- * `POST /paymaster` comes last: it is pinned by plan wave 10 and is not in the spec's table.
+ * `POST /paymaster` comes last, as in the table (after `* /admin/*`).
  */
 // prettier-ignore
 export const ENDPOINTS: readonly EndpointDef[] = [
@@ -162,7 +162,7 @@ export const ENDPOINTS: readonly EndpointDef[] = [
   { method: 'POST', path: '/admin/users/:id/points', module: 'admin', auth: 'admin', request: admin.AdjustPointsRequestSchema, response: admin.AdjustPointsResponseSchema, params: admin.AdminUserParamsSchema },
   { method: 'GET', path: '/admin/config', module: 'admin', auth: 'admin', request: null, response: admin.AdminConfigResponseSchema },
   { method: 'PUT', path: '/admin/config', module: 'admin', auth: 'admin', request: admin.UpdateAdminConfigRequestSchema, response: admin.UpdateAdminConfigResponseSchema },
-  // paymaster (plan wave 10; not in the spec's table). Wallet SDKs call it without a session;
+  // paymaster (plan wave 10). Wallet SDKs call it without a session;
   // the route keys the daily cap on the user operation's sender.
   { method: 'POST', path: '/paymaster', module: 'paymaster', auth: 'none', request: entries.PaymasterRequestSchema, response: entries.PaymasterResponseSchema },
 ];

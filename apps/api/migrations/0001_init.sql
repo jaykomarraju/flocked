@@ -3,7 +3,8 @@
 -- Conventions (spec "Data model", first paragraph):
 --   * IDs are ULIDs, stored as TEXT (26 chars, Crockford base32).
 --   * Stored timestamps (`*_at`, `opens_at`, `closes_at`, `expires_at`) are UTC epoch milliseconds.
---     Exception: `stakes_tickets.expiry` is the ticket's EIP-712 `expiry` exactly as signed (Unix seconds).
+--     Exceptions (Unix seconds, onchain values): `stakes_tickets.expiry` is the ticket's EIP-712 `expiry`
+--     exactly as signed, and `anchors.block_timestamp` is the block's timestamp.
 --   * Money and points are INTEGER base units (USDC 6 decimals, or whole points).
 --   * Hashes, roots, addresses and tx hashes are lowercase 0x-prefixed hex TEXT.
 --   * Booleans are INTEGER 0/1. JSON columns are TEXT checked with json_valid().
@@ -154,12 +155,16 @@ CREATE INDEX stakes_tickets_user_idx ON stakes_tickets (user_id, round_id);
 
 -- entries: one per (round, mode, user). Free entries carry receipt_seq; Stakes entries carry the
 -- chain coordinates and person_tag. option_index stays NULL until the reveal; ciphertext is
--- NULLed by archival once durable in R2 (Free) or onchain (Stakes).
+-- NULLed by archival once durable in R2 (Free) or onchain (Stakes). A foreign entry (Stakes only:
+-- an Entered event with no ticket record) has user_id NULL and foreign_entry = 1; SQLite treats
+-- NULLs as distinct, so the (round, mode, user) key doesn't constrain foreign entries, while
+-- (tx_hash, log_index) still does.
 CREATE TABLE entries (
   id           TEXT    NOT NULL PRIMARY KEY,
   round_id     TEXT    NOT NULL,
   mode         TEXT    NOT NULL CHECK (mode IN ('free', 'stakes')),
-  user_id      TEXT    NOT NULL,
+  user_id      TEXT,
+  foreign_entry INTEGER NOT NULL DEFAULT 0 CHECK (foreign_entry IN (0, 1)),
   wallet       TEXT,
   person_tag   TEXT,
   stake        INTEGER NOT NULL CHECK (stake > 0),
@@ -181,11 +186,13 @@ CREATE TABLE entries (
                AND log_index IS NOT NULL)),
   CONSTRAINT entries_free_no_chain
     CHECK (mode = 'stakes' OR (tx_hash IS NULL AND block_number IS NULL AND log_index IS NULL)),
-  CONSTRAINT entries_void_reason CHECK (void_reason IS NULL OR valid = 0)
+  CONSTRAINT entries_void_reason CHECK (void_reason IS NULL OR valid = 0),
+  CONSTRAINT entries_foreign
+    CHECK ((user_id IS NULL) = (foreign_entry = 1) AND (foreign_entry = 0 OR mode = 'stakes'))
 ) STRICT;
 CREATE UNIQUE INDEX entries_round_mode_user ON entries (round_id, mode, user_id);
 CREATE UNIQUE INDEX entries_tx_log ON entries (tx_hash, log_index);
--- Not in the spec table: one receipt seq per (round, mode), so the commitment tree is well formed.
+-- One receipt seq per (round, mode), so the commitment tree is well formed.
 CREATE UNIQUE INDEX entries_round_mode_seq ON entries (round_id, mode, receipt_seq)
   WHERE receipt_seq IS NOT NULL;
 CREATE INDEX entries_user_created_idx ON entries (user_id, created_at);
@@ -229,7 +236,7 @@ CREATE TABLE payouts (
   claim_tx   TEXT,
   CONSTRAINT payouts_stakes_wallet CHECK (mode = 'free' OR wallet IS NOT NULL)
 ) STRICT;
--- Not in the spec table: the natural key, so chunked settlement writes can be idempotent.
+-- The natural key, so chunked settlement writes can be idempotent.
 CREATE UNIQUE INDEX payouts_round_mode_user_kind ON payouts (round_id, mode, user_id, kind);
 CREATE INDEX payouts_user_unclaimed_idx ON payouts (user_id) WHERE claimed_at IS NULL;
 CREATE INDEX payouts_wallet_unclaimed_idx ON payouts (wallet) WHERE claimed_at IS NULL AND wallet IS NOT NULL;
@@ -296,7 +303,7 @@ CREATE TABLE rooms (
   question_source TEXT    NOT NULL DEFAULT 'daily' CHECK (question_source IN ('daily', 'custom')),
   created_at      INTEGER NOT NULL
 ) STRICT;
--- Not in the spec table: POST /rooms/join looks rooms up by invite code.
+-- POST /rooms/join looks rooms up by invite code.
 CREATE UNIQUE INDEX rooms_invite_code ON rooms (invite_code);
 CREATE INDEX rooms_owner_idx ON rooms (owner_user_id);
 
@@ -378,7 +385,7 @@ CREATE TABLE push_subscriptions (
   endpoint  TEXT NOT NULL,
   keys_json TEXT NOT NULL CHECK (json_valid(keys_json))
 ) STRICT;
--- Not in the spec table: a push endpoint identifies one browser subscription.
+-- A push endpoint identifies one browser subscription.
 CREATE UNIQUE INDEX push_subscriptions_endpoint ON push_subscriptions (endpoint);
 CREATE INDEX push_subscriptions_user_idx ON push_subscriptions (user_id);
 
@@ -426,6 +433,7 @@ CREATE INDEX anchors_kind_created_idx ON anchors (kind, created_at);
 CREATE TABLE audit_log (
   id         TEXT    NOT NULL PRIMARY KEY,
   actor      TEXT    NOT NULL CHECK (actor IN ('user', 'admin', 'system')),
+  actor_user_id TEXT, -- the acting user or admin; NULL for system
   action     TEXT    NOT NULL,
   target     TEXT,
   data_json  TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(data_json)),

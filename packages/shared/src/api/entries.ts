@@ -1,6 +1,5 @@
 // Entries. Route modules `entries` (Free entry, the caller's entries), `stakes` (entry tickets)
-// and `paymaster` (the ERC-7677 proxy, plan wave 10 "Paymaster proxy"; not in the spec's API
-// table). Spec: "API", "Sealed picks (timelock encryption)", "Real-time and the reveal",
+// and `paymaster` (the ERC-7677 proxy, plan wave 10 "Paymaster proxy"). Spec: "API", "Sealed picks (timelock encryption)", "Real-time and the reveal",
 // "Smart contract", "Data model" (`entries`, `payouts`, `stakes_tickets`).
 
 import { z } from 'zod';
@@ -168,7 +167,7 @@ export const RoundMeResponseSchema = z.object({
 });
 export type RoundMeResponse = z.infer<typeof RoundMeResponseSchema>;
 
-// POST /paymaster (module `paymaster`; plan wave 10, not in the spec's API table) ---------------
+// POST /paymaster (module `paymaster`; plan wave 10) --------------------------------------------
 
 /**
  * Hex as other wallets send it (any case). The paymaster speaks ERC-7677 to third-party wallet

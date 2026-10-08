@@ -7,6 +7,7 @@ export const ALERT_CODES = [
   'ALERT_SETTLEMENT_FAILED',
   'ALERT_COMMIT_LATE',
   'ALERT_SAFE_HEAD_LAG',
+  'ALERT_BEACON_LATE',
   'ALERT_INDEXER_LAG',
   'ALERT_VOID_RATE',
   'ALERT_DO_ERROR',
@@ -18,8 +19,8 @@ export type AlertCode = (typeof ALERT_CODES)[number];
 
 /**
  * `page`: integrity or funds may be at risk, or a deadline-bound step is late; someone acts now.
- * `warn`: degraded but self-healing or bounded by a backstop; look within the hour. The spec does not
- * assign severities; these are the defaults until it does.
+ * `warn`: degraded but self-healing or bounded by a backstop; look within the hour. The spec points
+ * here for severities (Decision log, Oct 8, 2026).
  */
 export type AlertSeverity = 'page' | 'warn';
 
@@ -47,6 +48,11 @@ export const ALERTS = {
     trigger: "Base's safe head not past the close block by beacon time + 60 s",
     threshold: 'beaconTime + 60 s',
   },
+  ALERT_BEACON_LATE: {
+    severity: 'page',
+    trigger: 'The drand beacon is still unavailable 10 minutes after beacon time',
+    threshold: 'beaconTime + 600 s',
+  },
   ALERT_INDEXER_LAG: {
     severity: 'warn',
     trigger: 'Chain indexer lag over 150 s',
@@ -54,7 +60,8 @@ export const ALERTS = {
   },
   ALERT_VOID_RATE: {
     severity: 'page',
-    trigger: "An anomalous VOID rate in a round's tally; settlement holds instead of posting",
+    trigger: "An anomalous VOID rate in a mode's tally; settlement holds instead of posting",
+    threshold: "VOIDs > 2% of a mode's entries and ≥ 10 VOIDs",
   },
   ALERT_DO_ERROR: {
     severity: 'warn',
