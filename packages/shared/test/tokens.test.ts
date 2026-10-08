@@ -20,12 +20,12 @@ describe('design-tokens.json (wave-2 plan P2.3)', () => {
       bg: '#FAF7F2',
       surface: '#FFFFFF',
       ink: '#141414',
-      muted: '#8A8A8A',
+      muted: '#6E6E6E',
       line: '#E6E1D8',
       accent: '#FF4F2E',
       accentInk: '#FFFFFF',
+      scrim: '#14141466', // #141414 at 40%
     });
-    // Dark `accentInk` isn't in the design language; W2-C picked it (spec issue for Z).
     expect(tokens.color.dark).toEqual({
       bg: '#121212',
       surface: '#1C1C1C',
@@ -33,7 +33,8 @@ describe('design-tokens.json (wave-2 plan P2.3)', () => {
       muted: '#9A9A9A',
       line: '#2C2C2C',
       accent: '#FF5A3A',
-      accentInk: tokens.color.dark.accentInk,
+      accentInk: '#121212',
+      scrim: '#00000099', // #000000 at 60%
     });
   });
 
@@ -52,5 +53,10 @@ describe('design-tokens.json (wave-2 plan P2.3)', () => {
       color: { ...tokens.color, light: { ...tokens.color.light, bg: '#faf7f2' } },
     };
     expect(DesignTokensSchema.safeParse(bad).success).toBe(false);
+    const opaqueScrim = {
+      ...tokens,
+      color: { ...tokens.color, dark: { ...tokens.color.dark, scrim: '#000000' } },
+    };
+    expect(DesignTokensSchema.safeParse(opaqueScrim).success).toBe(false);
   });
 });

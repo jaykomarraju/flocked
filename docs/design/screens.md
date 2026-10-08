@@ -27,12 +27,13 @@ boundaries. Ratios are computed from the token hex values.
 | --- | --- | --- | --- |
 | ink on bg | 17.24 | 16.77 | Pass, all text |
 | ink on surface | 18.42 | 15.25 | Pass, all text |
-| muted on bg | 3.23 | 6.66 | **Light fails body AA.** Light muted only for text ≥ 24px, placeholders, disabled controls and decoration. Secondary information uses ink at a smaller role. Dark passes. Spec issue: proposed light muted `#6E6E6E` (4.77 on bg, 5.10 on surface) |
-| muted on surface | 3.45 | 6.06 | Same rule as muted on bg |
-| accentInk on accent | 3.28 | 6.04 | **Light passes large text only.** Every label on accent is Fredoka 700 ≥ 20px (the `cta` role), which counts as large bold text. Dark `accentInk` is `#121212`, the designer's pick (spec issue), and passes AA for all text |
+| muted on bg | 4.77 | 6.66 | Pass, all text. Light muted is `#6E6E6E` (owner decision, Oct 8, 2026; was `#8A8A8A` at 3.23) |
+| muted on surface | 5.10 | 6.06 | Pass, all text |
+| accentInk on accent | 3.28 | 6.04 | **Light passes large text only.** Every label on accent is Fredoka 700 ≥ 20px (Design_Language "Typography"). Dark `accentInk` is `#121212` (Oct 8 decision) and passes AA for all text. Numbers on the winning option card stay Inter 600 tabular at 32px (large text, passes 3:1; see W3-C handoff) |
 | accent text on bg | 3.07 | 6.04 | Light passes large text only. Accent-colored text only at ≥ 24px (UNFLOCKED uses the 28px `result` role) |
 | ink on accent | 5.62 | n/a | Pass. The fallback if a small label ever has to sit on the accent |
 | line on bg | 1.22 | 1.34 | Decorative dividers only. Anything interactive uses an ink border (2px, 17:1) |
+| scrim | `#141414` 40% | `#000000` 60% | Not a text color. Dims the page behind sheets and dialogs; the sheet or dialog keeps its 2px ink border |
 
 ## Components
 

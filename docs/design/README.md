@@ -41,8 +41,8 @@ changes, change it in both places, and only after a Z-raised decision for colors
 
 ## Rules that came out of contrast checks
 
-- Light `muted` (#8A8A8A) never carries body, label or caption text. It's for text ≥ 24px, placeholders, disabled
-  controls and decoration.
+- Light `muted` is `#6E6E6E` (Oct 8 decision, 4.77:1 on bg), so it may carry secondary text at any role. Primary
+  information stays ink.
 - Text on the accent uses the `cta` role (Fredoka 700, 20px) or larger.
 - Accent-colored text is ≥ 24px.
 - Interactive boundaries use ink borders. `line` is only for dividers.
@@ -61,8 +61,8 @@ From the `Components` page. Code follows these unless a sheet says otherwise.
 - Controls get an ink border; read-only boxes (fixed stake, empty state, final-at chip) get a `line` border.
 - The accent appears only on: the primary CTA, the winning option card, the winning split bar and mini split, the
   UNFLOCKED result line, the live stray-streak pill, and the smug sheep's glint.
-- Scrim: ink at 40% over the page in light. Dark has no token darker than `bg`, so the sheet uses `bg` at 80% (spec
-  issue in `docs/sessions/W2-C.md`).
+- Scrim: the `scrim` token (`--color-scrim`, light `#141414` at 40%; `--color-dark-scrim`, dark `#000000` at 60%),
+  flat, never a blur. In the JSON it's 8-digit hex (`#14141466`, `#00000099`).
 - Percentages follow the Decision log rounding: winner rounds down, loser rounds up, "<1%" and ">99%" at the ends.
   A split-bar fill never drops below 24px.
 
