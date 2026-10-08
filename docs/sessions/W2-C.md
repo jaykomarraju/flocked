@@ -23,7 +23,7 @@ to continue.") after W2-C.2 finished 2 of 9 component sheets. The owner upgrades
   "Component conventions" (hover, pressed, selected, disabled, focus) and "Paper MCP limits".
 
 ## Branch and head commit
-`w2-c-design` @ `(this commit)`. W2-C's last design commit was `45557e0`.
+`w2-c-design` @ `eb15580` (this head-commit fix follows). W2-C's last design commit was `45557e0`.
 
 ## Files touched
 - W2-C (new): `packages/shared/design-tokens.json`, `docs/design/screens.md`, `docs/design/README.md`,
