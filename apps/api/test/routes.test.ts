@@ -17,6 +17,10 @@ import { FIXTURE_IDS, fakeUser, withSession } from './helpers/index.js';
 
 const ORIGIN = 'https://flocked.test';
 
+/** Endpoints with real handlers; each owner tests its own (W3-B: test/round-do/route.test.ts). */
+const IMPLEMENTED = new Set(['POST /rounds/:id/entries']);
+const STUBBED = ENDPOINTS.filter((ep) => !IMPLEMENTED.has(`${ep.method} ${ep.path}`));
+
 /** Sample values for path parameters, by name. */
 const SAMPLE_PARAMS: Record<string, string> = {
   id: FIXTURE_IDS.round,
@@ -57,23 +61,20 @@ describe('route modules', () => {
   });
 });
 
-describe.each(ENDPOINTS.map((ep) => [`${ep.method} ${ep.path}`, ep] as const))(
-  '%s',
-  (_label, ep) => {
-    it('answers 501 not_implemented through the Worker', async () => {
-      const res = await exports.default.fetch(requestFor(ep));
-      expect(res.status).toBe(501);
-      const body = ErrorEnvelopeSchema.parse(await res.json());
-      expect(body.error.code).toBe('not_implemented');
-      expect(body.error.message).toContain(ep.path);
-    });
+describe.each(STUBBED.map((ep) => [`${ep.method} ${ep.path}`, ep] as const))('%s', (_label, ep) => {
+  it('answers 501 not_implemented through the Worker', async () => {
+    const res = await exports.default.fetch(requestFor(ep));
+    expect(res.status).toBe(501);
+    const body = ErrorEnvelopeSchema.parse(await res.json());
+    expect(body.error.code).toBe('not_implemented');
+    expect(body.error.message).toContain(ep.path);
+  });
 
-    it('answers 501 with a signed-in user too', async () => {
-      const res = await withSession(app, fakeUser({ role: 'admin' })).request(requestFor(ep));
-      expect(res.status).toBe(501);
-    });
-  },
-);
+  it('answers 501 with a signed-in user too', async () => {
+    const res = await withSession(app, fakeUser({ role: 'admin' })).request(requestFor(ep));
+    expect(res.status).toBe(501);
+  });
+});
 
 describe('unknown routes', () => {
   it.each([

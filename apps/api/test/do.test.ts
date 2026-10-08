@@ -3,9 +3,9 @@
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import { ANCHOR_SINGLETON, INDEXER_SINGLETON, settlementName } from '../src/do/index.js';
-import type { AnchorCommitItem, LockedRound, StakesEntryEvent } from '../src/do/types.js';
+import type { AnchorCommitItem, StakesEntryEvent } from '../src/do/types.js';
 import { isNotImplemented } from '../src/lib/errors.js';
-import { FIXTURE_CONFIG, FIXTURE_IDS, FIXTURE_ROUND } from './helpers/index.js';
+import { FIXTURE_IDS } from './helpers/index.js';
 
 const HASH = `0x${'12'.repeat(32)}` as const;
 
@@ -18,19 +18,6 @@ async function expectNotImplemented(call: Promise<unknown>, what: string): Promi
   expect((err as Error).message).toBe(`not_implemented: ${what}`);
   expect(isNotImplemented(err)).toBe(true);
 }
-
-const locked: LockedRound = {
-  roundId: FIXTURE_IDS.round,
-  kind: 'daily',
-  roomId: null,
-  questionId: FIXTURE_IDS.question,
-  opensAt: FIXTURE_ROUND.opensAt,
-  closesAt: FIXTURE_ROUND.closesAt,
-  beaconRound: 1,
-  beaconTimeSec: 1,
-  config: FIXTURE_CONFIG,
-  modes: ['free', 'stakes'],
-};
 
 const stakesEvent: StakesEntryEvent = {
   roundId: FIXTURE_IDS.round,
@@ -62,18 +49,9 @@ const commit: AnchorCommitItem = {
 describe('RoundDO (binding ROUND)', () => {
   const stub = () => env.ROUND.get(env.ROUND.idFromName(FIXTURE_IDS.round));
 
-  it('pins init, enterFree, getState, ingestStakesEntry, onModeResult, requestVoid', async () => {
+  // init, enterFree and getState are implemented (W3-B): test/round-do/.
+  it('pins ingestStakesEntry, onModeResult, requestVoid', async () => {
     const s = stub();
-    await expectNotImplemented(s.init(locked), 'RoundDO.init');
-    await expectNotImplemented(
-      s.enterFree({
-        roundId: FIXTURE_IDS.round,
-        userId: FIXTURE_IDS.user,
-        body: { stake: '10', ciphertext: 'AA' },
-      }),
-      'RoundDO.enterFree',
-    );
-    await expectNotImplemented(s.getState(), 'RoundDO.getState');
     await expectNotImplemented(s.ingestStakesEntry(stakesEvent), 'RoundDO.ingestStakesEntry');
     await expectNotImplemented(
       s.onModeResult('free', { outcome: 'refunded', reason: 1, provisional: false }),
