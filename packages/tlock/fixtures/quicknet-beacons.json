@@ -1,0 +1,59 @@
+{
+  "fetchedAt": "2026-10-07T22:57:22.360Z",
+  "info": {
+    "public_key": "83cf0f2896adee7eb8b5f01fcad3912212c437e0073e911fb90022d3e760183c8c4b450b6a0a6c3ac6a5776a2d1064510d1fec758c921cc22b0e17e63aaf4bcb5ed66304de9cf809bd274ca73bab4af5a6e9c76a4bc09e76eae8991ef5ece45a",
+    "period": 3,
+    "genesis_time": 1692803367,
+    "hash": "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971",
+    "groupHash": "f477d5c89f21a17c863a7f937c6a6d15859414d2be09cd448d4279af331c5d3e",
+    "schemeID": "bls-unchained-g1-rfc9380",
+    "metadata": {
+      "beaconID": "quicknet"
+    },
+    "source": "https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/info"
+  },
+  "beacons": [
+    {
+      "round": 1,
+      "randomness": "1466a6cd24e327188770752f6134001c64d6efcc590ccc26b721611ad96f165a",
+      "signature": "b55e7cb2d5c613ee0b2e28d6750aabbb78c39dcc96bd9d38c2c2e12198df95571de8e8e402a0cc48871c7089a2b3af4b",
+      "source": "https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/public/1"
+    },
+    {
+      "round": 9,
+      "randomness": "1da6d91e4ac29edafde45e9d46c003806725c092086df11d40716f1ed49f0d03",
+      "signature": "b498d4d9efd15add1c1932e340b9b87a494a7a660118e89f96892fc24e630b717777a6b7f06d5a20a9c56cbb6d2521e9",
+      "source": "https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/public/9"
+    },
+    {
+      "round": 10,
+      "randomness": "850f2d84fec6935508464a33f5389b3103087bc44599d782b83cbe2eaa8451e3",
+      "signature": "ac415e508c484053efed1c6c330e3ae0bf20185b66ed088864dac1ff7d6f927610824986390d3239dac4dd73e6f865f5",
+      "source": "https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/public/10"
+    },
+    {
+      "round": 1000000,
+      "randomness": "b22aad4794f7451896f7a371aa46106fd84d919f3f569acd5b2fddf1d1440af3",
+      "signature": "83ad29e4c409f9470fc2ef02f90214df49e02b441a1a241a82d622d9f608ef98fd8b11a029f1bee9d9e83b45088abe72",
+      "source": "https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/public/1000000"
+    },
+    {
+      "round": 12345678,
+      "randomness": "47175ae9652cb6704c2b509e5d2aa03b609e67039251ff1e162282136c515bf0",
+      "signature": "b0a199d51b7c29117d2155c4fc2322dbacd9d1e1f11da5b5c0e4e19947e4aaf634970e85eceef450681d27baa3a03f20",
+      "source": "https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/public/12345678"
+    },
+    {
+      "round": 32870000,
+      "randomness": "57a28a0bf90e259b02c83fb2b6075bdaf288d502704a7260c1226f7ceb555971",
+      "signature": "84367383186c224e66870840bd23cacfdfdf26bc762166eddb2216404e49814230f444ff4a1c6dcf8eaf420c5409e5cc",
+      "source": "https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/public/32870000"
+    },
+    {
+      "round": 32870075,
+      "randomness": "abd9f2b1afbdc20b19980b46162917e84b116bf9eef4c32023fb9c293d6fb9e9",
+      "signature": "85c653c4e0099d069e9f7f525d14239c5f2ffa496f02ad5daf4e4e240de575261d5248172ad543b351b236c838853d8e",
+      "source": "https://api.drand.sh/52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971/public/32870075"
+    }
+  ]
+}
