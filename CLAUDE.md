@@ -28,14 +28,15 @@ pnpm spec "Smart contract" --sub "Constants"
 | --------------------------------------- | ---------------------------------------------------------------------- |
 | `pnpm check`                            | lint, typecheck, test, contracts:test (keep green before every commit) |
 | `pnpm lint` / `typecheck` / `test`      | across every workspace package (and `scripts/`)                        |
-| `pnpm contracts:build`                  | `forge build --root contracts`                                         |
+| `pnpm contracts:build`                  | `forge build --root contracts` plus ABI codegen into `packages/abi`    |
 | `pnpm contracts:test`                   | `forge test --root contracts` (unit, fuzz, invariant, vectors)         |
 | `pnpm --filter @flocked/settle vectors` | regenerate settlement vectors (CI fails if they change)                |
+| `pnpm --filter @flocked/tlock vectors`  | regenerate target-round vectors (CI fails if they change)              |
 | `pnpm format` / `pnpm format:check`     | Prettier                                                               |
 | `pnpm spec "<heading>" [--sub "<l>"]`   | one section (or bold block) of `Product_Spec.md`                       |
 
 Fresh worktree: `pnpm install` and `(cd contracts && forge soldeer install)` before `pnpm check`. The CI
 Foundry profile is `FOUNDRY_PROFILE=ci forge test` (Foundry 1.7 has no `--profile` flag).
 
-Toolchain: Node 20.19, pnpm 10, TypeScript strict ESM, ESLint flat config, Prettier, Vitest; Foundry 1.7.1
+Toolchain: Node 22.23 (`nvm use`; `engine-strict` rejects older), pnpm 10, TypeScript strict ESM, ESLint flat config, Prettier, Vitest (Workers tests via `@cloudflare/vitest-plugin`); Foundry 1.7.1
 (Soldeer deps) for `contracts/`.

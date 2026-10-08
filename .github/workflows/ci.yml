@@ -28,7 +28,11 @@ jobs:
       - run: pnpm test
       - run: pnpm format:check
       - name: Settlement vectors are fresh
-        run: pnpm --filter @flocked/settle vectors && git diff --exit-code packages/settle/vectors
+        run: pnpm --filter @flocked/settle --fail-if-no-match vectors && git diff --exit-code packages/settle/vectors
+      - name: Target-round vectors are fresh
+        run: pnpm --filter @flocked/tlock --fail-if-no-match vectors && git diff --exit-code packages/tlock/vectors
+      - name: Design tokens match the P2.3 schema
+        run: pnpm --filter @flocked/shared --fail-if-no-match exec vitest run test/tokens.test.ts
 
   contracts:
     runs-on: ubuntu-latest
@@ -44,6 +48,11 @@ jobs:
       - run: forge soldeer install
       - run: forge fmt --check
       - run: forge build
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Generated ABIs are current
+        run: node ../packages/abi/scripts/gen.mjs --check
       # Foundry 1.7 has no `--profile` flag; the `ci` profile is selected through the environment.
       - run: forge test
         env:
@@ -60,6 +69,10 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @flocked/settle test -t property
+      # Run by path, not `-t property`: a renamed test then fails here instead of silently running nothing.
+      - run: pnpm --filter @flocked/settle --fail-if-no-match exec vitest run test/properties.test.ts
+        env:
+          FAST_CHECK_RUNS: '10000'
+      - run: pnpm --filter @flocked/tlock --fail-if-no-match exec vitest run --project node test/plaintext.test.ts
         env:
           FAST_CHECK_RUNS: '10000'
