@@ -5,7 +5,8 @@
 // the chain for ERC-1271 (deployed smart wallets) and ERC-6492 (not yet deployed Coinbase Smart
 // Wallets, through the universal validator in an eth_call).
 import type { SiweNonceResponse } from '@flocked/shared';
-import { getAddress, type Hex } from 'viem';
+import { getAddress, size, type Client, type Hex } from 'viem';
+import { getChainId } from 'viem/actions';
 import { parseSiweMessage, validateSiweMessage, verifySiweMessage } from 'viem/siwe';
 import { AUTH_SECRET_TTL_MS, authDOFor, nonceKvKey, type NonceRecord } from '../do/auth-do.js';
 import type { Env } from '../env.js';
@@ -83,6 +84,23 @@ export async function verifySiwe(
     });
     throw new HttpError('unavailable', 'Could not check the wallet signature; try again');
   }
-  if (!valid) throw invalid('Signature does not match the SIWE message');
+  if (!valid) {
+    // viem turns a failed eth_call into "invalid"; for a smart-wallet signature, tell an RPC
+    // outage apart from a bad signature.
+    if (size(input.signature as Hex) !== 65 && !(await rpcReachable(deps.rpc))) {
+      throw new HttpError('unavailable', 'Could not check the wallet signature; try again');
+    }
+    throw invalid('Signature does not match the SIWE message');
+  }
   return getAddress(parsed.address).toLowerCase() as Hex;
+}
+
+async function rpcReachable(rpc: Client): Promise<boolean> {
+  try {
+    await getChainId(rpc);
+    return true;
+  } catch (err) {
+    log.error('siwe_rpc_unreachable', { error: err instanceof Error ? err.message : String(err) });
+    return false;
+  }
 }

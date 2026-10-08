@@ -1,6 +1,9 @@
-// Fake users and session injection. W3-A's real session middleware sets `user` and `session`; tests
-// put the same values in place with `injectSession`, or wrap a sub-app with `withSession`.
+// Fake users and session injection. The real session middleware (src/auth/session.ts) sets `user`
+// and `session`; tests put the same values in place with `injectSession`, wrap a sub-app with
+// `withSession`, or create a real session row with `realSession` and send its cookie or token.
 import { Hono, type MiddlewareHandler } from 'hono';
+import { createSession, sessionCookieName } from '../../src/auth/session.js';
+import type { Env } from '../../src/env.js';
 import type { AppEnv, SessionInfo, SessionUser } from '../../src/lib/auth-context.js';
 import { notFound, onError } from '../../src/lib/errors.js';
 import { FIXTURE_IDS } from './db.js';
@@ -24,7 +27,7 @@ export function fakeSession(overrides: Partial<SessionInfo> = {}): SessionInfo {
   return { idHash: `0x${'ab'.repeat(32)}`, kind: 'cookie', ...overrides };
 }
 
-/** Test-only middleware standing in for W3-A's session middleware. */
+/** Test-only middleware standing in for the session middleware. */
 export function injectSession(
   user: SessionUser | undefined,
   session: SessionInfo | undefined = user ? fakeSession() : undefined,
@@ -51,4 +54,30 @@ export function withSession(
   app.use('*', injectSession(user, opts.session ?? (user ? fakeSession() : undefined)));
   app.route(opts.prefix ?? '/', sub);
   return app;
+}
+
+/** A real session: its row is in D1 and `headers` carry it the way a client would. */
+export interface RealSession {
+  token: string;
+  idHash: string;
+  expiresAt: number;
+  headers: Record<string, string>;
+}
+
+/**
+ * Inserts a real session for `userId` (through src/auth/session.ts) and returns request headers
+ * that carry it: a `Cookie` for `cookie`, an `Authorization: Bearer` header for `bearer`. Requests
+ * then go through the real session middleware (`app.request(path, { headers }, env)`).
+ */
+export async function realSession(
+  env: Env,
+  userId: string,
+  kind: SessionInfo['kind'] = 'cookie',
+): Promise<RealSession> {
+  const s = await createSession(env, userId, 'vitest');
+  const headers: Record<string, string> =
+    kind === 'cookie'
+      ? { Cookie: `${sessionCookieName(env)}=${s.token}` }
+      : { Authorization: `Bearer ${s.token}` };
+  return { ...s, headers };
 }

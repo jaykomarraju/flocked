@@ -10,6 +10,7 @@ import { DurableObject } from 'cloudflare:workers';
 import { timingSafeEqual } from '../auth/crypto.js';
 import type { Env } from '../env.js';
 import { now } from '../lib/clock.js';
+import { log } from '../lib/log.js';
 import type {
   AuthDORpc,
   ConsumeResult,
@@ -95,12 +96,13 @@ export class AuthDO extends DurableObject<Env> implements AuthDORpc {
       const attempts = used + 1;
       await this.ctx.storage.put(attemptsKey, attempts);
       if (!timingSafeEqual(attempt.codeHash, record.codeHash)) {
-        const attemptsLeft = EMAIL_CODE_MAX_ATTEMPTS - attempts;
-        if (attemptsLeft === 0) {
-          // Spent: no later attempt can succeed, so drop the code itself too.
-          await this.env.KV.delete(emailCodeKvKey(attempt.emailHash));
-        }
-        return { ok: false, reason: 'wrong_code', attemptsLeft };
+        // A spent code stays in KV until its TTL so later attempts keep answering
+        // `too_many_attempts`; the counter here is what refuses them.
+        return {
+          ok: false,
+          reason: 'wrong_code',
+          attemptsLeft: EMAIL_CODE_MAX_ATTEMPTS - attempts,
+        };
       }
       await this.ctx.storage.put(`used:${record.id}`, true);
       await this.env.KV.delete(emailCodeKvKey(attempt.emailHash));
@@ -108,10 +110,15 @@ export class AuthDO extends DurableObject<Env> implements AuthDORpc {
     });
   }
 
+  /**
+   * Binds a new OAuth state. A state is bound once: a second bind (only possible if two random
+   * states collided) keeps the first binding, so it can never be redirected to another user.
+   */
   bindOAuthState(binding: OAuthStateBinding): Promise<void> {
     return this.ctx.blockConcurrencyWhile(async () => {
       if ((await this.ctx.storage.get('oauth')) || (await this.ctx.storage.get('used'))) {
-        throw new Error('oauth state already bound');
+        log.warn('oauth_state_rebind_ignored', {});
+        return;
       }
       await this.ctx.storage.put('oauth', binding);
       await this.cleanupAt(binding.expiresAt);
