@@ -12,6 +12,8 @@ fs_permissions = [
   { access = "read", path = "./test/fixtures" },
   { access = "read", path = "../packages/settle/vectors" },
   { access = "read", path = "../packages/abi/test/fixtures" },
+  { access = "read", path = "../packages/tlock/vectors" },
+  { access = "read", path = "../packages/shared/test/fixtures" },
   { access = "read-write", path = "./deployments" },
 ]
 
