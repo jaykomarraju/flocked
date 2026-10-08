@@ -37,7 +37,7 @@ importers:
     devDependencies:
       viem:
         specifier: 2.57.3
-        version: 2.57.3(typescript@6.0.3)
+        version: 2.57.3(typescript@6.0.3)(zod@4.4.3)
 
   packages/settle:
     dependencies:
