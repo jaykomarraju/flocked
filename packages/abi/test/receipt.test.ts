@@ -1,10 +1,11 @@
 import { readFileSync } from 'node:fs';
-import { recoverTypedDataAddress } from 'viem';
+import { bytesToHex, encodeAbiParameters, keccak256, recoverTypedDataAddress } from 'viem';
 import { describe, expect, it } from 'vitest';
 import {
   FIXTURE_PATH,
   buildReceiptFixture,
   receiptTypes,
+  ulidToBytes,
   type ReceiptFixture,
 } from '../scripts/receipt-fixture.mjs';
 
@@ -38,5 +39,29 @@ describe('receipt fixture (consumed by contracts/test/AnchorReceipt.t.sol)', () 
       signature: f.signature,
     });
     expect(signer).toBe(f.signer);
+  });
+
+  it('hashes the user as bytes16 binary ULIDs, as @flocked/settle userIdHash does', () => {
+    const f = JSON.parse(readFileSync(FIXTURE_PATH, 'utf8')) as ReceiptFixture;
+    expect(f.receipt.roundId).toBe(bytesToHex(ulidToBytes(f.roundUlid)));
+    const expected = keccak256(
+      encodeAbiParameters(
+        [{ type: 'bytes16' }, { type: 'bytes16' }],
+        [f.receipt.roundId, bytesToHex(ulidToBytes(f.userId))],
+      ),
+    );
+    expect(f.receipt.userIdHash).toBe(expected);
+    // The pre-W3-B fixture hashed a "user_…" string with abi.encode(bytes16, string); never again.
+    const stringHash = keccak256(
+      encodeAbiParameters([{ type: 'bytes16' }, { type: 'string' }], [f.receipt.roundId, f.userId]),
+    );
+    expect(f.receipt.userIdHash).not.toBe(stringHash);
+  });
+
+  it('ulidToBytes rejects non-ULIDs and round-trips the fixture round ID', () => {
+    expect(() => ulidToBytes('user_01JAB2C3D4E5F6G7H8J9K0M1N2')).toThrow(RangeError);
+    expect(bytesToHex(ulidToBytes('01JBRW99XKFS0B5GEKWKTTDDY8'))).toBe(
+      '0x0192f1c4a7b37e40b2c1d3e4f5a6b7c8',
+    );
   });
 });
