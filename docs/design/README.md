@@ -53,14 +53,31 @@ From the `Components` page. Code follows these unless a sheet says otherwise.
 
 - Hover: the fill changes to `line`. Border and label stay.
 - Pressed: scale 0.97 (`motion.press`). Paper doesn't render transforms, so sheets draw it as a box 3% smaller.
-- Selected (option card, toggle segment): `ink` fill, `bg` label. The option card's radio also gets a check, so the
-  pick never relies on color alone.
+- Selected (option card, toggle segment, preset, nav item): `ink` fill, `bg` label. The option card's radio also
+  gets a check, so the pick never relies on color alone.
 - Disabled: `bg` fill, 2px dashed `muted` border, `muted` label, not focusable.
 - Focus: the foundation ring (2px ink outline, 3px offset), on focus-visible only.
+- Errors are ink, never a color: an error icon, a 600-weight message, and (on fields) a 3px border.
+- Controls get an ink border; read-only boxes (fixed stake, empty state, final-at chip) get a `line` border.
+- The accent appears only on: the primary CTA, the winning option card, the winning split bar and mini split, the
+  UNFLOCKED result line, the live stray-streak pill, and the smug sheep's glint.
+- Scrim: ink at 40% over the page in light. Dark has no token darker than `bg`, so the sheet uses `bg` at 80% (spec
+  issue in `docs/sessions/W2-C.md`).
+- Percentages follow the Decision log rounding: winner rounds down, loser rounds up, "<1%" and ">99%" at the ends.
+  A split-bar fill never drops below 24px.
 
-## Paper MCP limits
+## Paper MCP notes
 
-Without Paper Pro, MCP calls are capped per week. Once capped, writes, `export` and `find_nodes` fail. W2-C.2 hit
-the cap after about 55 calls (on top of W2-C's foundations work). Budget calls per sheet, and prefer one
-`write_html` per section over many small ones.
-
+- Without Paper Pro, MCP calls are capped per week. Once capped, writes, `export` and `find_nodes` fail. W2-C.2
+  hit the cap after about 55 calls; the owner upgraded to Pro and the session finished.
+- An 18-node `export` call wrote only 10 files and reported none; a second call with the other 8 worked. Export
+  in batches of 10 or fewer and count the files in `~/Downloads`.
+- `color-mix` works as `color-mix(var(--token) 40%, transparent)`. The `in srgb` form, and mixing two tokens, are
+  dropped.
+- `transform` is dropped. `create_artboard` ignores `left`/`top`; set them afterwards with `update_styles`.
+- Dark copies: `duplicate_nodes` the light artboard, then recolor from the returned id map in one `update_styles`.
+  Check with `find_nodes` for `--color-a*`, `--color-b*`, `--color-i*`, `--color-l*`, `--color-m*`, `--color-s*` on
+  the dark artboard (all must be empty). SVG stroke attributes don't show up in `find_nodes`, so recolor every SVG
+  path by id.
+- Reuse the mascot by duplicating `sheep/*` from the Foundations page into a frame, then setting its width and
+  height. In dark copies, recolor the leg path (and the shocked pose's shock lines) to `--color-dark-ink`.

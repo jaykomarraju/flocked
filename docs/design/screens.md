@@ -36,20 +36,20 @@ boundaries. Ratios are computed from the token hex values.
 
 ## Components
 
-Paper page `Components`. Freeze: OA-D1. Each sheet has a light and a dark artboard. `option-card` and `actions`
-are built in light and dark (W2-C.2) but not exported yet: the Paper MCP hit its weekly limit. The other seven
-sheets are planned and continue in W2-C.3.
+Paper page `Components`. Freeze: OA-D1. Each sheet has a light and a dark artboard (1120 wide); on the canvas,
+one row per sheet, light at x 0 and dark at x 1200. Dark artboards use `--color-dark-*` tokens only; the mascot art
+keeps its fixed outline and wool colors (Foundations rule), with legs and shock lines in dark ink.
 
 | Artboard | Spec heading | Route or component | States covered | Export | Freeze |
 | --- | --- | --- | --- | --- | --- |
-| `components/option-card/{light,dark}/desktop` | Client app (Today, Reveal) | option card | idle, hover, pressed, selected, focus, disabled, revealed-win, revealed-loss (with "Your pick" pill), rounding note | pending (`exports/components/option-card__{light,dark}__desktop.png`) | draft (built) |
-| `components/actions/{light,dark}/desktop` | Client app (Today) | primary CTA pill, secondary pill, mode toggle, tabs | CTA default, pressed, loading, disabled; secondary default, hover/pressed, disabled, small; toggle Free, Stakes, Stakes hidden (static label); tabs active, rest, hover | pending (`exports/components/actions__{light,dark}__desktop.png`) | draft (built) |
-| `components/stake-selector/{light,dark}/desktop` | Client app (Today) | stake selector | Free presets + slider; Stakes fixed stake | `exports/components/stake-selector__{light,dark}__desktop.png` | draft |
-| `components/round-status/{light,dark}/desktop` | Client app (Today, Sealed, Reveal) | countdown, entrant/pool counter, padlock sealed badge, split bars | bars equal, end states, win accent | `exports/components/round-status__{light,dark}__desktop.png` | draft |
-| `components/result-card/{light,dark}/desktop` | Client app (Reveal); Decision log (voice lines) | result card | unflocked, got flocked, refunded, provisional with "Final at" | `exports/components/result-card__{light,dark}__desktop.png` | draft |
-| `components/feedback/{light,dark}/desktop` | Client app | toast/error, empty state, skeleton, offline banner | per component | `exports/components/feedback__{light,dark}__desktop.png` | draft |
-| `components/lists/{light,dark}/desktop` | Client app (Leaderboards, Archive, Profile) | list row, leaderboard row, avatar | default, you, accent streak | `exports/components/lists__{light,dark}__desktop.png` | draft |
-| `components/forms-overlays/{light,dark}/desktop` | Client app (Submit, Settings, Onboarding) | form field, modal, bottom sheet | text, focus, error | `exports/components/forms-overlays__{light,dark}__desktop.png` | draft |
-| `components/navigation/{light,dark}/desktop` | Client app | nav bar (mobile), header (desktop) | active tab per destination | `exports/components/navigation__{light,dark}__desktop.png` | draft |
+| `components/option-card/{light,dark}/desktop` | Client app (Today, Reveal) | option card | idle, hover, pressed, selected, focus, disabled, revealed-win, revealed-loss (with "Your pick" pill), rounding note | `exports/components/option-card__{light,dark}__desktop.png` | review |
+| `components/actions/{light,dark}/desktop` | Client app (Today) | primary CTA pill, secondary pill, mode toggle, tabs | CTA default, pressed, loading, disabled; secondary default, hover/pressed, disabled, small; toggle Free, Stakes, Stakes hidden (static label); tabs active, rest, hover | `exports/components/actions__{light,dark}__desktop.png` | review |
+| `components/stake-selector/{light,dark}/desktop` | Client app (Today) | stake selector | Free: preset picked, slider between presets, low balance (presets above the balance disabled); Stakes: fixed, over the daily cap | `exports/components/stake-selector__{light,dark}__desktop.png` | review |
+| `components/round-status/{light,dark}/desktop` | Client app (Today, Sealed, Reveal) | countdown, entrant/pool counter, padlock sealed badge, sealed pick, split bars | countdown to close and to reveal; counter Free and Stakes; badge and locked pick; bars equal, settled with win accent, tie (refund), extreme (<1% / >99%) | `exports/components/round-status__{light,dark}__desktop.png` | review |
+| `components/result-card/{light,dark}/desktop` | Client app (Reveal); Decision log (voice lines) | result card | unflocked (winLine(38)), got flocked (lossLine(62)), refunded (tie), unflocked provisional with "Final at" (Stakes) | `exports/components/result-card__{light,dark}__desktop.png` | review |
+| `components/feedback/{light,dark}/desktop` | Client app | toast/error, empty state, skeleton, offline banner | toast with action, error with retry, error with a known cause (4xx), empty state (neutral sheep), skeleton of Today, offline banner under the mobile header | `exports/components/feedback__{light,dark}__desktop.png` | review |
+| `components/lists/{light,dark}/desktop` | Client app (Leaderboards, Archive, Profile) | list row, leaderboard row, avatar | archive rows (win, loss, refunded) with mini split; leaderboard default, live stray streak (accent pill), you; avatar 64/40/32/24 | `exports/components/lists__{light,dark}__desktop.png` | review |
+| `components/forms-overlays/{light,dark}/desktop` | Client app (Submit, Settings, Onboarding) | form field, modal, bottom sheet | field empty, focus, error; onboarding modal (card 1 of 3) on a scrim; bottom sheet (Stakes verification) | `exports/components/forms-overlays__{light,dark}__desktop.png` | review |
+| `components/navigation/{light,dark}/desktop` | Client app | nav bar (mobile), header (desktop and mobile) | nav bar active on each of Today, Archive, Boards, Rooms, You; desktop header signed in (Today) and signed out (Boards); mobile header | `exports/components/navigation__{light,dark}__desktop.png` | review |
 
 Mascot poses (on the component list in wave-2.md) live on the Foundations page, light and dark.
