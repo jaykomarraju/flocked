@@ -1,0 +1,774 @@
+{
+  "valid": {
+    "RoundsTodayResponseSchema": [
+      {
+        "round": {
+          "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+          "kind": "daily",
+          "roomId": null,
+          "gameDay": "2026-10-08",
+          "status": "open",
+          "question": {
+            "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CG",
+            "prompt": "Pineapple on pizza?",
+            "options": [
+              {
+                "label": "Pineapple",
+                "emoji": "🍍"
+              },
+              {
+                "label": "No pineapple",
+                "emoji": ""
+              }
+            ],
+            "category": "food",
+            "author": {
+              "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+              "handle": "woolly",
+              "displayName": "Woolly",
+              "avatarUrl": "https://img.example/u/woolly.png"
+            }
+          },
+          "opensAt": 1791421200,
+          "closesAt": 1791507600,
+          "beaconRound": 32901452,
+          "beaconTime": 1791507720,
+          "lockedAt": 1791400000000,
+          "config": {
+            "beaconDelay": 120,
+            "free": {
+              "stakeMin": "10",
+              "stakeMax": "100",
+              "presets": ["10", "25", "50", "100"],
+              "feeBps": 0,
+              "creatorBps": 0,
+              "capMultiple": 10,
+              "minEntrants": 1,
+              "creatorAwardBps": 100,
+              "awardRecipient": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+              "configHash": "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            },
+            "stakes": {
+              "chainRoundId": "17",
+              "opensAt": 1791421200,
+              "closesAt": 1791507600,
+              "beaconRound": 32901452,
+              "stake": "5000000",
+              "feeBps": 500,
+              "creatorBps": 100,
+              "capMultiple": 10,
+              "minEntrants": 20,
+              "creator": "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+              "questionHash": "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "authorHandle": "woolly",
+              "payoutAddress": "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"
+            },
+            "overrides": [
+              {
+                "field": "stakes.minEntrants",
+                "value": 20,
+                "auditId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CS"
+              }
+            ]
+          },
+          "modes": {
+            "free": {
+              "status": "pending",
+              "entrantCount": 153,
+              "pool": "8150",
+              "chainRoundId": null,
+              "revealedAt": null,
+              "claimsOpenAt": null,
+              "finalAt": null,
+              "refundReason": null,
+              "settlement": null
+            },
+            "stakes": {
+              "status": "pending",
+              "entrantCount": 37,
+              "pool": "185000000",
+              "chainRoundId": "17",
+              "revealedAt": null,
+              "claimsOpenAt": null,
+              "finalAt": null,
+              "refundReason": null,
+              "settlement": null
+            }
+          }
+        },
+        "previousRoundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CN"
+      },
+      {
+        "round": null,
+        "previousRoundId": null
+      }
+    ],
+    "RoundDetailResponseSchema": [
+      {
+        "round": {
+          "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+          "kind": "daily",
+          "roomId": null,
+          "gameDay": "2026-10-08",
+          "status": "closed",
+          "question": {
+            "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CG",
+            "prompt": "Pineapple on pizza?",
+            "options": [
+              {
+                "label": "Pineapple",
+                "emoji": "🍍"
+              },
+              {
+                "label": "No pineapple",
+                "emoji": ""
+              }
+            ],
+            "category": "food",
+            "author": {
+              "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+              "handle": "woolly",
+              "displayName": "Woolly",
+              "avatarUrl": "https://img.example/u/woolly.png"
+            }
+          },
+          "opensAt": 1791421200,
+          "closesAt": 1791507600,
+          "beaconRound": 32901452,
+          "beaconTime": 1791507720,
+          "lockedAt": 1791400000000,
+          "config": {
+            "beaconDelay": 120,
+            "free": {
+              "stakeMin": "10",
+              "stakeMax": "100",
+              "presets": ["10", "25", "50", "100"],
+              "feeBps": 0,
+              "creatorBps": 0,
+              "capMultiple": 10,
+              "minEntrants": 1,
+              "creatorAwardBps": 100,
+              "awardRecipient": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+              "configHash": "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            },
+            "stakes": {
+              "chainRoundId": "17",
+              "opensAt": 1791421200,
+              "closesAt": 1791507600,
+              "beaconRound": 32901452,
+              "stake": "5000000",
+              "feeBps": 500,
+              "creatorBps": 100,
+              "capMultiple": 10,
+              "minEntrants": 20,
+              "creator": "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+              "questionHash": "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "authorHandle": "woolly",
+              "payoutAddress": "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"
+            },
+            "overrides": [
+              {
+                "field": "stakes.minEntrants",
+                "value": 20,
+                "auditId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CS"
+              }
+            ]
+          },
+          "modes": {
+            "free": {
+              "status": "settled",
+              "entrantCount": 153,
+              "pool": "8150",
+              "chainRoundId": null,
+              "revealedAt": 1791507780000,
+              "claimsOpenAt": null,
+              "finalAt": 1791507780000,
+              "refundReason": null,
+              "settlement": {
+                "proposalSeq": 0,
+                "outcome": "settled",
+                "formulaVersion": 1,
+                "winningOption": 0,
+                "tally": [
+                  {
+                    "headcount": 41,
+                    "total": "2050"
+                  },
+                  {
+                    "headcount": 112,
+                    "total": "6100"
+                  }
+                ],
+                "lossPool": "6100",
+                "fee": "0",
+                "creatorFee": "0",
+                "distributable": "6100",
+                "rebatePool": "0",
+                "dust": "3",
+                "payoutRoot": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "bundleHash": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "txHash": null,
+                "settledAt": 1791507780000
+              }
+            },
+            "stakes": {
+              "status": "settle_proposed",
+              "entrantCount": 37,
+              "pool": "185000000",
+              "chainRoundId": "17",
+              "revealedAt": 1791507780000,
+              "claimsOpenAt": 1791514980000,
+              "finalAt": null,
+              "refundReason": null,
+              "settlement": {
+                "proposalSeq": 0,
+                "outcome": "settled",
+                "formulaVersion": 1,
+                "winningOption": 0,
+                "tally": [
+                  {
+                    "headcount": 41,
+                    "total": "2050"
+                  },
+                  {
+                    "headcount": 112,
+                    "total": "6100"
+                  }
+                ],
+                "lossPool": "6100000",
+                "fee": "305000",
+                "creatorFee": "61000",
+                "distributable": "5734000",
+                "rebatePool": "0",
+                "dust": "0",
+                "payoutRoot": "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                "bundleHash": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "txHash": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                "settledAt": 1791507780000
+              }
+            }
+          }
+        }
+      }
+    ],
+    "IdParamsSchema": [
+      {
+        "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD"
+      }
+    ],
+    "RoundsArchiveQuerySchema": [
+      {},
+      {
+        "before": "2026-10-08",
+        "limit": 20
+      }
+    ],
+    "RoundsArchiveResponseSchema": [
+      {
+        "rounds": [
+          {
+            "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CN",
+            "gameDay": "2026-10-07",
+            "question": {
+              "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CG",
+              "prompt": "Pineapple on pizza?",
+              "options": [
+                {
+                  "label": "Pineapple",
+                  "emoji": "🍍"
+                },
+                {
+                  "label": "No pineapple",
+                  "emoji": ""
+                }
+              ],
+              "category": "food",
+              "author": null
+            },
+            "modes": {
+              "free": {
+                "status": "settled",
+                "entrantCount": 153,
+                "pool": "8150",
+                "winningOption": 0,
+                "tally": [
+                  {
+                    "headcount": 41,
+                    "total": "2050"
+                  },
+                  {
+                    "headcount": 112,
+                    "total": "6100"
+                  }
+                ],
+                "refundReason": null
+              },
+              "stakes": {
+                "status": "refunded",
+                "entrantCount": 12,
+                "pool": "60000000",
+                "winningOption": null,
+                "tally": null,
+                "refundReason": 4
+              }
+            }
+          }
+        ],
+        "nextBefore": "2026-10-07"
+      }
+    ],
+    "RoundVerifyResponseSchema": [
+      {
+        "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+        "modes": {
+          "free": {
+            "bundleHash": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "manifestUrl": "/bundles/01K6Z8Y4N2R7VQ3M5T9W1XB0CD/free/manifest.json",
+            "chunkUrls": ["/bundles/01K6Z8Y4N2R7VQ3M5T9W1XB0CD/free/chunk-0.json"],
+            "lockTx": "0x0101010101010101010101010101010101010101010101010101010101010101",
+            "commitmentRoot": "0x0202020202020202020202020202020202020202020202020202020202020202",
+            "commitTx": "0x0303030303030303030303030303030303030303030303030303030303030303",
+            "anchorTx": "0x0404040404040404040404040404040404040404040404040404040404040404"
+          }
+        }
+      }
+    ]
+  },
+  "invalid": {
+    "RoundDetailResponseSchema": [
+      {
+        "why": "settlement before reveal (reveal gating)",
+        "value": {
+          "round": {
+            "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+            "kind": "daily",
+            "roomId": null,
+            "gameDay": "2026-10-08",
+            "status": "open",
+            "question": {
+              "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CG",
+              "prompt": "Pineapple on pizza?",
+              "options": [
+                {
+                  "label": "Pineapple",
+                  "emoji": "🍍"
+                },
+                {
+                  "label": "No pineapple",
+                  "emoji": ""
+                }
+              ],
+              "category": "food",
+              "author": {
+                "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+                "handle": "woolly",
+                "displayName": "Woolly",
+                "avatarUrl": "https://img.example/u/woolly.png"
+              }
+            },
+            "opensAt": 1791421200,
+            "closesAt": 1791507600,
+            "beaconRound": 32901452,
+            "beaconTime": 1791507720,
+            "lockedAt": 1791400000000,
+            "config": {
+              "beaconDelay": 120,
+              "free": {
+                "stakeMin": "10",
+                "stakeMax": "100",
+                "presets": ["10", "25", "50", "100"],
+                "feeBps": 0,
+                "creatorBps": 0,
+                "capMultiple": 10,
+                "minEntrants": 1,
+                "creatorAwardBps": 100,
+                "awardRecipient": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+                "configHash": "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+              },
+              "stakes": {
+                "chainRoundId": "17",
+                "opensAt": 1791421200,
+                "closesAt": 1791507600,
+                "beaconRound": 32901452,
+                "stake": "5000000",
+                "feeBps": 500,
+                "creatorBps": 100,
+                "capMultiple": 10,
+                "minEntrants": 20,
+                "creator": "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+                "questionHash": "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                "authorHandle": "woolly",
+                "payoutAddress": "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"
+              },
+              "overrides": [
+                {
+                  "field": "stakes.minEntrants",
+                  "value": 20,
+                  "auditId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CS"
+                }
+              ]
+            },
+            "modes": {
+              "free": {
+                "status": "settled",
+                "entrantCount": 153,
+                "pool": "8150",
+                "chainRoundId": null,
+                "revealedAt": null,
+                "claimsOpenAt": null,
+                "finalAt": 1791507780000,
+                "refundReason": null,
+                "settlement": {
+                  "proposalSeq": 0,
+                  "outcome": "settled",
+                  "formulaVersion": 1,
+                  "winningOption": 0,
+                  "tally": [
+                    {
+                      "headcount": 41,
+                      "total": "2050"
+                    },
+                    {
+                      "headcount": 112,
+                      "total": "6100"
+                    }
+                  ],
+                  "lossPool": "6100",
+                  "fee": "0",
+                  "creatorFee": "0",
+                  "distributable": "6100",
+                  "rebatePool": "0",
+                  "dust": "3",
+                  "payoutRoot": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "bundleHash": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                  "txHash": null,
+                  "settledAt": 1791507780000
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        "why": "closesAt in ms where seconds are required",
+        "value": {
+          "round": {
+            "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+            "kind": "daily",
+            "roomId": null,
+            "gameDay": "2026-10-08",
+            "status": "open",
+            "question": {
+              "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CG",
+              "prompt": "Pineapple on pizza?",
+              "options": [
+                {
+                  "label": "Pineapple",
+                  "emoji": "🍍"
+                },
+                {
+                  "label": "No pineapple",
+                  "emoji": ""
+                }
+              ],
+              "category": "food",
+              "author": {
+                "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+                "handle": "woolly",
+                "displayName": "Woolly",
+                "avatarUrl": "https://img.example/u/woolly.png"
+              }
+            },
+            "opensAt": 1791421200,
+            "closesAt": 1791507600000,
+            "beaconRound": 32901452,
+            "beaconTime": 1791507720,
+            "lockedAt": 1791400000000,
+            "config": {
+              "beaconDelay": 120,
+              "free": {
+                "stakeMin": "10",
+                "stakeMax": "100",
+                "presets": ["10", "25", "50", "100"],
+                "feeBps": 0,
+                "creatorBps": 0,
+                "capMultiple": 10,
+                "minEntrants": 1,
+                "creatorAwardBps": 100,
+                "awardRecipient": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+                "configHash": "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+              },
+              "stakes": {
+                "chainRoundId": "17",
+                "opensAt": 1791421200,
+                "closesAt": 1791507600,
+                "beaconRound": 32901452,
+                "stake": "5000000",
+                "feeBps": 500,
+                "creatorBps": 100,
+                "capMultiple": 10,
+                "minEntrants": 20,
+                "creator": "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+                "questionHash": "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                "authorHandle": "woolly",
+                "payoutAddress": "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"
+              },
+              "overrides": [
+                {
+                  "field": "stakes.minEntrants",
+                  "value": 20,
+                  "auditId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CS"
+                }
+              ]
+            },
+            "modes": {
+              "free": {
+                "status": "pending",
+                "entrantCount": 153,
+                "pool": "8150",
+                "chainRoundId": null,
+                "revealedAt": null,
+                "claimsOpenAt": null,
+                "finalAt": null,
+                "refundReason": null,
+                "settlement": null
+              },
+              "stakes": {
+                "status": "pending",
+                "entrantCount": 37,
+                "pool": "185000000",
+                "chainRoundId": "17",
+                "revealedAt": null,
+                "claimsOpenAt": null,
+                "finalAt": null,
+                "refundReason": null,
+                "settlement": null
+              }
+            }
+          }
+        }
+      },
+      {
+        "why": "pool as a number",
+        "value": {
+          "round": {
+            "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+            "kind": "daily",
+            "roomId": null,
+            "gameDay": "2026-10-08",
+            "status": "open",
+            "question": {
+              "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CG",
+              "prompt": "Pineapple on pizza?",
+              "options": [
+                {
+                  "label": "Pineapple",
+                  "emoji": "🍍"
+                },
+                {
+                  "label": "No pineapple",
+                  "emoji": ""
+                }
+              ],
+              "category": "food",
+              "author": {
+                "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+                "handle": "woolly",
+                "displayName": "Woolly",
+                "avatarUrl": "https://img.example/u/woolly.png"
+              }
+            },
+            "opensAt": 1791421200,
+            "closesAt": 1791507600,
+            "beaconRound": 32901452,
+            "beaconTime": 1791507720,
+            "lockedAt": 1791400000000,
+            "config": {
+              "beaconDelay": 120,
+              "free": {
+                "stakeMin": "10",
+                "stakeMax": "100",
+                "presets": ["10", "25", "50", "100"],
+                "feeBps": 0,
+                "creatorBps": 0,
+                "capMultiple": 10,
+                "minEntrants": 1,
+                "creatorAwardBps": 100,
+                "awardRecipient": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+                "configHash": "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+              },
+              "stakes": {
+                "chainRoundId": "17",
+                "opensAt": 1791421200,
+                "closesAt": 1791507600,
+                "beaconRound": 32901452,
+                "stake": "5000000",
+                "feeBps": 500,
+                "creatorBps": 100,
+                "capMultiple": 10,
+                "minEntrants": 20,
+                "creator": "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+                "questionHash": "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                "authorHandle": "woolly",
+                "payoutAddress": "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"
+              },
+              "overrides": [
+                {
+                  "field": "stakes.minEntrants",
+                  "value": 20,
+                  "auditId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CS"
+                }
+              ]
+            },
+            "modes": {
+              "stakes": {
+                "status": "pending",
+                "entrantCount": 37,
+                "pool": 185000000,
+                "chainRoundId": "17",
+                "revealedAt": null,
+                "claimsOpenAt": null,
+                "finalAt": null,
+                "refundReason": null,
+                "settlement": null
+              }
+            }
+          }
+        }
+      },
+      {
+        "why": "lowercase ULID",
+        "value": {
+          "round": {
+            "id": "01k6z8y4n2r7vq3m5t9w1xb0cd",
+            "kind": "daily",
+            "roomId": null,
+            "gameDay": "2026-10-08",
+            "status": "open",
+            "question": {
+              "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CG",
+              "prompt": "Pineapple on pizza?",
+              "options": [
+                {
+                  "label": "Pineapple",
+                  "emoji": "🍍"
+                },
+                {
+                  "label": "No pineapple",
+                  "emoji": ""
+                }
+              ],
+              "category": "food",
+              "author": {
+                "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+                "handle": "woolly",
+                "displayName": "Woolly",
+                "avatarUrl": "https://img.example/u/woolly.png"
+              }
+            },
+            "opensAt": 1791421200,
+            "closesAt": 1791507600,
+            "beaconRound": 32901452,
+            "beaconTime": 1791507720,
+            "lockedAt": 1791400000000,
+            "config": {
+              "beaconDelay": 120,
+              "free": {
+                "stakeMin": "10",
+                "stakeMax": "100",
+                "presets": ["10", "25", "50", "100"],
+                "feeBps": 0,
+                "creatorBps": 0,
+                "capMultiple": 10,
+                "minEntrants": 1,
+                "creatorAwardBps": 100,
+                "awardRecipient": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+                "configHash": "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+              },
+              "stakes": {
+                "chainRoundId": "17",
+                "opensAt": 1791421200,
+                "closesAt": 1791507600,
+                "beaconRound": 32901452,
+                "stake": "5000000",
+                "feeBps": 500,
+                "creatorBps": 100,
+                "capMultiple": 10,
+                "minEntrants": 20,
+                "creator": "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+                "questionHash": "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                "authorHandle": "woolly",
+                "payoutAddress": "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"
+              },
+              "overrides": [
+                {
+                  "field": "stakes.minEntrants",
+                  "value": 20,
+                  "auditId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CS"
+                }
+              ]
+            },
+            "modes": {
+              "free": {
+                "status": "pending",
+                "entrantCount": 153,
+                "pool": "8150",
+                "chainRoundId": null,
+                "revealedAt": null,
+                "claimsOpenAt": null,
+                "finalAt": null,
+                "refundReason": null,
+                "settlement": null
+              },
+              "stakes": {
+                "status": "pending",
+                "entrantCount": 37,
+                "pool": "185000000",
+                "chainRoundId": "17",
+                "revealedAt": null,
+                "claimsOpenAt": null,
+                "finalAt": null,
+                "refundReason": null,
+                "settlement": null
+              }
+            }
+          }
+        }
+      }
+    ],
+    "IdParamsSchema": [
+      {
+        "why": "ULID with I",
+        "value": {
+          "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CI"
+        }
+      },
+      {
+        "why": "ULID first char above 7",
+        "value": {
+          "id": "81K6Z8Y4N2R7VQ3M5T9W1XB0CD"
+        }
+      },
+      {
+        "why": "25 chars",
+        "value": {
+          "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0C"
+        }
+      }
+    ],
+    "RoundsArchiveQuerySchema": [
+      {
+        "why": "not a calendar date",
+        "value": {
+          "before": "2026-02-30"
+        }
+      },
+      {
+        "why": "limit too large",
+        "value": {
+          "limit": 1000
+        }
+      }
+    ]
+  }
+}

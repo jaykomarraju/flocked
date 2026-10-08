@@ -27,15 +27,42 @@ export const VOICE = {
   sealed: 'Your pick is sealed. Nobody can see it. Not even us.',
   emptyState: 'No question yet. The sheep are deliberating.',
   error: 'Something broke. The flock is looking into it.',
+  refundedTie: 'A dead heat. Nobody strayed, so everyone gets their stake back.',
+  offline: "You're offline. Nothing can be sealed until you're back.",
+  entryClosed: "This round just closed. Your pick wasn't sent.",
+  dailyCap: "You've hit today's cap. The flock will still be here tomorrow.",
 } as const;
 export type VoiceLine = keyof typeof VOICE;
 
-/** Win line for a given share of players (whole percent) on the player's side. */
-export function winLine(percent: number): string {
-  return `Unflocked. You and ${percent}% of people out-thought everyone.`;
+/** Which side of the result a share describes. */
+export type ShareSide = 'win' | 'loss';
+
+/**
+ * A side's share of the valid entries as whole-percent text (Decision log, Oct 7, 2026): the winning
+ * share rounds down and the losing share rounds up, so a winner never reads 50%. A share strictly
+ * between 0% and 1% reads "<1%", and one strictly between 99% and 100% reads ">99%".
+ */
+export function formatShare(count: number, total: number, side: ShareSide): string {
+  if (!Number.isSafeInteger(count) || !Number.isSafeInteger(total) || total <= 0) {
+    throw new RangeError('count and total must be integers with total > 0');
+  }
+  if (count < 0 || count > total) throw new RangeError('count must be between 0 and total');
+  if (count === 0) return '0%';
+  if (count === total) return '100%';
+  // Integer math: count * 100 stays exact well past any real entry count.
+  const scaled = count * 100;
+  if (scaled < total) return '<1%';
+  if (scaled > 99 * total) return '>99%';
+  const floor = Math.floor(scaled / total);
+  return `${side === 'win' || scaled % total === 0 ? floor : floor + 1}%`;
 }
 
-/** Loss line for a given share of players (whole percent) on the player's side. */
-export function lossLine(percent: number): string {
-  return `You got flocked. ${percent}% thought the same thing you did.`;
+/** Win line: the player's side had `count` of `total` valid entries. */
+export function winLine(count: number, total: number): string {
+  return `Unflocked. You and ${formatShare(count, total, 'win')} of people out-thought everyone.`;
+}
+
+/** Loss line: the player's side had `count` of `total` valid entries. */
+export function lossLine(count: number, total: number): string {
+  return `You got flocked. ${formatShare(count, total, 'loss')} thought the same thing you did.`;
 }

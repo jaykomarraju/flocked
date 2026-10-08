@@ -17,8 +17,8 @@ contract EscrowHandler is Test {
     FlockedEscrow public immutable escrow;
     MockUSDC public immutable usdc;
     uint256 internal immutable signerPk;
+    address internal immutable admin;
     address internal immutable operator;
-    address internal immutable guardian;
     address internal immutable pauser;
     address internal immutable treasury;
 
@@ -27,6 +27,11 @@ contract EscrowHandler is Test {
 
     address[] public actors;
     address[] public creators;
+    address[] public guardianCandidates;
+
+    /// @notice Who the handler expects to hold GUARDIAN_ROLE.
+    address public expectedGuardian;
+    address internal pendingReplacement;
 
     // Per-round ghost state.
     mapping(uint256 => address[]) internal _entrants;
@@ -45,16 +50,16 @@ contract EscrowHandler is Test {
         FlockedEscrow escrow_,
         MockUSDC usdc_,
         uint256 signerPk_,
+        address admin_,
         address operator_,
-        address guardian_,
         address pauser_,
         address treasury_
     ) {
         escrow = escrow_;
         usdc = usdc_;
         signerPk = signerPk_;
+        admin = admin_;
         operator = operator_;
-        guardian = guardian_;
         pauser = pauser_;
         treasury = treasury_;
         for (uint256 i; i < N_ACTORS; i++) {
@@ -63,6 +68,12 @@ contract EscrowHandler is Test {
         creators.push(makeAddr("creatorA"));
         creators.push(makeAddr("creatorB"));
         creators.push(treasury_);
+        expectedGuardian = escrow_.guardian();
+        guardianCandidates.push(expectedGuardian);
+        for (uint256 i; i < 3; i++) {
+            guardianCandidates.push(makeAddr(string.concat("guardian", vm.toString(i))));
+        }
+        guardianCandidates.push(operator_); // an address that already holds another role
     }
 
     modifier record(bytes32 name) {
@@ -152,7 +163,7 @@ contract EscrowHandler is Test {
         if (!ok) return;
         IFlockedEscrow.Round memory rd = escrow.getRound(id);
         if (!_proposed(rd.status) || block.timestamp >= rd.claimsOpenAt) return;
-        vm.prank(guardian);
+        vm.prank(escrow.guardian());
         escrow.veto(id, keccak256("evidence"));
     }
 
@@ -257,7 +268,7 @@ contract EscrowHandler is Test {
         if (!ok || (roundSeed >> 128) % 4 != 0) return;
         IFlockedEscrow.Round memory rd = escrow.getRound(id);
         if (rd.status != IFlockedEscrow.Status.Open || block.timestamp >= rd.cfg.closesAt) return;
-        vm.prank(byGuardian ? guardian : operator);
+        vm.prank(byGuardian ? escrow.guardian() : operator);
         escrow.voidRound(id);
     }
 
@@ -296,11 +307,64 @@ contract EscrowHandler is Test {
         assertEq(usdc.balanceOf(a) - before, owed, "withdraw amount");
     }
 
+    /// @dev Pause is the pauser's; unpause is the admin's only (the pauser's attempt must revert).
     function togglePause() external record("togglePause") {
-        bool paused = escrow.paused();
-        vm.prank(pauser);
-        if (paused) escrow.unpause();
-        else escrow.pause();
+        if (escrow.paused()) {
+            vm.prank(pauser);
+            vm.expectRevert();
+            escrow.unpause();
+            vm.prank(admin);
+            escrow.unpause();
+        } else {
+            vm.prank(pauser);
+            escrow.pause();
+        }
+    }
+
+    // ---------------------------------------------------------------- guardian (single holder)
+
+    /// @dev The guardian hands the role to a candidate (possibly itself, or the operator).
+    function transferGuardian(uint256 who) external record("transferGuardian") {
+        address next = guardianCandidates[who % guardianCandidates.length];
+        vm.prank(escrow.guardian());
+        escrow.transferGuardian(next);
+        expectedGuardian = next;
+    }
+
+    /// @dev Every direct grant, revoke or renounce of GUARDIAN_ROLE reverts, whoever calls it.
+    function tryGuardianRoleChange(uint256 who, uint8 op) external record("tryGuardianRoleChange") {
+        bytes32 role = escrow.GUARDIAN_ROLE();
+        address current = escrow.guardian();
+        address target = guardianCandidates[who % guardianCandidates.length];
+        // Grant to anyone, revoke the holder, or renounce as the holder; each by the guardian, the admin or the target.
+        address caller = [current, admin, target][(who >> 128) % 3];
+        vm.startPrank(caller);
+        vm.expectRevert(IFlockedEscrow.SingleGuardian.selector);
+        if (op % 3 == 0) escrow.grantRole(role, target);
+        else if (op % 3 == 1) escrow.revokeRole(role, current);
+        else escrow.renounceRole(role, caller);
+        vm.stopPrank();
+    }
+
+    /// @dev Schedules a 7-day replacement, or executes the pending one. It warps to it only one time in eight, since a
+    ///      7-day jump times out every open round and would starve the settlement paths the other invariants need.
+    function replaceGuardian(uint256 who) external record("replaceGuardian") {
+        if (pendingReplacement == address(0)) {
+            pendingReplacement = guardianCandidates[who % guardianCandidates.length];
+            vm.prank(admin);
+            escrow.scheduleGuardianReplacement(pendingReplacement);
+            return;
+        }
+        bytes32 id = escrow.operationId(escrow.ACTION_GUARDIAN(), abi.encode(pendingReplacement));
+        uint256 readyAt = escrow.timelockReadyAt(id);
+        if (block.timestamp < readyAt) {
+            if ((who >> 128) % 8 != 0) return;
+            vm.warp(readyAt);
+        }
+        vm.prank(admin);
+        escrow.executeGuardianReplacement(pendingReplacement);
+        expectedGuardian = pendingReplacement;
+        pendingReplacement = address(0);
     }
 
     function donate(uint256 amount) external record("donate") {

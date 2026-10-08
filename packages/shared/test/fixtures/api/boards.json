@@ -1,0 +1,186 @@
+{
+  "valid": {
+    "LeaderboardParamsSchema": [
+      {
+        "board": "strays"
+      }
+    ],
+    "LeaderboardQuerySchema": [
+      {},
+      {
+        "mode": "free",
+        "period": "2026-10-08"
+      },
+      {
+        "mode": "stakes",
+        "period": "2026-W41"
+      }
+    ],
+    "LeaderboardResponseSchema": [
+      {
+        "board": "weekly",
+        "mode": "free",
+        "period": "2026-W41",
+        "rows": [
+          {
+            "rank": 1,
+            "user": {
+              "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+              "handle": "woolly",
+              "displayName": "Woolly",
+              "avatarUrl": "https://img.example/u/woolly.png"
+            },
+            "wins": 5,
+            "net": "-40"
+          },
+          {
+            "rank": 2,
+            "user": {
+              "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CF",
+              "handle": "baa-baa",
+              "displayName": null,
+              "avatarUrl": null
+            },
+            "wins": 4,
+            "net": "310"
+          }
+        ],
+        "me": null
+      },
+      {
+        "board": "creators",
+        "mode": "free",
+        "period": null,
+        "rows": [
+          {
+            "rank": 1,
+            "user": {
+              "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+              "handle": "woolly",
+              "displayName": "Woolly",
+              "avatarUrl": "https://img.example/u/woolly.png"
+            },
+            "splitQuality": 0.93,
+            "usedQuestions": 3
+          }
+        ],
+        "me": {
+          "rank": 1,
+          "user": {
+            "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+            "handle": "woolly",
+            "displayName": "Woolly",
+            "avatarUrl": "https://img.example/u/woolly.png"
+          },
+          "splitQuality": 0.93,
+          "usedQuestions": 3
+        }
+      },
+      {
+        "board": "strays",
+        "mode": "stakes",
+        "period": "2026-10-08",
+        "rows": [
+          {
+            "rank": 1,
+            "user": {
+              "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+              "handle": "woolly",
+              "displayName": "Woolly",
+              "avatarUrl": "https://img.example/u/woolly.png"
+            },
+            "strayStreak": 4,
+            "bestStrayStreak": 6,
+            "enteredAt": 1791468191250
+          }
+        ],
+        "me": null
+      }
+    ],
+    "UserProfileParamsSchema": [
+      {
+        "handle": "woolly"
+      }
+    ],
+    "UserProfileResponseSchema": [
+      {
+        "user": {
+          "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+          "handle": "woolly",
+          "displayName": "Woolly",
+          "avatarUrl": "https://img.example/u/woolly.png",
+          "createdAt": 1791468191250
+        },
+        "stats": [
+          {
+            "mode": "free",
+            "roundsPlayed": 30,
+            "wins": 12,
+            "losses": 17,
+            "refunds": 1,
+            "strayStreak": 2,
+            "bestStrayStreak": 5,
+            "playStreak": 9,
+            "net": "-120"
+          },
+          {
+            "mode": "stakes",
+            "roundsPlayed": 4,
+            "wins": 1,
+            "losses": 3,
+            "refunds": 0,
+            "strayStreak": 0,
+            "bestStrayStreak": 1,
+            "playStreak": 2,
+            "net": null
+          }
+        ],
+        "questions": [
+          {
+            "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CG",
+            "prompt": "Pineapple on pizza?",
+            "options": [
+              {
+                "label": "Pineapple",
+                "emoji": "🍍"
+              },
+              {
+                "label": "No pineapple",
+                "emoji": ""
+              }
+            ],
+            "status": "used",
+            "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CN",
+            "splitQuality": 0.71
+          }
+        ],
+        "recent": [
+          {
+            "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CN",
+            "gameDay": "2026-10-07",
+            "mode": "free",
+            "result": "loss"
+          }
+        ]
+      }
+    ]
+  },
+  "invalid": {
+    "LeaderboardParamsSchema": [
+      {
+        "why": "unknown board",
+        "value": {
+          "board": "richest"
+        }
+      }
+    ],
+    "LeaderboardQuerySchema": [
+      {
+        "why": "bad period",
+        "value": {
+          "period": "2026-41"
+        }
+      }
+    ]
+  }
+}

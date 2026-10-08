@@ -1,0 +1,283 @@
+{
+  "valid": {
+    "CreateEntryRequestSchema": [
+      {
+        "stake": "50",
+        "ciphertext": "YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0-IHRsb2NrIDMyOTAxNDUyIDUyZGI5YmE3MGUwY2MwZjZlYWY3ODAzZGQwNzQ0N2ExZjU0Nzc3MzVmZDNmNjYxNzkyYmE5NDYwMGM4NGU5NzEK"
+      },
+      {
+        "stake": "100",
+        "ciphertext": "YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0-IHRsb2NrIDMyOTAxNDUyIDUyZGI5YmE3MGUwY2MwZjZlYWY3ODAzZGQwNzQ0N2ExZjU0Nzc3MzVmZDNmNjYxNzkyYmE5NDYwMGM4NGU5NzEK",
+        "turnstileToken": "tok"
+      }
+    ],
+    "CreateEntryResponseSchema": [
+      {
+        "entry": {
+          "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CH",
+          "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+          "mode": "free",
+          "stake": "50",
+          "commitment": "0x3434343434343434343434343434343434343434343434343434343434343434",
+          "createdAt": 1791468191250
+        },
+        "receipt": {
+          "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+          "mode": "free",
+          "userIdHash": "0x1212121212121212121212121212121212121212121212121212121212121212",
+          "stake": "50",
+          "commitment": "0x3434343434343434343434343434343434343434343434343434343434343434",
+          "seq": 152,
+          "closesAt": 1791507600,
+          "beaconRound": 32901452,
+          "signature": "0x1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b",
+          "signer": "0x1111111111111111111111111111111111111111",
+          "chainId": 84532,
+          "verifyingContract": "0x3333333333333333333333333333333333333333"
+        }
+      }
+    ],
+    "StakesPrepareRequestSchema": [
+      {
+        "wallet": "0x1111111111111111111111111111111111111111"
+      }
+    ],
+    "StakesPrepareResponseSchema": [
+      {
+        "ticket": {
+          "roundId": "17",
+          "wallet": "0x1111111111111111111111111111111111111111",
+          "personTag": "0x5656565656565656565656565656565656565656565656565656565656565656",
+          "expiry": 1791468491
+        },
+        "signature": "0x1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b",
+        "chainId": 84532,
+        "verifyingContract": "0x2222222222222222222222222222222222222222",
+        "stake": "5000000",
+        "beaconRound": 32901452
+      }
+    ],
+    "RoundMeResponseSchema": [
+      {
+        "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+        "modes": {
+          "free": {
+            "modeStatus": "settled",
+            "entry": {
+              "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CH",
+              "stake": "50",
+              "commitment": "0x3434343434343434343434343434343434343434343434343434343434343434",
+              "createdAt": 1791468191250,
+              "wallet": null,
+              "txHash": null,
+              "blockNumber": null,
+              "logIndex": null,
+              "optionIndex": 0,
+              "valid": true,
+              "voidReason": null
+            },
+            "receipt": {
+              "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+              "mode": "free",
+              "userIdHash": "0x1212121212121212121212121212121212121212121212121212121212121212",
+              "stake": "50",
+              "commitment": "0x3434343434343434343434343434343434343434343434343434343434343434",
+              "seq": 152,
+              "closesAt": 1791507600,
+              "beaconRound": 32901452,
+              "signature": "0x1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b",
+              "signer": "0x1111111111111111111111111111111111111111",
+              "chainId": 84532,
+              "verifyingContract": "0x3333333333333333333333333333333333333333"
+            },
+            "inclusionProof": [
+              "0x7777777777777777777777777777777777777777777777777777777777777777",
+              "0x8888888888888888888888888888888888888888888888888888888888888888"
+            ],
+            "result": "win",
+            "payouts": [
+              {
+                "kind": "win",
+                "amount": "137",
+                "wallet": null,
+                "proof": null,
+                "claimedAt": 1791507780000,
+                "claimTx": null
+              }
+            ],
+            "claimsOpenAt": null
+          },
+          "stakes": {
+            "modeStatus": "pending",
+            "entry": {
+              "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CT",
+              "stake": "5000000",
+              "commitment": "0x9999999999999999999999999999999999999999999999999999999999999999",
+              "createdAt": 1791468191250,
+              "wallet": "0x1111111111111111111111111111111111111111",
+              "txHash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "blockNumber": 18000000,
+              "logIndex": 3,
+              "optionIndex": null,
+              "valid": null,
+              "voidReason": null
+            },
+            "receipt": null,
+            "inclusionProof": null,
+            "result": null,
+            "payouts": [],
+            "claimsOpenAt": null
+          }
+        },
+        "cards": [
+          {
+            "kind": "teaser",
+            "mode": "free",
+            "shareId": "tz8Kq2Lm9X"
+          },
+          {
+            "kind": "result",
+            "mode": "free",
+            "shareId": "rs4Np7Vb2C"
+          }
+        ]
+      }
+    ],
+    "PaymasterRequestSchema": [
+      {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "pm_getPaymasterStubData",
+        "params": [
+          {
+            "sender": "0xAbCdEfabcdefabcdefabcdefabcdefabcdefabcd",
+            "nonce": "0x0",
+            "callData": "0xdeadbeef"
+          },
+          "0x0000000071727De22E5E9d8BAf0edAc6f37da032",
+          "0x14a34",
+          null
+        ]
+      }
+    ],
+    "PaymasterResponseSchema": [
+      {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+          "paymaster": "0x4444444444444444444444444444444444444444",
+          "paymasterData": "0x",
+          "paymasterVerificationGasLimit": "0x1d4c0",
+          "paymasterPostOpGasLimit": "0x0",
+          "sponsor": {
+            "name": "Flocked"
+          },
+          "isFinal": false
+        }
+      },
+      {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "error": {
+          "code": -32602,
+          "message": "call not sponsored"
+        }
+      }
+    ]
+  },
+  "invalid": {
+    "CreateEntryRequestSchema": [
+      {
+        "why": "stake as a number",
+        "value": {
+          "stake": 50,
+          "ciphertext": "YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0-IHRsb2NrIDMyOTAxNDUyIDUyZGI5YmE3MGUwY2MwZjZlYWY3ODAzZGQwNzQ0N2ExZjU0Nzc3MzVmZDNmNjYxNzkyYmE5NDYwMGM4NGU5NzEK"
+        }
+      },
+      {
+        "why": "stake with leading zero",
+        "value": {
+          "stake": "050",
+          "ciphertext": "YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0-IHRsb2NrIDMyOTAxNDUyIDUyZGI5YmE3MGUwY2MwZjZlYWY3ODAzZGQwNzQ0N2ExZjU0Nzc3MzVmZDNmNjYxNzkyYmE5NDYwMGM4NGU5NzEK"
+        }
+      },
+      {
+        "why": "padded base64",
+        "value": {
+          "stake": "50",
+          "ciphertext": "YWJj=="
+        }
+      },
+      {
+        "why": "standard base64 alphabet",
+        "value": {
+          "stake": "50",
+          "ciphertext": "ab+/"
+        }
+      },
+      {
+        "why": "mode field is not accepted (Stakes entries are onchain)",
+        "value": {
+          "stake": "50",
+          "ciphertext": "YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0-IHRsb2NrIDMyOTAxNDUyIDUyZGI5YmE3MGUwY2MwZjZlYWY3ODAzZGQwNzQ0N2ExZjU0Nzc3MzVmZDNmNjYxNzkyYmE5NDYwMGM4NGU5NzEK",
+          "mode": "stakes"
+        }
+      }
+    ],
+    "CreateEntryResponseSchema": [
+      {
+        "why": "receipt closesAt in ms",
+        "value": {
+          "entry": {
+            "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CH",
+            "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+            "mode": "free",
+            "stake": "50",
+            "commitment": "0x3434343434343434343434343434343434343434343434343434343434343434",
+            "createdAt": 1791468191250
+          },
+          "receipt": {
+            "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+            "mode": "free",
+            "userIdHash": "0x1212121212121212121212121212121212121212121212121212121212121212",
+            "stake": "50",
+            "commitment": "0x3434343434343434343434343434343434343434343434343434343434343434",
+            "seq": 152,
+            "closesAt": 1791507600000,
+            "beaconRound": 32901452,
+            "signature": "0x1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b",
+            "signer": "0x1111111111111111111111111111111111111111",
+            "chainId": 84532,
+            "verifyingContract": "0x3333333333333333333333333333333333333333"
+          }
+        }
+      }
+    ],
+    "StakesPrepareRequestSchema": [
+      {
+        "why": "checksummed address",
+        "value": {
+          "wallet": "0xAbCdEfabcdefabcdefabcdefabcdefabcdefabcd"
+        }
+      }
+    ],
+    "StakesPrepareResponseSchema": [
+      {
+        "why": "expiry in ms",
+        "value": {
+          "ticket": {
+            "roundId": "17",
+            "wallet": "0x1111111111111111111111111111111111111111",
+            "personTag": "0x5656565656565656565656565656565656565656565656565656565656565656",
+            "expiry": 1791468491000
+          },
+          "signature": "0x1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b",
+          "chainId": 84532,
+          "verifyingContract": "0x2222222222222222222222222222222222222222",
+          "stake": "5000000",
+          "beaconRound": 32901452
+        }
+      }
+    ]
+  }
+}

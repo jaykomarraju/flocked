@@ -100,7 +100,7 @@ contract FlockedEscrow is IFlockedEscrow, AccessControlEnumerable, Pausable, Ree
 
     /// @param usdc_ The USDC token.
     /// @param admin DEFAULT_ADMIN_ROLE (admin multisig).
-    /// @param guardian GUARDIAN_ROLE (guardian multisig, its own role admin).
+    /// @param guardian_ GUARDIAN_ROLE (guardian multisig), the role's only holder.
     /// @param operator OPERATOR_ROLE (backend key).
     /// @param pauser PAUSER_ROLE.
     /// @param ticketSigner_ Initial ticket signer; zero starts with entries disabled.
@@ -110,7 +110,7 @@ contract FlockedEscrow is IFlockedEscrow, AccessControlEnumerable, Pausable, Ree
     constructor(
         IERC20 usdc_,
         address admin,
-        address guardian,
+        address guardian_,
         address operator,
         address pauser,
         address ticketSigner_,
@@ -119,7 +119,7 @@ contract FlockedEscrow is IFlockedEscrow, AccessControlEnumerable, Pausable, Ree
         uint64 drandPeriod
     ) EIP712("Flocked", "1") {
         if (
-            address(usdc_) == address(0) || admin == address(0) || guardian == address(0) || operator == address(0)
+            address(usdc_) == address(0) || admin == address(0) || guardian_ == address(0) || operator == address(0)
                 || pauser == address(0) || treasury_ == address(0)
         ) revert ZeroAddress();
         if (drandGenesis == 0 || drandPeriod == 0) revert InvalidDrandParams();
@@ -130,7 +130,7 @@ contract FlockedEscrow is IFlockedEscrow, AccessControlEnumerable, Pausable, Ree
 
         _setRoleAdmin(GUARDIAN_ROLE, GUARDIAN_ROLE);
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
-        _grantRole(GUARDIAN_ROLE, guardian);
+        _grantRole(GUARDIAN_ROLE, guardian_);
         _grantRole(OPERATOR_ROLE, operator);
         _grantRole(PAUSER_ROLE, pauser);
 
@@ -369,7 +369,7 @@ contract FlockedEscrow is IFlockedEscrow, AccessControlEnumerable, Pausable, Ree
     }
 
     /// @inheritdoc IFlockedEscrow
-    function unpause() external onlyRole(PAUSER_ROLE) {
+    function unpause() external onlyRole(DEFAULT_ADMIN_ROLE) {
         _unpause();
     }
 
@@ -412,12 +412,42 @@ contract FlockedEscrow is IFlockedEscrow, AccessControlEnumerable, Pausable, Ree
     // Roles and timelocks
     // ---------------------------------------------------------------------------------------------
 
-    /// @notice Grants a role. OPERATOR_ROLE can only be granted through `scheduleOperatorGrant`.
+    /// @notice Grants a role. OPERATOR_ROLE can only be granted through `scheduleOperatorGrant`, and GUARDIAN_ROLE
+    ///         only moves through `transferGuardian` or `executeGuardianReplacement`.
     /// @param role The role.
     /// @param account The account.
     function grantRole(bytes32 role, address account) public override(AccessControl, IAccessControl) {
         if (role == OPERATOR_ROLE) revert TimelockRequired();
+        if (role == GUARDIAN_ROLE) revert SingleGuardian();
         super.grantRole(role, account);
+    }
+
+    /// @notice Revokes a role immediately. Reverts for GUARDIAN_ROLE, which always has exactly one holder.
+    /// @param role The role.
+    /// @param account The account.
+    function revokeRole(bytes32 role, address account) public override(AccessControl, IAccessControl) {
+        if (role == GUARDIAN_ROLE) revert SingleGuardian();
+        super.revokeRole(role, account);
+    }
+
+    /// @notice Renounces one of the caller's roles. Reverts for GUARDIAN_ROLE, which always has exactly one holder.
+    /// @param role The role.
+    /// @param callerConfirmation Must be the caller.
+    function renounceRole(bytes32 role, address callerConfirmation) public override(AccessControl, IAccessControl) {
+        if (role == GUARDIAN_ROLE) revert SingleGuardian();
+        super.renounceRole(role, callerConfirmation);
+    }
+
+    /// @inheritdoc IFlockedEscrow
+    function transferGuardian(address newGuardian) external onlyRole(GUARDIAN_ROLE) {
+        if (newGuardian == address(0)) revert ZeroAddress();
+        _setGuardian(newGuardian);
+        emit GuardianTransferred(msg.sender, newGuardian);
+    }
+
+    /// @inheritdoc IFlockedEscrow
+    function guardian() public view returns (address) {
+        return getRoleMember(GUARDIAN_ROLE, 0);
     }
 
     /// @inheritdoc IFlockedEscrow
@@ -489,10 +519,7 @@ contract FlockedEscrow is IFlockedEscrow, AccessControlEnumerable, Pausable, Ree
     /// @inheritdoc IFlockedEscrow
     function executeGuardianReplacement(address newGuardian) external onlyRole(DEFAULT_ADMIN_ROLE) {
         _consume(ACTION_GUARDIAN, abi.encode(newGuardian));
-        for (uint256 i = getRoleMemberCount(GUARDIAN_ROLE); i > 0; i--) {
-            _revokeRole(GUARDIAN_ROLE, getRoleMember(GUARDIAN_ROLE, i - 1));
-        }
-        _grantRole(GUARDIAN_ROLE, newGuardian);
+        _setGuardian(newGuardian);
         emit GuardianReplaced(newGuardian);
     }
 
@@ -627,6 +654,12 @@ contract FlockedEscrow is IFlockedEscrow, AccessControlEnumerable, Pausable, Ree
 
     function _requireStatus(uint256 roundId, Round storage rd, Status expected) internal view {
         if (rd.status != expected) revert WrongStatus(roundId, rd.status);
+    }
+
+    /// @dev Moves GUARDIAN_ROLE from its one holder to `newGuardian`: constant cost, whatever happened before.
+    function _setGuardian(address newGuardian) internal {
+        _revokeRole(GUARDIAN_ROLE, guardian());
+        _grantRole(GUARDIAN_ROLE, newGuardian);
     }
 
     function _schedule(bytes32 action, bytes memory data, uint256 delay) internal {

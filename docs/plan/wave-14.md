@@ -42,3 +42,7 @@
 
 - NFR-1..5, NFR-9 and PR-4/5/7/8/10 status recorded. The owner gets the load-test report for gate 4 sign-off (OA-23).
 - Audit report (OA-20) received? Wave 15's W15-A needs it. If it hasn't arrived, wave 15 runs B, C and D, and W15-A runs as a fix wave (`W15-F1`) when the report lands.
+
+## Carry-over from W2-Z (Oct 8, 2026)
+
+- **W14-A:** `apps/api/wrangler.jsonc` staging has `workers_dev: false` and no routes, so staging is unreachable until routes are added; staging and production resource IDs are owner-supplied placeholders. Confirm the CREATE2 factory `0x4e59b44847b379578588920cA78FbF26c0B4956C` exists on Base Sepolia and Base before the first deploy.

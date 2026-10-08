@@ -10,5 +10,14 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run"
+  },
+  "dependencies": {
+    "@flocked/settle": "workspace:*",
+    "viem": "2.57.3",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@flocked/tlock": "workspace:*",
+    "fast-check": "4.10.2"
   }
 }

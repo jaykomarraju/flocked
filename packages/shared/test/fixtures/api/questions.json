@@ -1,0 +1,254 @@
+{
+  "valid": {
+    "QuestionsListQuerySchema": [
+      {},
+      {
+        "status": "queued",
+        "sort": "top",
+        "limit": 20
+      },
+      {
+        "sort": "new",
+        "cursor": "c-1"
+      }
+    ],
+    "QuestionsListResponseSchema": [
+      {
+        "questions": [
+          {
+            "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CG",
+            "prompt": "Pineapple on pizza?",
+            "options": [
+              {
+                "label": "Pineapple",
+                "emoji": "🍍"
+              },
+              {
+                "label": "No pineapple",
+                "emoji": ""
+              }
+            ],
+            "category": "food",
+            "status": "queued",
+            "score": 14,
+            "author": {
+              "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+              "handle": "woolly",
+              "displayName": "Woolly",
+              "avatarUrl": "https://img.example/u/woolly.png"
+            },
+            "createdAt": 1791468191250,
+            "myVote": 1
+          },
+          {
+            "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CV",
+            "prompt": "Pineapple on pizza?",
+            "options": [
+              {
+                "label": "Pineapple",
+                "emoji": "🍍"
+              },
+              {
+                "label": "No pineapple",
+                "emoji": ""
+              }
+            ],
+            "category": "food",
+            "status": "queued",
+            "score": 14,
+            "author": null,
+            "createdAt": 1791468191250,
+            "myVote": null
+          }
+        ],
+        "nextCursor": null
+      }
+    ],
+    "SubmitQuestionRequestSchema": [
+      {
+        "prompt": "Pineapple on pizza?",
+        "options": [
+          {
+            "label": "Pineapple",
+            "emoji": "🍍"
+          },
+          {
+            "label": "No pineapple"
+          }
+        ],
+        "category": "food"
+      },
+      {
+        "prompt": "Beach or mountains?",
+        "options": [
+          {
+            "label": "Beach"
+          },
+          {
+            "label": "Mountains"
+          }
+        ],
+        "category": "life",
+        "turnstileToken": "tok"
+      }
+    ],
+    "SubmitQuestionResponseSchema": [
+      {
+        "question": {
+          "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CG",
+          "prompt": "Pineapple on pizza?",
+          "options": [
+            {
+              "label": "Pineapple",
+              "emoji": "🍍"
+            },
+            {
+              "label": "No pineapple",
+              "emoji": ""
+            }
+          ],
+          "category": "food",
+          "status": "queued",
+          "score": 14,
+          "author": {
+            "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+            "handle": "woolly",
+            "displayName": "Woolly",
+            "avatarUrl": "https://img.example/u/woolly.png"
+          },
+          "createdAt": 1791468191250
+        },
+        "moderation": {
+          "outcome": "queued",
+          "reason": null
+        }
+      },
+      {
+        "question": {
+          "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CG",
+          "prompt": "Pineapple on pizza?",
+          "options": [
+            {
+              "label": "Pineapple",
+              "emoji": "🍍"
+            },
+            {
+              "label": "No pineapple",
+              "emoji": ""
+            }
+          ],
+          "category": "food",
+          "status": "rejected",
+          "score": 14,
+          "author": {
+            "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+            "handle": "woolly",
+            "displayName": "Woolly",
+            "avatarUrl": "https://img.example/u/woolly.png"
+          },
+          "createdAt": 1791468191250
+        },
+        "moderation": {
+          "outcome": "rejected",
+          "reason": "Has a factual answer."
+        }
+      }
+    ],
+    "VoteQuestionRequestSchema": [
+      {
+        "value": 1
+      },
+      {
+        "value": -1
+      }
+    ],
+    "VoteQuestionResponseSchema": [
+      {
+        "questionId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CG",
+        "value": -1,
+        "score": 13
+      }
+    ]
+  },
+  "invalid": {
+    "SubmitQuestionRequestSchema": [
+      {
+        "why": "options equal after case folding",
+        "value": {
+          "prompt": "Same?",
+          "options": [
+            {
+              "label": "Yes"
+            },
+            {
+              "label": " yes"
+            }
+          ],
+          "category": "other"
+        }
+      },
+      {
+        "why": "three options",
+        "value": {
+          "prompt": "p",
+          "options": [
+            {
+              "label": "a"
+            },
+            {
+              "label": "b"
+            },
+            {
+              "label": "c"
+            }
+          ],
+          "category": "other"
+        }
+      },
+      {
+        "why": "prompt over 120 characters",
+        "value": {
+          "prompt": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+          "options": [
+            {
+              "label": "a"
+            },
+            {
+              "label": "b"
+            }
+          ],
+          "category": "other"
+        }
+      },
+      {
+        "why": "unknown category",
+        "value": {
+          "prompt": "p",
+          "options": [
+            {
+              "label": "a"
+            },
+            {
+              "label": "b"
+            }
+          ],
+          "category": "sports"
+        }
+      }
+    ],
+    "VoteQuestionRequestSchema": [
+      {
+        "why": "zero",
+        "value": {
+          "value": 0
+        }
+      },
+      {
+        "why": "two",
+        "value": {
+          "value": 2
+        }
+      }
+    ]
+  }
+}

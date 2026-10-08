@@ -8,7 +8,8 @@ import {IFlockedEscrow} from "../src/interfaces/IFlockedEscrow.sol";
 import {MockUSDC} from "./mocks/MockUSDC.sol";
 import {EscrowBase} from "./utils/EscrowBase.sol";
 
-/// @notice CON-7: `refundTimeout`, pause behaviour, role timelocks (72 h; guardian 7 d; immediate revocations).
+/// @notice CON-7: `refundTimeout`, pause behaviour (admin-only unpause), role timelocks (72 h; guardian 7 d; immediate
+///         revocations) and the single guardian (`transferGuardian`; no grant, revoke or renounce).
 contract EscrowRolesTest is EscrowBase {
     address internal newOperator = makeAddr("newOperator");
     address internal newGuardian = makeAddr("newGuardian");
@@ -98,9 +99,48 @@ contract EscrowRolesTest is EscrowBase {
         vm.prank(treasury);
         escrow.withdraw();
 
-        vm.prank(pauser);
+        vm.prank(admin);
         escrow.unpause();
         assertFalse(escrow.paused());
+    }
+
+    function test_unpause_adminOnlyAndImmediate() public {
+        uint256 id = _createDefault();
+        _warpOpen(id);
+        vm.prank(pauser);
+        escrow.pause();
+
+        // A stolen pauser key cannot undo a pause.
+        bytes32 adminRole = escrow.DEFAULT_ADMIN_ROLE();
+        vm.prank(pauser);
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, pauser, adminRole)
+        );
+        escrow.unpause();
+        assertTrue(escrow.paused());
+
+        // The admin's unpause takes effect in the same block: an entry right after it succeeds.
+        vm.prank(admin);
+        escrow.unpause();
+        assertFalse(escrow.paused());
+        address p = _newPlayer();
+        _fund(p, 5e6);
+        IFlockedEscrow.EntryTicket memory t = _ticket(id, p);
+        bytes memory sig = _sign(t);
+        vm.prank(p);
+        escrow.enter(id, _ct(64), t, sig);
+        assertTrue(escrow.hasEntered(id, p));
+
+        // The admin cannot pause (that stays the pauser's), and unpausing twice reverts.
+        bytes32 pauserRole = escrow.PAUSER_ROLE();
+        vm.prank(admin);
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, admin, pauserRole)
+        );
+        escrow.pause();
+        vm.prank(admin);
+        vm.expectRevert(Pausable.ExpectedPause.selector);
+        escrow.unpause();
     }
 
     // ---------------------------------------------------------------- operator grants
@@ -304,39 +344,95 @@ contract EscrowRolesTest is EscrowBase {
 
     // ---------------------------------------------------------------- guardian
 
-    function test_guardian_isItsOwnAdmin() public {
+    function test_guardian_grantRevokeRenounceRevert() public {
         bytes32 role = escrow.GUARDIAN_ROLE();
-        // The admin multisig cannot grant or revoke the guardian directly.
-        vm.startPrank(admin);
-        vm.expectRevert(abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, admin, role));
-        escrow.revokeRole(role, guardian);
-        vm.expectRevert(abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, admin, role));
-        escrow.grantRole(role, newGuardian);
-        vm.stopPrank();
+        address[3] memory callers = [admin, guardian, stranger];
+        for (uint256 i; i < callers.length; i++) {
+            vm.startPrank(callers[i]);
+            vm.expectRevert(IFlockedEscrow.SingleGuardian.selector);
+            escrow.grantRole(role, newGuardian);
+            vm.expectRevert(IFlockedEscrow.SingleGuardian.selector);
+            escrow.revokeRole(role, guardian);
+            vm.expectRevert(IFlockedEscrow.SingleGuardian.selector);
+            escrow.renounceRole(role, callers[i]);
+            vm.stopPrank();
+        }
+        assertEq(escrow.getRoleMemberCount(role), 1);
+        assertEq(escrow.guardian(), guardian);
 
-        // The guardian can rotate itself.
-        vm.startPrank(guardian);
-        escrow.grantRole(role, newGuardian);
-        escrow.renounceRole(role, guardian);
-        vm.stopPrank();
+        // Other roles still grant, revoke and renounce normally.
+        bytes32 pRole = escrow.PAUSER_ROLE();
+        vm.prank(admin);
+        escrow.grantRole(pRole, stranger);
+        vm.prank(stranger);
+        escrow.renounceRole(pRole, stranger);
+        assertFalse(escrow.hasRole(pRole, stranger));
+    }
+
+    function test_transferGuardian_movesRoleImmediately() public {
+        bytes32 role = escrow.GUARDIAN_ROLE();
+        vm.expectEmit(true, true, false, false, address(escrow));
+        emit IFlockedEscrow.GuardianTransferred(guardian, newGuardian);
+        vm.prank(guardian);
+        escrow.transferGuardian(newGuardian);
+
+        assertEq(escrow.guardian(), newGuardian);
         assertTrue(escrow.hasRole(role, newGuardian));
         assertFalse(escrow.hasRole(role, guardian));
+        assertEq(escrow.getRoleMemberCount(role), 1);
+
+        // The old holder lost every guardian power in the same block; the new one has them.
+        uint256 id = _createDefault();
+        vm.prank(guardian);
+        vm.expectRevert(IFlockedEscrow.NotOperatorOrGuardian.selector);
+        escrow.voidRound(id);
+        vm.prank(guardian);
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, guardian, role)
+        );
+        escrow.transferGuardian(guardian);
+        vm.prank(newGuardian);
+        escrow.voidRound(id);
+    }
+
+    function test_transferGuardian_onlyGuardianAndNonZero() public {
+        bytes32 role = escrow.GUARDIAN_ROLE();
+        address[3] memory callers = [admin, operator, stranger];
+        for (uint256 i; i < callers.length; i++) {
+            vm.prank(callers[i]);
+            vm.expectRevert(
+                abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, callers[i], role)
+            );
+            escrow.transferGuardian(callers[i]);
+        }
+        vm.prank(guardian);
+        vm.expectRevert(IFlockedEscrow.ZeroAddress.selector);
+        escrow.transferGuardian(address(0));
+
+        // Handing the role to itself is a no-op that keeps exactly one holder.
+        vm.prank(guardian);
+        escrow.transferGuardian(guardian);
+        assertEq(escrow.guardian(), guardian);
+        assertEq(escrow.getRoleMemberCount(role), 1);
     }
 
     function test_guardian_replacementBehind7DayTimelock() public {
         bytes32 role = escrow.GUARDIAN_ROLE();
-        // A second (compromised) guardian member is also removed by the replacement.
-        address rogue = makeAddr("rogue");
-        vm.prank(guardian);
-        escrow.grantRole(role, rogue);
-
         vm.startPrank(admin);
         vm.expectRevert(IFlockedEscrow.ZeroAddress.selector);
         escrow.scheduleGuardianReplacement(address(0));
         escrow.scheduleGuardianReplacement(newGuardian);
+        vm.stopPrank();
+
+        // A compromised guardian hands the role on during the timelock; the replacement still removes it.
+        address rogue = makeAddr("rogue");
+        vm.prank(guardian);
+        escrow.transferGuardian(rogue);
+
         uint256 readyAt = block.timestamp + 7 days;
         vm.warp(readyAt - 1);
         bytes32 action = escrow.ACTION_GUARDIAN();
+        vm.startPrank(admin);
         vm.expectRevert(_notReady(action, abi.encode(newGuardian), readyAt));
         escrow.executeGuardianReplacement(newGuardian);
         vm.warp(readyAt);
@@ -345,10 +441,48 @@ contract EscrowRolesTest is EscrowBase {
         escrow.executeGuardianReplacement(newGuardian);
         vm.stopPrank();
 
+        assertEq(escrow.guardian(), newGuardian);
         assertTrue(escrow.hasRole(role, newGuardian));
         assertFalse(escrow.hasRole(role, guardian));
         assertFalse(escrow.hasRole(role, rogue));
         assertEq(escrow.getRoleMemberCount(role), 1);
+    }
+
+    /// @dev Replacement gas does not depend on what the guardian did before it (the wave-1 revoke loop did).
+    function test_guardian_replacementCostIsConstant() public {
+        vm.prank(admin);
+        escrow.scheduleGuardianReplacement(newGuardian);
+        vm.warp(block.timestamp + 7 days);
+        uint256 snap = vm.snapshotState();
+
+        uint256 quiet = _replacementGas();
+
+        vm.revertToState(snap);
+        // A compromised guardian tries everything it can: many transfers and every direct role change.
+        bytes32 role = escrow.GUARDIAN_ROLE();
+        address current = guardian;
+        for (uint256 i; i < 50; i++) {
+            address next = makeAddr(string.concat("hop", vm.toString(i)));
+            vm.startPrank(current);
+            escrow.transferGuardian(next);
+            vm.expectRevert(IFlockedEscrow.SingleGuardian.selector);
+            escrow.grantRole(role, current);
+            vm.stopPrank();
+            current = next;
+        }
+        uint256 busy = _replacementGas();
+
+        assertEq(busy, quiet, "replacement gas depends on history");
+        assertEq(escrow.getRoleMemberCount(role), 1);
+        assertEq(escrow.guardian(), newGuardian);
+    }
+
+    function _replacementGas() internal returns (uint256 used) {
+        vm.cool(address(escrow));
+        vm.prank(admin);
+        uint256 before = gasleft();
+        escrow.executeGuardianReplacement(newGuardian);
+        used = before - gasleft();
     }
 
     function test_guardian_replacementCancel() public {
@@ -374,9 +508,11 @@ contract EscrowRolesTest is EscrowBase {
         escrow.pause();
         vm.prank(admin);
         escrow.revokeRole(role, p2);
+        vm.prank(admin);
+        escrow.unpause();
         vm.prank(p2);
         vm.expectRevert(abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, p2, role));
-        escrow.unpause();
+        escrow.pause();
     }
 
     // ---------------------------------------------------------------- rescue

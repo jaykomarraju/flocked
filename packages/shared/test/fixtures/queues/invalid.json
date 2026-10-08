@@ -1,0 +1,150 @@
+{
+  "settle": [
+    {
+      "why": "missing idempotencyKey",
+      "value": {
+        "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+        "mode": "free"
+      }
+    },
+    {
+      "why": "unknown mode",
+      "value": {
+        "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+        "mode": "paid",
+        "idempotencyKey": "k"
+      }
+    }
+  ],
+  "decrypt-daily": [
+    {
+      "why": "empty chunkKey",
+      "value": {
+        "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+        "mode": "free",
+        "chunkKey": ""
+      }
+    }
+  ],
+  "decrypt-rooms": [
+    {
+      "why": "bad ULID",
+      "value": {
+        "roundId": "r1",
+        "mode": "free",
+        "chunkKey": "k"
+      }
+    }
+  ],
+  "cards": [
+    {
+      "why": "result card without userId",
+      "value": {
+        "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+        "mode": "free",
+        "kind": "result",
+        "variants": ["og"]
+      }
+    },
+    {
+      "why": "round card with userId",
+      "value": {
+        "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+        "mode": "free",
+        "userId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+        "kind": "round",
+        "variants": ["og"]
+      }
+    },
+    {
+      "why": "no variants",
+      "value": {
+        "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+        "mode": "free",
+        "userId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+        "kind": "result",
+        "variants": []
+      }
+    },
+    {
+      "why": "duplicate variant",
+      "value": {
+        "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+        "mode": "free",
+        "userId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+        "kind": "result",
+        "variants": ["og", "og"]
+      }
+    },
+    {
+      "why": "unknown variant",
+      "value": {
+        "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+        "mode": "free",
+        "userId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+        "kind": "result",
+        "variants": ["story"]
+      }
+    }
+  ],
+  "notify": [
+    {
+      "why": "unknown event",
+      "value": {
+        "event": "birthday",
+        "userId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+        "dedupeKey": "k",
+        "payload": {}
+      }
+    },
+    {
+      "why": "payload for another event",
+      "value": {
+        "event": "closing_soon",
+        "userId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+        "dedupeKey": "k",
+        "payload": {
+          "questionId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CG",
+          "auditId": "a"
+        }
+      }
+    },
+    {
+      "why": "closesAt in ms",
+      "value": {
+        "event": "closing_soon",
+        "userId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+        "dedupeKey": "k",
+        "payload": {
+          "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+          "closesAt": 1791507600000
+        }
+      }
+    },
+    {
+      "why": "payout amount as a number",
+      "value": {
+        "event": "payout_claimable",
+        "userId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+        "dedupeKey": "k",
+        "payload": {
+          "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+          "mode": "stakes",
+          "amount": 9612000,
+          "claimsOpenAt": 1791507780000
+        }
+      }
+    },
+    {
+      "why": "missing dedupeKey",
+      "value": {
+        "event": "question_live",
+        "userId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+        "payload": {
+          "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+          "gameDay": "2026-10-08"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,68 @@
+{
+  "valid": {
+    "ClaimsQuerySchema": [
+      {},
+      {
+        "wallet": "0x1111111111111111111111111111111111111111"
+      }
+    ],
+    "ClaimsResponseSchema": [
+      {
+        "claims": [
+          {
+            "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+            "chainRoundId": "17",
+            "kind": "win",
+            "account": "0x1111111111111111111111111111111111111111",
+            "amount": "9612000",
+            "proof": [
+              "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            ],
+            "claimsOpenAt": 1791514980000,
+            "userId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE"
+          },
+          {
+            "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CN",
+            "chainRoundId": "16",
+            "kind": "refund",
+            "account": "0x1111111111111111111111111111111111111111",
+            "amount": "5000000",
+            "proof": null,
+            "claimsOpenAt": null,
+            "userId": null
+          }
+        ]
+      }
+    ]
+  },
+  "invalid": {
+    "ClaimsQuerySchema": [
+      {
+        "why": "not an address",
+        "value": {
+          "wallet": "0x1234"
+        }
+      }
+    ],
+    "ClaimsResponseSchema": [
+      {
+        "why": "amount as a number",
+        "value": {
+          "claims": [
+            {
+              "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+              "chainRoundId": "17",
+              "kind": "win",
+              "account": "0x1111111111111111111111111111111111111111",
+              "amount": 9612000,
+              "proof": [],
+              "claimsOpenAt": null,
+              "userId": null
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -24,7 +24,7 @@
 - **Role / size:** build, M.
 - **Objective.** Build Coinbase sign-in: `POST /me/personhood` (authorize URL, PKCE where supported, single-use state bound in AuthDO), and `GET /me/personhood/callback` (attributes only to the state's user). It reads `/v2/user` and `/v2/user/personal-details`, stores `person_id` = HMAC, the country and region only, and sets `kyc_status`. If the person ID is already bound to another account, the callback creates a pending merge. Also: the Verified Account and Verified Country attestation lookup (EAS indexer client), geo rules (`geo.stakes.allow`, `request.cf`, proxy signals), the person tombstone check on verification, and Stakes eligibility in `GET /me`. A Coinbase mock server goes in `e2e/mocks/coinbase/` and an EAS indexer mock in `e2e/mocks/eas/`.
 - **Read first.** `plan.md` §2, §4. `docs/sessions/W4-Z.md`. This section. Spec: "Identity and personhood" (only "Personhood (verified Coinbase sign-in)", and "Account deletion" tombstone bullet), "Compliance and responsible play" (only "Geo-fencing", "Age and terms").
-- **Owns.** `apps/api/src/personhood/**`, `apps/api/src/routes/personhood.ts` (D mounts it), `packages/shared/src/api/me.ts`, migration `0009`, `apps/api/test/personhood/**`, `e2e/mocks/{coinbase,eas}/**`.
+- **Owns.** `apps/api/src/personhood/**`, the personhood endpoints' handlers in `apps/api/src/routes/me.ts` (they are `me`-module rows in `ENDPOINTS`; replace their stubs and delegate to `src/personhood/**`, W2-Z), `packages/shared/src/api/me.ts`, migration `0009`, `apps/api/test/personhood/**`, `e2e/mocks/{coinbase,eas}/**`.
 - **Required tests.** ID-2, ID-3 (login CSRF: a callback with another user's cookie attributes to the state's user only; a replayed state fails). No raw Coinbase ID, name or address stored (NFR-8 part, asserted by a DB scan). Country mismatch → ineligible. Missing personal details → not verified.
 - **Risks.** Coinbase API shape uncertainty (gate 2). Build to the documented shape, keep the mock faithful to it, and note anything unverifiable.
 
@@ -59,3 +59,8 @@
 - Ask the owner to review Social and Settings in Paper (OA-D3 before W11).
 - Migrations for wave 6: W6-A `0011`, W6-B `0012`, W6-D `0013`.
 - Check the audit status (OA-20) and log the expected report date in Status.
+
+## Carry-over from W2-Z (Oct 8, 2026)
+
+- **W5-A:** payouts are written only at finalize (the unique key ignores proposals; Decision log, Oct 8). `ALERT_VOID_RATE` fires when a mode's VOIDs exceed 2% of its entries and number at least 10. Decrypt costs about 6.4 ms in workerd (W2-A), so the decrypt queues must batch within the Worker-wide `cpu_ms` of 60,000.
+- **W5-B:** see the ownership change above (handlers in `routes/me.ts`).

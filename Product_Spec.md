@@ -59,7 +59,7 @@ Flocked is a daily minority game. There is one question with two options, and pi
 | Unflocked | The player's result when they win |
 | Stray streak | Consecutive game days with a winning entry (see Game day) |
 | Play streak | Consecutive game days with an entry |
-| Game day | The New York date on which a round closes |
+| Game day | The New York calendar date of a round's `closesAt` |
 
 ## Core game rules
 
@@ -122,14 +122,14 @@ Picks can only be decrypted after the beacon is published. Admins can void a rou
 | Round | scheduled → open | `opensAt` alarm | Load the locked config into the RoundDO; broadcast state; send `question_live` |
 | Round | open → closed | `closesAt` alarm | Stop accepting entries and drain in-flight Free entries. Build each Free commitment root and send it to the AnchorDO. Stakes: start streaming `Entered` logs into chunk files |
 | Round | scheduled/open → closed | Admin void before `closesAt` | Two-phase void (see below); all modes voided |
-| Mode | pending → revealing | Beacon published and its signature verified (retry every 3 s for 10 min, then alert and keep retrying every 60 s until the rule-8 deadline for Free or the timeout for Stakes). Stakes also waits until Base's safe head passes the close block | Fan out decryption. When the tally is done, Free settles or refunds; Stakes posts its proposal |
+| Mode | pending → revealing | Beacon published and its signature verified (retry every 3 s for 10 min, then alert (`ALERT_BEACON_LATE`) and keep retrying every 60 s until the rule-8 deadline for Free or the timeout for Stakes). Stakes also waits until Base's safe head passes the close block | Fan out decryption. When the tally is done, Free settles or refunds; Stakes posts its proposal |
 | Mode (Free) | revealing → settled | Tally complete and outputs durable in R2 | Broadcast `revealed`; ledger writes; enqueue cards and notifications |
 | Mode (Free) | revealing → refunded | Refund rule 1, 2 or 3 applies | Ledger refunds; broadcast `refunded`; enqueue the outcome notification |
 | Mode (Free) | pending → refunded | Commitment not anchored before the beacon (rule 7), or the beacon still unavailable 24 hours after its round time (rule 8) | Ledger refunds; broadcast `refunded`; enqueue the outcome notification. Rule 8 fires from a RoundDO alarm at beacon time + 24 h, through a conditional update that applies only while the mode is still pending |
 | Mode (Stakes) | revealing → settle\_proposed | Indexer sees `OutcomeProposed` (settlement) | Broadcast `revealed` with the final time; enqueue cards and the outcome notification |
 | Mode (Stakes) | revealing → refund\_proposed | Indexer sees `OutcomeProposed` (refund rule 1, 2 or 3) | Broadcast `refunded`, marked provisional, with the final time; enqueue the outcome notification |
-| Mode (Stakes) | settle\_proposed → settled | `claimsOpenAt` passes with no veto. The indexer calls `finalize` (gasless) and sees `RoundFinalized` | Set `final_at`; apply stats, streaks and boards; send `payout_claimable` |
-| Mode (Stakes) | settle\_proposed → refunded | Indexer sees `ProposalVetoed` on a settlement (reason 5) | Mark the settlement superseded; replace payouts with refunds; recompute; broadcast `refunded`; re-render cards; send `refunded`; audit log entry |
+| Mode (Stakes) | settle\_proposed → settled | `claimsOpenAt` passes with no veto. The indexer calls `finalize` (gasless) and sees `RoundFinalized` | Set `final_at`; write `payouts`; apply stats, streaks and boards; send `payout_claimable` |
+| Mode (Stakes) | settle\_proposed → refunded | Indexer sees `ProposalVetoed` on a settlement (reason 5) | Mark the settlement superseded; write refund `payouts` (none were written for the proposal); recompute; broadcast `refunded`; re-render cards; send `refunded`; audit log entry |
 | Mode (Stakes) | refund\_proposed → refunded | `claimsOpenAt` passes with no veto; `RoundFinalized` | Set `final_at`; send `refunded` |
 | Mode (Stakes) | refund\_proposed → revealing | Indexer sees `ProposalVetoed` on a refund proposal (round back to Open) | Mark the proposal superseded; alert; settle again |
 | Mode (Stakes) | pending / revealing → refunded | Indexer sees `RoundRefunded` with reason 1 (`refundTooFew`) or 6 (timeout) | Refund; broadcast `refunded`; enqueue the outcome notification (or `refunded` if the outcome was already sent) |
@@ -148,6 +148,7 @@ Picks can only be decrypted after the beacon is published. Admins can void a rou
 - At lock, Stakes rounds call `createRound` onchain with every parameter: times, `beaconRound`, stake, fees, cap, `minEntrants`, creator address and question hash. Free rounds anchor a lock leaf. Nothing in a locked round can change; the only option is to void it before close.
 - `beaconRound` = the first drand quicknet round whose time is at or after `closesAt + beaconDelay`. Round time is `genesis + (round − 1) × period`, with quicknet genesis 1692803367 and a 3-second period.
 - Durations, `beaconDelay` and timezone are per-round config, kept for special events after launch. At launch, every daily and room round closes at 21:00 America/New\_York. A non-default close is accepted only if it is in the published locked config with an audit-log ID, and clients show it prominently.
+- Config validation runs the target-round check (see Sealed picks) on any non-default close time or `beaconDelay`, and rejects combinations that can't be met. For example, a close that isn't on a drand round boundary can put the first round at or after `closesAt + 600 s` past `MAX_BEACON_DELAY`, so a 10-minute delay is unreachable.
 - At any moment there is at most one OPEN daily round and usually one more in reveal or settlement. Clients and APIs handle both.
 
 ## Sealed picks (timelock encryption)
@@ -179,6 +180,7 @@ Picks are encrypted in the client to a future drand beacon round, so no one, inc
 - **Round config check (Stakes).**
   - At lock, the full `RoundConfig` (every field), the author's handle and payout address, and any non-default value with its audit-log ID are published on `/rounds/:id` and `/rounds/today`.
   - The client compares every onchain field against that record and refuses to build `enter` on any mismatch.
+  - `beaconDelay` is not in `RoundConfig`. The client checks that `beaconRound` is the first quicknet round at or after `closesAt + beaconDelay`, using the `beaconDelay` in the published locked config.
   - It also checks the values against the launch defaults (stake 5 USDC, 500/100 bps, cap 10, `minEntrants` 20 for daily rounds and 3 for Stakes rooms) and shows any non-default value prominently.
   - The watcher snapshots the published config at lock and checks it independently of the backend.
 - Server stores the ciphertext and `commitment = keccak256(ciphertext)`. It cannot read the option.
@@ -187,7 +189,8 @@ Picks are encrypted in the client to a future drand beacon round, so no one, inc
 
 **Canonical ciphertext header**
 
-- A valid ciphertext has exactly one recipient stanza. It is of type tlock, with exactly two arguments: `beaconRound` in canonical decimal and the pinned quicknet chain hash.
+- A valid ciphertext is age v1 in binary form, not armored. Its header has exactly one recipient stanza and no others. The stanza is of type tlock, with exactly two arguments: `beaconRound` in decimal with no leading zeros, then the chain hash in lowercase hex.
+- The stanza body uses age's strict base64 (no padding) wrapped at 64 columns. Lines end in LF only. The MAC line follows.
 - Anything else is VOID. The Free entry endpoint rejects it at submit, and the client never produces it.
 
 **Stakes mode specifics**
@@ -199,8 +202,8 @@ Picks are encrypted in the client to a future drand beacon round, so no one, inc
 
 **Free mode specifics**
 
-- **Lock leaf.** At question lock, every Free round (daily and room) is anchored through `FlockedAnchor`. The leaf commits `closesAt`, `beaconRound`, the question hash and a config hash covering stake range, cap, `minEntrants`, creator award and `beaconDelay`. The anchor contract enforces the same beacon-delay bounds as the escrow.
-- **Receipts.** Every accepted entry gets an EIP-712 receipt signed by the receipt key. The domain is "Flocked", the chain ID of the deployment network (8453 for Base mainnet in production, 84532 for Base Sepolia in staging, the local chain in tests), verifying contract `FlockedAnchor`. The receipt covers `(roundId, mode, userIdHash, stake, commitment, seq, closesAt, beaconRound)`, where:
+- **Lock leaf.** At question lock, every Free round (daily and room) is anchored through `FlockedAnchor`. The leaf commits `closesAt`, `beaconRound`, the question hash (see Smart contract) and a config hash covering stake range, cap, `minEntrants`, creator award and `beaconDelay`. The config hash is keccak256 of the UTF-8 bytes of the RFC 8785 (JCS) serialization of `{beaconDelay, free}`, taken from the parsed Free section of the locked config. The anchor contract enforces the same beacon-delay bounds as the escrow.
+- **Receipts.** Every accepted entry gets an EIP-712 receipt signed by the receipt key. The domain is name "Flocked", version "1", the chain ID of the deployment network (8453 for Base mainnet in production, 84532 for Base Sepolia in staging, the local chain in tests), verifying contract `FlockedAnchor`. The receipt covers `(roundId, mode, userIdHash, stake, commitment, seq, closesAt, beaconRound)`, where:
   - `userIdHash` = keccak256(abi.encode(roundId, userId));
   - `seq` is the entry's sequence number in the round.
 
@@ -215,17 +218,16 @@ Picks are encrypted in the client to a future drand beacon round, so no one, inc
 
 **Invalid entries**
 
-- An entry is VOID if any of these hold:
-  - the ciphertext fails to decrypt;
-  - its header is not canonical;
-  - it targets a round or chain other than the round's committed `beaconRound` on quicknet (Stakes: the `RoundConfig`; Free: the lock leaf);
-  - the plaintext is not exactly 34 bytes, its version isn't 0x01, or its round reference doesn't equal the round's binary ULID (Free) or `chain_round_id` as a big-endian uint128 (Stakes);
-  - `optionIndex` isn't 0 or 1;
-  - Free only: it is not in the anchored leaf set;
-  - Free only: its stake is outside the locked stake range.
+- An entry is VOID if any of these checks fails. They run in this order and the first failing one is the reason:
+  1. `non_canonical_header`: the blob isn't age at all, or its header is not canonical (for example an uppercase or malformed chain hash, extra stanzas or extra arguments);
+  2. `wrong_target`: a well-formed header names a round other than the round's committed `beaconRound` (including round 0) or another well-formed chain hash (Stakes: the `RoundConfig`; Free: the lock leaf);
+  3. `decrypt_failed`: the ciphertext fails to decrypt with the verified signature. This includes a stanza body of the wrong length and a U value that isn't a canonical compressed G2 point (a coordinate ≥ the field modulus);
+  4. `bad_plaintext`: the plaintext is not exactly 34 bytes, its version isn't 0x01, or its round reference doesn't equal the round's binary ULID (Free) or `chain_round_id` as a big-endian uint128 (Stakes);
+  5. `bad_option`: `optionIndex` isn't 0 or 1.
+- A Free entry is also VOID if it is not in the anchored leaf set (`not_anchored`) or its stake is outside the locked stake range (`stake_out_of_range`).
 - A VOID entry is excluded from tallies and its stake refunded in full. In Stakes the refund is a payout leaf.
 - Every VOID reason can be recomputed from public data: chain data, drand, and the bundle with its anchored commitments. The watcher treats any VOID it cannot recompute as a mismatch.
-- **Safety net.** If a round's VOID rate is anomalous, settlement holds and alerts instead of posting. This is a delay only; the timeout still bounds Stakes.
+- **Safety net.** If a mode's VOID rate is anomalous (VOID entries exceed 2% of its entries and number at least 10), settlement holds and alerts instead of posting. This is a delay only; the timeout still bounds Stakes.
 
 **Client requirements**
 
@@ -258,7 +260,7 @@ Each mode settles independently.
 
 - Rules 1–3 are checked in order 1, 2, 3, and the first that applies sets the reason. For example, 10 vs 0 with `minEntrants` 20 is rule 1, not rule 2.
 - A round has at most one entry per account: one per wallet and one per person in Stakes, one per user in Free.
-- `minEntrants` ≥ 1 and `capMultiple` ≥ 1 in every mode (the Stakes launch ceilings allow `capMultiple` 1–10).
+- `minEntrants` ≥ 1 and `capMultiple` ≥ 1 in every mode (the Stakes launch ceilings allow `capMultiple` 1–10; in Free it is an integer 1–255).
 - A refunded round pays no creator fee (Stakes) and no creator award (Free).
 
 **Normal case**
@@ -288,7 +290,7 @@ dust &= R - \textstyle\sum_{j \text{ on } L} r_j
   - the author passed a request-location check when setting the payout wallet (only a pass flag and its time are stored).
 
   Otherwise C goes to the treasury, as it does for house questions.
-- In Free, the formula runs with `feeBps` = 0 and `creatorBps` = 0. The author separately receives a house-minted creator award of ⌊Lp · `free.creatorAwardBps` / 10000⌋ points (default 100 bps), outside the invariant. Room rounds pay no creator award.
+- In Free, the formula runs with `feeBps` = 0 and `creatorBps` = 0. The author separately receives a house-minted creator award of ⌊Lp · `free.creatorAwardBps` / 10000⌋ points (default 100 bps), outside the invariant. The locked config names the award recipient: the author's user ULID, or null for a house question (no award). Room rounds pay no creator award.
 
 **Stakes closed form.** In Stakes every entry has the same stake s, so the payout depends only on the headcounts N\_M, N\_L and the VOID count n\_V:
 
@@ -337,8 +339,8 @@ Both modes run on the same daily question, round engine and settlement code. The
 | Currency | Points (integer) | USDC on Base |
 | Ledger | D1 `point_balances` + `points_ledger` | `FlockedEscrow` contract |
 | Starting balance | 500 points on signup | Wallet balance |
-| Daily grant | +100 points per daily round, credited on the user's first visit or entry after the round opens, only if balance < 1,000 (ledger ref = round ID, so it is credited once) | None |
-| Stake | 10–100 points (default range) | Fixed per round (default 5 USDC) |
+| Daily grant | +100 points per daily round, credited on the user's first visit or entry after the round opens, only if balance < 1,000 (ledger ref = round ID, so it is credited once). A grant skipped because the balance is ≥ 1,000 is final for that game day, and writes no ledger row | None |
+| Stake | 10–100 points (default range), with presets 10, 25, 50 and 100 | Fixed per round (default 5 USDC) |
 | Fees | None in the formula; the author gets a house-minted creator award | feeBps 500, creatorBps 100 |
 | Min entrants | 1 | 20 |
 | Entry limit | One per account | One per verified person (entry ticket) |
@@ -429,10 +431,11 @@ A user is a person. A person can sign in several ways, and Stakes needs proof th
 - `enter()` requires a valid ticket used by the wallet it was issued to, and rejects a second entry from the same `personTag` in a round.
 - The indexer maps each `Entered` event to its user through `stakes_tickets` by (roundId, personTag, wallet), not through current wallet links.
 - Every entry that passed `enter()` counts in the tally.
-- An `Entered` event with no matching ticket record is a signer-compromise incident, not a VOID. In response:
+- An `Entered` event with no matching ticket record (a foreign entry) is a signer-compromise incident, not a VOID. It is only possible with a stolen ticket-signer key. In response:
+  - the indexer stores it in `entries` with `user_id` NULL and the foreign flag set (Stakes only), and raises `ALERT_FOREIGN_EVENT`;
   - the contract is paused;
   - the ticket signer is disabled immediately;
-  - the guardian vetoes that round's settlement, which is a full refund.
+  - that round's settlement holds for the guardian, who either vetoes (a full refund; everyone reclaims) or lets it settle with the foreign entry included, so the totals match the chain.
 
   Entries are never VOIDed selectively for this.
 - Self-exclusion and cap decreases block new tickets immediately. A ticket already issued stays usable until it expires, so the change is fully in effect within 5 minutes.
@@ -463,7 +466,7 @@ interface IFlockedEscrow {
         uint8   capMultiple;
         uint32  minEntrants;
         address creator;          // question author's payout address, or treasury
-        bytes32 questionHash;     // keccak256 of the canonical prompt + both options
+        bytes32 questionHash;     // keccak256 of the canonical prompt + both options (see below)
     }
 
     struct EntryTicket {
@@ -503,6 +506,8 @@ interface IFlockedEscrow {
     function transferGuardian(address newGuardian) external;                                   // GUARDIAN_ROLE; the role always has exactly one holder
 }
 ```
+
+**Question hash.** `questionHash` = keccak256(abi.encode(string prompt, string label0, string emoji0, string label1, string emoji1)). Each string is NFC-normalized and then trimmed of ECMAScript whitespace (`String.prototype.trim`). A missing emoji is "", and case is kept. The Free lock leaf uses the same hash.
 
 **Constants** (all immutable)
 
@@ -583,6 +588,7 @@ interface IFlockedEscrow {
 - **Deliberately wrong proposal.** An operator who has seen the result can force a full refund within about 2 hours by proposing a wrong settlement that the guardian must veto. The wrong tally is publicly provable as operator fault. The guardian charter treats it as a key-compromise incident that requires revoking `OPERATOR_ROLE`.
 - **False veto.** A guardian can veto a correct settlement, which also ends in a full refund. The guardian charter covers conflicts of interest, and the watcher alerts on any veto that doesn't match a mismatch it reported.
 - **Key-compromise response.** A stolen operator or guardian key can grief rounds in these ways but cannot take funds. The response is to revoke the role, pause entries, rotate keys (the guardian through its timelock), and if needed redeploy and migrate.
+- **Stolen ticket signer.** It can mint tickets that bypass geo, age, self-exclusion and caps. Each such entry shows up as a foreign entry (an `Entered` event with no ticket record). The response is to pause entries and disable the signer, both immediate, while that round's settlement holds for the guardian (see Entry tickets).
 - **Fake people.** The operator, as ticket issuer, could mint tickets for fake people. With a fixed stake, extra heads lose money (about 6% of their stake in fees), so this cannot buy an outcome profitably. It is detectable only through operator records.
 - **Stolen anchor key.** It can pre-empt `lock` for a round key it learns, which denies service to that Free round (the round is re-keyed with a new ID before `opensAt`). It can also pre-empt `anchorManifest`, which leaves that bundle unverifiable. `ANCHOR_ROLE` is granted behind the timelock and revoked immediately, and `@flocked/verify` reports each anchor's sender and marks anchors from a later-revoked key as disputed.
 - **Base halt at close.** If Base stalls at close for longer than the 2-minute beacon delay, catch-up blocks could include Stakes entries made after the picks became readable. Base halts are rare (one of about 33 minutes in Aug 2025). This is accepted residual risk (decided Oct 7).
@@ -607,11 +613,12 @@ interface IFlockedAnchor {
 }
 ```
 
-- **`lock`** is write-once per round key. It enforces the same beacon-delay bounds as `createRound`.
+- In `roundKey`, `roundId` is the round's 16-byte binary ULID and `mode` is a uint8: Free = 0, Stakes = 1.
+- **`lock`** is write-once per round key. It enforces the same beacon-delay bounds as `createRound`, and works only while `block.timestamp < closesAt`.
 - **`commit`** is write-once per round key and requires the key to be locked. It also requires `closesAt ≤ block.timestamp < beaconTime(beaconRound)`.
-- **`anchorManifest`** is write-once per round key and only after beacon time.
-- The receipt signer is set by the admin multisig behind the same 72-hour timelock, and its full history is in events.
-- In a batch, an invalid item is skipped and reported in a `Skipped` event, while valid items still apply. Invalid means already written, not locked, or outside its time window. The AnchorDO checks each key's onchain state before building or retrying a batch.
+- **`anchorManifest`** is write-once per round key and only at or after beacon time. It needs a lock but not a commit. It is not a batch, so it reverts instead of skipping: when the key is unlocked, already has a manifest, is before beacon time, or the hash is zero.
+- A nonzero receipt signer is set by the admin multisig behind the same 72-hour timelock, and its full history is in events. `setReceiptSigner(address(0))` disables receipts immediately.
+- In a batch (`lock`, `commit`), an invalid item is skipped and reported in a `Skipped` event, while valid items still apply. The `Skipped` reasons are 1 already written, 2 not locked, 3 outside its time window (for `lock`, at or after `closesAt`), and 4 beacon round out of bounds. The AnchorDO checks each key's onchain state before building or retrying a batch.
 - A stolen anchor key can front-run commitments, which only forces refunds; it cannot choose outcomes (see Residual risk).
 
 **Challenge window, watcher and guardian**
@@ -667,12 +674,21 @@ It uses TypeScript everywhere, in one monorepo (pnpm workspaces), deployed with 
 | Scheduler | Workers Cron Triggers | Create rounds 48 h ahead; question lock (`createRound`, Free lock leaves); fill gaps with house questions; daily official cast |
 | Chain indexer | Workers Cron Triggers (every minute) + an IndexerDO that polls every few seconds via alarms, from `closesAt` − 5 min until proposals confirm + RPC | Mirror every `FlockedEscrow` and `FlockedAnchor` event into D1. Owns asynchronous Stakes transitions (proposal, veto, any refund, finalize) and calls `finalize` at `claimsOpenAt`. Reorg handling via `indexer_state` |
 | Settlement coordinator | Queues (`settle`) | At beacon time: verify the signature. Stakes entry chunks are prepared between close and the beacon. Fan out decryption, reduce, run `@flocked/settle`, write outputs to R2, post the proposal (Stakes), apply D1 writes in idempotent chunks. The manifest is a deterministic function of chain data, the drand round and the settlement inputs (no relay identity), so retries give a byte-identical `bundleHash`, and bundle objects are write-once |
-| Decrypt workers | Queues (`decrypt-daily`, `decrypt-rooms`) | One message per chunk of about 500 ciphertexts, stored in R2 (message carries only the R2 key). Settings: `max_batch_size` 1, `cpu_ms` 60,000, `max_concurrency` 250 |
-| Card + notify consumers | Queues (`cards`, `notify`) | Render share cards; send notifications |
+| Decrypt workers | Queues (`decrypt-daily`, `decrypt-rooms`) | One message per chunk of about 500 ciphertexts, stored in R2 (message carries only the R2 key). Settings: `max_batch_size` 1, `max_concurrency` 250. They need up to 60 s of CPU per chunk (see Queues and crons) |
+| Card + notify consumers | Queues (`cards`, `notify`) | Render share cards (batches of 10); send notifications (batches of 50) |
 | Moderation | Anthropic API (Claude Sonnet 5.5) + Workers AI embeddings + Vectorize | Question rubric and duplicate detection |
 | Watcher | Separate account; Workers Cron | Re-verify every round and anchor; publish verdicts; page guardian signers |
 | Storage | D1, R2, KV | Relational data; bundles, chunks, cards, assets; short-lived nonce and code hashes |
 | Analytics | Workers Analytics Engine | Event stream |
+
+**Queues and crons**
+
+- Cloudflare sets `cpu_ms` per Worker, not per consumer, so the API Worker's `cpu_ms` is 60,000 for everything it runs: fetch, crons and every queue consumer.
+- Queue retries: `settle` 10, every other queue 5. Each queue has a dead-letter queue named `<queue>-dlq`.
+- Crons (UTC):
+  - every minute: indexer kick and scheduler tick (question lock, house-question fill, daily cast). 21:00 New York moves in UTC with DST, so this is a minute tick;
+  - hourly: create rounds 48 h ahead (idempotent);
+  - daily at 08:15: reconcile `point_balances` against `points_ledger`.
 
 **Repository layout**
 
@@ -690,7 +706,7 @@ contracts         Foundry project: FlockedEscrow, FlockedAnchor
 
 ## Data model
 
-D1 (SQLite) is the system of record for everything except Stakes balances, which live onchain. IDs are ULIDs. Stored timestamps are UTC epoch milliseconds, while beacon-math values (`opens_at`, `closes_at` in API payloads, `beacon_round` times) are exchanged in Unix seconds. Money is integer base units.
+D1 (SQLite) is the system of record for everything except Stakes balances, which live onchain. IDs are ULIDs. Onchain times (ticket `expiry`, receipt `closesAt`, `stakes_tickets.expiry`, `anchors.block_timestamp`) and beacon-math values (`opensAt`, `closesAt` and `beaconTime` in API payloads) are Unix seconds. Every other time, including every other stored timestamp, is UTC epoch milliseconds. Money is integer base units.
 
 | Table | Key columns | Notes |
 | --- | --- | --- |
@@ -698,27 +714,27 @@ D1 (SQLite) is the system of record for everything except Stakes balances, which
 | `identities` | id, user\_id, provider (farcaster, wallet, email, coinbase), external\_id, verified\_at, data\_json | Unique (provider, external\_id). Wallet external\_id = lowercase address; data\_json holds attestation UIDs and verified country. Coinbase external\_id = person\_id |
 | `questions` | id, author\_user\_id (nullable for house), prompt, options\_json, category, status (submitted, rejected, queued, scheduled, used), moderation\_json, score, created\_at | options\_json = exactly 2 entries of {label, emoji} |
 | `question_votes` | question\_id, user\_id, value (+1/−1), created\_at | PK (question\_id, user\_id) |
-| `rounds` | id, kind (daily, room), room\_id (nullable), question\_id, opens\_at, closes\_at, beacon\_round, status (scheduled, open, closed), locked\_at, config\_json | config\_json is frozen at question lock: per-mode stake rules, fees, cap, minEntrants, beaconDelay, the resolved Stakes creator address, `free.creatorAwardBps` and the award recipient. The Free config hash is keccak256 of its canonical JSON encoding |
+| `rounds` | id, kind (daily, room), room\_id (nullable), question\_id, opens\_at, closes\_at, beacon\_round, status (scheduled, open, closed), locked\_at, config\_json | config\_json is frozen at question lock: per-mode stake rules, fees, cap, minEntrants, beaconDelay, the resolved Stakes creator address, `free.creatorAwardBps` and the award recipient. The Free config hash is keccak256 of the RFC 8785 (JCS) encoding of `{beaconDelay, free}` (see Free mode specifics) |
 | `round_modes` | round\_id, mode (free, stakes), status (pending, revealing, settle\_proposed, refund\_proposed, settled, refunded, voided), refund\_reason, chain\_round\_id (Stakes), lock\_tx, commitment\_root and commit\_tx (Free), bundle\_hash, revealed\_at, claims\_open\_at (Stakes, from the onchain proposal), final\_at (when the mode reached a terminal state) | PK (round\_id, mode). Created at question lock. The two `_proposed` states are Stakes only |
 | `stakes_tickets` | ticket\_hash (PK), round\_id, person\_tag, user\_id, wallet, expiry, issued\_at, used\_tx | Index (round\_id, person\_tag); partial unique (round\_id, person\_tag) WHERE used\_tx IS NOT NULL |
-| `entries` | id, round\_id, mode, user\_id, wallet (nullable), person\_tag (Stakes), stake, ciphertext (nullable after archival), commitment, receipt\_seq (Free), tx\_hash, block\_number, log\_index (Stakes), option\_index (null until reveal), valid (null, 1, 0), void\_reason, created\_at | Unique (round\_id, mode, user\_id); unique (tx\_hash, log\_index) |
+| `entries` | id, round\_id, mode, user\_id (null only for a foreign entry), foreign\_entry (0 or 1, Stakes only), wallet (nullable), person\_tag (Stakes), stake, ciphertext (nullable after archival), commitment, receipt\_seq (Free), tx\_hash, block\_number, log\_index (Stakes), option\_index (null until reveal), valid (null, 1, 0), void\_reason, created\_at | Unique (round\_id, mode, user\_id); unique (tx\_hash, log\_index); partial unique (round\_id, mode, receipt\_seq) WHERE receipt\_seq IS NOT NULL. A foreign entry is an `Entered` event with no ticket record (see Entry tickets) |
 | `settlements` | round\_id, mode, proposal\_seq, outcome (settled, refunded, voided), formula\_version, tally\_json (per-option headcount and stake), winners\_json, loss\_pool, fee, creator\_fee, distributable, rebate\_pool, dust, payout\_root, manifest\_r2\_key, bundle\_hash, settled\_at, tx\_hash, superseded\_at | PK (round\_id, mode, proposal\_seq); partial unique (round\_id, mode) WHERE superseded\_at IS NULL. A vetoed proposal is kept, marked superseded |
-| `payouts` | round\_id, mode, user\_id, wallet, kind (win, rebate, void\_refund, refund), amount, claimed\_at, claim\_tx | Stakes: claimed via contract; Free: written to ledger immediately |
+| `payouts` | round\_id, mode, user\_id, wallet, kind (win, rebate, void\_refund, refund), amount, claimed\_at, claim\_tx | Unique (round\_id, mode, user\_id, kind). Written only when the mode is final. Stakes: claimed via contract; Free: written to ledger immediately |
 | `point_balances` | user\_id, scope ('global' or a room id), balance CHECK (balance >= 0), updated\_at | PK (user\_id, scope) |
 | `points_ledger` | id, user\_id, scope, delta, reason (signup, daily\_grant, room\_grant, stake, payout, rebate, refund, void\_refund, creator\_award, referral, merge, admin), ref\_id, created\_at | Unique (user\_id, scope, reason, ref\_id). Append-only; never update rows |
-| `user_stats` | user\_id, mode, rounds\_played, wins, losses, refunds, stray\_streak, best\_stray\_streak, play\_streak, net (points or USDC units), updated\_at | Daily rounds only; Stakes results count once final |
-| `rooms` | id, name, owner\_user\_id, invite\_code, question\_source (daily, custom), created\_at | Free mode only unless flag set |
-| `room_members` | room\_id, user\_id, role (owner, member), joined\_at |  |
+| `user_stats` | user\_id, mode, rounds\_played, wins, losses, refunds, stray\_streak, best\_stray\_streak, play\_streak, net (points or USDC units), updated\_at | PK (user\_id, mode). Daily rounds only; Stakes results count once final |
+| `rooms` | id, name, owner\_user\_id, invite\_code, question\_source (daily, custom), created\_at | Unique (invite\_code). Free mode only unless flag set |
+| `room_members` | room\_id, user\_id, role (owner, member), joined\_at | PK (room\_id, user\_id) |
 | `share_cards` | share\_id (PK, opaque random), round\_id, mode, user\_id, kind (result, teaser), r2\_prefix, created\_at | Unique (round\_id, mode, user\_id, kind). Variants per card: og, embed, square |
 | `merges` | id, kept\_user\_id, losing\_user\_id, identity\_id, status (pending, confirmed, refused, expired), expires\_at, created\_at, confirmed\_at | confirmed\_at enforces the 30-day merge limit |
 | `referrals` | referrer\_user\_id, referee\_user\_id, status (pending, qualified, rewarded), qualified\_round\_id, rewarded\_at, created\_at | Unique (referee\_user\_id). Only daily rounds qualify |
 | `sessions` | id\_hash, user\_id, expires\_at, created\_at, user\_agent | Session cookie (web) or Bearer token (mini app) holds the unhashed ID |
-| `notification_prefs` | user\_id, channel (farcaster, webpush, email), event, enabled |  |
-| `push_subscriptions` | id, user\_id, endpoint, keys\_json | Web push |
-| `limits` | user\_id, daily\_stake\_cap, pending\_cap, pending\_cap\_effective\_at, self\_exclusion\_started\_at, self\_exclusion\_until, self\_exclusion\_permanent, exclusion\_lift\_requested\_at, exclusion\_lift\_effective\_at, question\_block\_until | Responsible play. A raised cap waits in pending\_cap for 24 hours. Excluded means `self_exclusion_until` > now, or permanent and not yet lifted (`exclusion_lift_effective_at` unset or in the future). Every check uses this one rule |
-| `indexer_state` | chain\_id, contract, last\_block\_number, last\_block\_hash, updated\_at | If the stored hash no longer matches the chain, re-index from 5 blocks back |
-| `anchors` | id, kind (lock, commit, manifest), round\_keys\_json, tx\_hash, block\_timestamp, created\_at | One row per `FlockedAnchor` transaction |
-| `audit_log` | id, actor (user, admin, system), action, target, data\_json, created\_at | Every admin action, merge and settlement |
+| `notification_prefs` | user\_id, channel (farcaster, webpush, email), event, enabled | PK (user\_id, channel, event) |
+| `push_subscriptions` | id, user\_id, endpoint, keys\_json | Unique (endpoint). Web push |
+| `limits` | user\_id, daily\_stake\_cap, pending\_cap, pending\_cap\_effective\_at, self\_exclusion\_started\_at, self\_exclusion\_until, self\_exclusion\_permanent, exclusion\_lift\_requested\_at, exclusion\_lift\_effective\_at, question\_block\_until | PK (user\_id). Responsible play. A raised cap waits in pending\_cap for 24 hours. Excluded means `self_exclusion_until` > now, or permanent and not yet lifted (`exclusion_lift_effective_at` unset or in the future). Every check uses this one rule |
+| `indexer_state` | chain\_id, contract, last\_block\_number, last\_block\_hash, updated\_at | PK (chain\_id, contract). If the stored hash no longer matches the chain, re-index from 5 blocks back |
+| `anchors` | id, kind (lock, commit, manifest), round\_keys\_json, tx\_hash, block\_timestamp, created\_at | Unique (tx\_hash). One row per `FlockedAnchor` transaction (a replacement gets its own row) |
+| `audit_log` | id, actor (user, admin, system), actor\_user\_id (nullable), action, target, data\_json, created\_at | Every admin action, merge and settlement. actor\_user\_id is the acting user or admin; null for system |
 | `analytics_events` | Not stored in D1; sent to Workers Analytics Engine | See Analytics |
 
 **Archival.** After a mode is final, its entries' ciphertexts are removed from D1, but only once they are durable in R2 bundle chunks (Free, including refunded and voided modes, which also write a bundle) or onchain (Stakes). This keeps D1 well under its 10 GB limit.
@@ -766,7 +782,7 @@ A single Worker serves a JSON REST API under `/api/v1`. The standalone web app u
 | GET | /rounds?before=&limit= | none | Archive of settled rounds |
 | POST | /rounds/:id/entries | user | Free entry: {stake, ciphertext, turnstileToken?}. Returns the signed receipt. Stakes entries are onchain and are rejected here |
 | POST | /rounds/:id/entries/stakes/prepare | user | Run eligibility checks and return a signed entry ticket for {wallet} |
-| GET | /rounds/:id/me | user | The caller's entries, receipts and inclusion proofs, result, payout, claim proof |
+| GET | /rounds/:id/me | user | The caller's entries, receipts and inclusion proofs, result, payout, claim proof, and `cards[]` (the caller's share IDs for the round) |
 | GET | /rounds/:id/verify | none | Bundle manifest and chunk URLs |
 | GET | /rounds/:id/ws | none | WebSocket upgrade to a viewer shard for the round |
 | GET | /claims | user or wallet | Unclaimed Stakes payouts and refunds with proofs and claim-open times, including accounts merged into the caller. With `?wallet=`, served from public bundle data without sign-in |
@@ -788,6 +804,14 @@ A single Worker serves a JSON REST API under `/api/v1`. The standalone web app u
 | POST | /me/limits/exclusion-lift | user | Request lifting a permanent exclusion: accepted only 6 months after it started; takes effect 7 days later |
 | POST | /admin/users/:id/role | admin | Set role (user, admin) |
 | \* | /admin/\* | admin | See Admin console |
+| POST | /paymaster | none | ERC-7677 paymaster proxy for wallet SDKs. Sponsors only the calls listed in Gas and UX, with the daily cap keyed on the user operation's sender |
+
+**Paths and formats.**
+
+- `/s/:shareId` and the card images (`/cards/…`, `/rounds/:id/card/…`) are served at the site root, not under `/api/v1`. The Worker runs before static assets for these paths.
+- Handles match `^[a-z0-9_-]{3,20}$`.
+- The `/admin/*` endpoints are as drafted in `packages/shared` (`src/api/admin.ts`); they may change when the admin console is built.
+- The `/rounds?before=` cursor, the `/claims` refund proof and the WebSocket `state` payload are as defined in `packages/shared`.
 
 **Reveal gating:** no endpoint, WebSocket message, card or bundle exposes per-option data for a mode until that mode's `revealed_at` is set. Room round endpoints, WebSockets and bundles are for members only. The room-minimum qualification flag in room bundles is operator-attested, which is accepted for points-only rooms.
 
@@ -835,7 +859,7 @@ Each round has one `RoundDO` (Durable Object). It owns live counters, accepts Fr
 | `closed` | closesAt reached; entries locked; beacon time |
 | `revealing` | Settlement started for a mode |
 | `revealed` | For one mode: per-option headcounts and totals, winning option and (roundId, mode). For Stakes it is sent once the proposal is confirmed onchain and carries `claimsOpenAt` |
-| `refunded` | For one mode: refund reason code |
+| `refunded` | For one mode: refund reason code, `provisional` (true for a Stakes refund proposal not yet final) and `finalAt` (when it becomes or became final) |
 
 **Reveal choreography**
 
@@ -874,9 +898,11 @@ Players write the questions: submit → automated moderation → community vote 
 
 One responsive web app (React + Vite + TypeScript) serves both the browser and the Farcaster/Base mini app. It is designed mobile-first, with a 380 px minimum width. The mini app context is detected via the Farcaster mini app SDK, which adjusts auth and sharing. All visual design follows [Design_Language.md](Design_Language.md).
 
+**Navigation.** Five tabs: Today, Archive, Boards, Rooms and You. Submit, Queue, Claims and Settings sit under You on mobile. On desktop they sit in the header, along with Questions.
+
 | Screen | Route | Contents |
 | --- | --- | --- |
-| Today | `/` | Question, two option cards, stake selector (Free: presets + slider; Stakes: the round's fixed stake), mode toggle (Free/Stakes; Stakes hidden if ineligible), countdown to close, live entrant count and pool, crowd-history hint, primary CTA "Seal my pick" |
+| Today | `/` | Question, two option cards, stake selector (Free: presets + slider; Stakes: the round's fixed stake), mode toggle (Free/Stakes; Stakes hidden only by region, age or self-exclusion; unverified users see Stakes with "Verify with Coinbase", which opens the verification sheet), countdown to close, live entrant count and pool, crowd-history hint, primary CTA "Seal my pick" |
 | Sealed | `/` (state) | Locked pick with a padlock, stake, countdown to the reveal, "Remind me" (notifications), invite friends |
 | Reveal | `/` (state) | Unsealing countdown, reveal animation, personal result (Stakes: "Final at" time), share card preview, Share button, "The next question is already live" |
 | Round detail | `/r/:id` | Settled split for both modes, winners count, top question comments (none in scope; link to Farcaster cast), verify link |
@@ -899,7 +925,7 @@ One responsive web app (React + Vite + TypeScript) serves both the browser and t
 
 **Entry flow (Stakes)**
 
-1. Same option UI with the round's fixed stake shown. Eligibility (verified Coinbase sign-in, geo, age, ToS, limits) has already been checked via `/me`. Unverified users are sent to "Verify with Coinbase"; inside the mini app this opens an external browser, and the app polls `/me` until verification completes.
+1. Same option UI with the round's fixed stake shown. Eligibility (verified Coinbase sign-in, geo, age, ToS, limits) has already been checked via `/me`. Unverified users see Stakes with "Verify with Coinbase", which opens the verification sheet; inside the mini app this opens an external browser, and the app polls `/me` until verification completes.
 2. The client runs the round config check (see Sealed picks), encrypts, and requests a ticket from `/entries/stakes/prepare`. It then builds and sends a single sponsored user operation (approve or permit + `enter` with the ticket) through the smart wallet.
 3. Show pending until the transaction is included. The RoundDO counter updates when the indexer sees `Entered`.
 
@@ -947,7 +973,7 @@ Social features give players something to protect (streaks) and someone to beat 
 
 **Game day and streaks**
 
-- A round's game day is the New York date on which it closes. A round running Monday 21:00 to Tuesday 21:00 counts as Tuesday.
+- A round's game day is the New York calendar date of its `closesAt`. The daily round closes at 21:00 New York, so a round running Monday 21:00 to Tuesday 21:00 counts as Tuesday. Daily grants, caps and streaks all use this date.
 - Streaks count consecutive game days.
   - Refunded and voided game days are neutral for the stray streak: they neither break nor extend it.
   - A refunded entry still counts as played for the play streak.
@@ -1041,7 +1067,7 @@ Stakes mode is likely to be treated as gambling in many jurisdictions. It is geo
 - Eligibility needs all of these in `geo.stakes.allow` (default empty, so Stakes is unavailable until configured):
   - the user's Coinbase Verified Country, which must match the country of the same OAuth account;
   - the request location (`request.cf.country`, `request.cf.regionCode` for region-level rules).
-- Checked on `/me`, at every ticket issue, and in the claims UI. Ineligible users see Free mode only and no Stakes UI. Claims and refunds of already-entered rounds are always available.
+- Checked on `/me`, at every ticket issue, and in the claims UI. Stakes UI is hidden only for region, age or self-exclusion; those users see Free mode only. An unverified user in an allowed region sees Stakes with "Verify with Coinbase". Claims and refunds of already-entered rounds are always available.
 - VPN/proxy signals from Cloudflare (bot management score and known-proxy flags where available) block ticket issue.
 - Enforcement is onchain through entry tickets. `enter()` rejects any entry without a valid ticket, so calling the contract directly cannot bypass geo, age, self-exclusion or caps, as long as the ticket signer is uncompromised. Settlement checks every entry against the issued-ticket records.
 
@@ -1121,13 +1147,14 @@ Events go to Workers Analytics Engine (server-side for authoritative events, cli
 | Accessibility | WCAG 2.1 AA; reveal animation respects `prefers-reduced-motion` |
 | Observability | Structured logs and alerts (see below) |
 
-**Alerts** fire on any of these:
+**Alerts** fire on any of these. Each has a code and a severity (page or warn), as listed in `packages/shared/src/alerts.ts`:
 
 - settlement failure or reconciliation mismatch;
 - a Free commitment not confirmed by its deadline, min(close + 90 s, beaconTime − 30 s);
 - safe head not past the close block by beacon time + 60 s;
+- the beacon still unavailable 10 minutes after beacon time (`ALERT_BEACON_LATE`);
 - indexer lag over 150 s;
-- an anomalous VOID rate;
+- an anomalous VOID rate: a mode's VOID entries exceed 2% of its entries and number at least 10;
 - DO errors or a schedule gap;
 - a watcher mismatch or a missing verdict;
 - any `FlockedEscrow` or `FlockedAnchor` event the backend didn't send.
@@ -1279,3 +1306,16 @@ The settlement engine is the riskiest code. It is a pure, shared TypeScript pack
 | Oct 7, 2026 | Wave-1 contract and settlement behaviour written into the spec as built: `createRound` rejects beacon round 0; `enter` rejects a zero `personTag` and checks the USDC received; `propose` rejects a zero `bundleHash`, and a zero `payoutRoot` on settle proposals; refund rules are checked in order 1, 2, 3; after a veto every entrant (VOID included) reclaims their stake and no fees are credited; vetoed proposals stay readable as evidence; only the admin executes or cancels timelocked changes, which don't expire; one entry per account per round; `minEntrants` and `capMultiple` are at least 1; refunded rounds pay no creator fee or creator award; the API decides room qualification |
 | Oct 7, 2026 | `GUARDIAN_ROLE` has exactly one holder. The guardian hands the role on with `transferGuardian` (immediately), and the admin's 7-day replacement is a single write, so a stolen guardian key can't block its own replacement by granting the role to many addresses |
 | Oct 7, 2026 | The win and loss voice lines in Design\_Language.md (Voice) are templates: whole percent, with the winning share rounded down and the losing share rounded up, so a winner never reads 50%; "<1%" and ">99%" at the extremes |
+| Oct 8, 2026 | tlock VOID checks run in order (header, target, decrypt, plaintext, option) and the first failure is the reason. The canonical header is binary age v1 with exactly one tlock stanza (decimal round, lowercase chain hash, strict base64 at 64 columns, LF only); a non-canonical G2 point in the stanza is `decrypt_failed` |
+| Oct 8, 2026 | `questionHash` is keccak256 of the ABI-encoded prompt and both labels and emoji, each NFC-normalized and trimmed. The Free config hash is keccak256 of the RFC 8785 (JCS) serialization of `{beaconDelay, free}` |
+| Oct 8, 2026 | `FlockedAnchor` written into the spec as built: receipt domain version "1"; `lock` only before `closesAt`; `anchorManifest` reverts instead of skipping and needs a lock but not a commit; disabling receipts is immediate, a new signer waits 72 h; `roundKey` mode is Free = 0, Stakes = 1 |
+| Oct 8, 2026 | Config validation runs the target-round check on any non-default close or `beaconDelay`. Stakes' `beaconDelay` isn't onchain, so clients check `beaconRound` against the published locked config |
+| Oct 8, 2026 | Free stake presets are 10, 25, 50 and 100; Free `capMultiple` is 1–255; the creator award goes to the author's user ID, or nobody for a house question. Game day is the New York date of `closesAt`, and a daily grant skipped at ≥ 1,000 points is final for that day |
+| Oct 8, 2026 | An `Entered` event with no ticket (a stolen ticket-signer key) is stored as a foreign entry with no user, raises `ALERT_FOREIGN_EVENT` and holds the round for the guardian, who vetoes or lets it settle with the entry counted |
+| Oct 8, 2026 | API and data-model gaps closed as drafted in `packages/shared`: `POST /paymaster` joins the API table; share pages and card images are served at the site root; `/rounds/:id/me` returns `cards[]`; handle format; `payouts` unique per (round, mode, user, kind) and written only when final; `audit_log.actor_user_id`; onchain and beacon-math times in seconds, all others in ms; `refunded` carries `provisional` and `finalAt`; the as-built keys are listed in Data model |
+| Oct 8, 2026 | Stakes is hidden only for region, age and self-exclusion. Unverified users see Stakes with "Verify with Coinbase" |
+| Oct 8, 2026 | Colour tokens revised for contrast (dark `--accent-ink`, light `--muted`, new `--scrim`, accent text and label sizes). The change is in Design\_Language.md |
+| Oct 8, 2026 | The mascot keeps its ink outlines and white wool in dark mode; only strokes outside the wool switch. The change is in Design\_Language.md |
+| Oct 8, 2026 | Navigation is five tabs: Today, Archive, Boards, Rooms, You. Submit, Queue, Claims and Settings sit under You on mobile and in the header on desktop. See Client app (Navigation) |
+| Oct 8, 2026 | New voice lines for a tie refund, offline, an entry rejected at close and the daily cap. The change is in Design\_Language.md |
+| Oct 8, 2026 | Ops settings: `cpu_ms` 60,000 for the whole API Worker; queue retries (settle 10, others 5) with `<queue>-dlq` dead-letter queues; cards and notify batches of 10 and 50; crons every minute, hourly and 08:15 UTC. New `ALERT_BEACON_LATE`, and `ALERT_VOID_RATE` fires above 2% of a mode's entries with at least 10 VOIDs |

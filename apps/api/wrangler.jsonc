@@ -1,0 +1,338 @@
+// Flocked API Worker (spec "Architecture"). The top level is the `local` environment
+// (`wrangler dev`, Miniflare, Vitest); `env.staging` and `env.production` repeat every binding
+// because wrangler does not inherit bindings, vars or queues into named environments.
+//
+// IDs marked OWNER_SUPPLIED are placeholders the owner replaces after creating the resource
+// (`wrangler d1 create`, `wrangler kv namespace create`, ...). They are not secrets.
+//
+// Secrets (never in this file; `wrangler secret put <NAME> --env <env>`, locally `.dev.vars`).
+// The owning session pins each one; see docs/runbooks/secrets.md once W13-D writes it:
+//   RECEIPT_SIGNER_KEY    Free receipt EIP-712 signer (W3-B)
+//   TURNSTILE_SECRET_KEY  Turnstile siteverify secret (W3-A)
+//   PERSON_ID_KEY         HMAC key for users.person_id; cannot be rotated (W5-B)
+//   PERSON_TAG_KEY        HMAC key for Stakes person tags (W6-B)
+//   COINBASE_CLIENT_ID, COINBASE_CLIENT_SECRET  Coinbase OAuth (W5-B)
+//   ANCHOR_KEY            FlockedAnchor ANCHOR_ROLE key, used only by AnchorDO (W4-A)
+//   OPERATOR_KEY          FlockedEscrow OPERATOR_ROLE key (W6-A)
+//   BASE_RPC_URL, BASE_RPC_URL_FALLBACK  RPC providers (W4-B)
+//   ANTHROPIC_API_KEY     moderation (W8-A)
+//   VAPID_PRIVATE_KEY     web push (W9-A)
+//   PAYMASTER_URL, BUNDLER_URL  paymaster proxy (W10-D)
+// The ticket signer key (TICKET_SIGNER_KEY) lives only in apps/signer.
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  // Never deployed: `wrangler deploy` without --env would fail on the placeholder IDs below.
+  "name": "flocked-api-local",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "observability": { "enabled": true },
+
+  // Decrypt consumers need up to 60 s of CPU per chunk ("Architecture", Decrypt workers). The
+  // limit is per Worker, so it also applies to fetch, cron and the other consumers.
+  "limits": { "cpu_ms": 60000 },
+
+  // UTC crons (spec "Architecture": Scheduler and Chain indexer; "Data model": nightly reconcile).
+  // Keep in sync with src/cron.ts.
+  //   * * * * *   indexer kick + scheduler tick (question lock at opensAt - 6 h, daily cast at
+  //               opensAt; 21:00 America/New_York moves in UTC with DST, so it is a minute tick)
+  //   0 * * * *   create rounds 48 h ahead and fill gaps with house questions (idempotent)
+  //   15 8 * * *  nightly point_balances vs points_ledger reconciliation
+  "triggers": { "crons": ["* * * * *", "0 * * * *", "15 8 * * *"] },
+
+  // The React SPA from apps/web, served by this Worker; /api/* always reaches the Worker first.
+  "assets": {
+    "directory": "../web/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"],
+  },
+
+  // Durable Objects are SQLite-backed. Bindings are repeated per environment.
+  "durable_objects": {
+    "bindings": [
+      { "name": "ROUND", "class_name": "RoundDO" },
+      { "name": "ROUND_VIEWER", "class_name": "RoundViewerDO" },
+      { "name": "ANCHOR", "class_name": "AnchorDO" },
+      { "name": "SETTLEMENT", "class_name": "SettlementDO" },
+      { "name": "AUTH", "class_name": "AuthDO" },
+      { "name": "RATE_LIMIT", "class_name": "RateLimitDO" },
+      { "name": "INDEXER", "class_name": "IndexerDO" },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "RoundDO",
+        "RoundViewerDO",
+        "AnchorDO",
+        "SettlementDO",
+        "AuthDO",
+        "RateLimitDO",
+        "IndexerDO",
+      ],
+    },
+  ],
+
+  "vars": {
+    "ENVIRONMENT": "local",
+    "CHAIN_ID": "31337",
+    // Local runs may point these at a local drand network through .dev.vars (plan 4.4); the
+    // defaults are quicknet (packages/tlock/src/chains.ts).
+    "DRAND_CHAIN_HASH": "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971",
+    "DRAND_PUBLIC_KEY": "83cf0f2896adee7eb8b5f01fcad3912212c437e0073e911fb90022d3e760183c8c4b450b6a0a6c3ac6a5776a2d1064510d1fec758c921cc22b0e17e63aaf4bcb5ed66304de9cf809bd274ca73bab4af5a6e9c76a4bc09e76eae8991ef5ece45a",
+    "DRAND_GENESIS": "1692803367",
+    "DRAND_PERIOD": "3",
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "flocked-local",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations",
+    },
+  ],
+  "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "flocked-local" }],
+  "kv_namespaces": [{ "binding": "KV", "id": "00000000000000000000000000000000" }],
+  "analytics_engine_datasets": [{ "binding": "ANALYTICS", "dataset": "flocked_events_local" }],
+  "vectorize": [{ "binding": "VECTORIZE", "index_name": "flocked-questions-local" }],
+  "ai": { "binding": "AI" },
+  "send_email": [{ "name": "EMAIL" }],
+
+  // Queue consumer settings: decrypt queues from "Architecture" (max_batch_size 1,
+  // max_concurrency 250, cpu_ms above). Retries, retry delays, DLQs and the settle/cards/notify
+  // batch sizes are not in the spec; chosen in W2-D (see its handoff) pending a spec decision.
+  "queues": {
+    "producers": [
+      { "binding": "QUEUE_SETTLE", "queue": "settle" },
+      { "binding": "QUEUE_DECRYPT_DAILY", "queue": "decrypt-daily" },
+      { "binding": "QUEUE_DECRYPT_ROOMS", "queue": "decrypt-rooms" },
+      { "binding": "QUEUE_CARDS", "queue": "cards" },
+      { "binding": "QUEUE_NOTIFY", "queue": "notify" },
+    ],
+    "consumers": [
+      {
+        "queue": "settle",
+        "max_batch_size": 1,
+        "max_retries": 10,
+        "retry_delay": 5,
+        "dead_letter_queue": "settle-dlq",
+      },
+      {
+        "queue": "decrypt-daily",
+        "max_batch_size": 1,
+        "max_concurrency": 250,
+        "max_retries": 5,
+        "retry_delay": 2,
+        "dead_letter_queue": "decrypt-daily-dlq",
+      },
+      {
+        "queue": "decrypt-rooms",
+        "max_batch_size": 1,
+        "max_concurrency": 250,
+        "max_retries": 5,
+        "retry_delay": 2,
+        "dead_letter_queue": "decrypt-rooms-dlq",
+      },
+      {
+        "queue": "cards",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5,
+        "max_retries": 5,
+        "retry_delay": 10,
+        "dead_letter_queue": "cards-dlq",
+      },
+      {
+        "queue": "notify",
+        "max_batch_size": 50,
+        "max_batch_timeout": 5,
+        "max_retries": 5,
+        "retry_delay": 30,
+        "dead_letter_queue": "notify-dlq",
+      },
+    ],
+  },
+
+  "env": {
+    "staging": {
+      "name": "flocked-api-staging",
+      "durable_objects": {
+        "bindings": [
+          { "name": "ROUND", "class_name": "RoundDO" },
+          { "name": "ROUND_VIEWER", "class_name": "RoundViewerDO" },
+          { "name": "ANCHOR", "class_name": "AnchorDO" },
+          { "name": "SETTLEMENT", "class_name": "SettlementDO" },
+          { "name": "AUTH", "class_name": "AuthDO" },
+          { "name": "RATE_LIMIT", "class_name": "RateLimitDO" },
+          { "name": "INDEXER", "class_name": "IndexerDO" },
+        ],
+      },
+      "vars": {
+        "ENVIRONMENT": "staging",
+        "CHAIN_ID": "84532",
+        "DRAND_CHAIN_HASH": "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971",
+        "DRAND_PUBLIC_KEY": "83cf0f2896adee7eb8b5f01fcad3912212c437e0073e911fb90022d3e760183c8c4b450b6a0a6c3ac6a5776a2d1064510d1fec758c921cc22b0e17e63aaf4bcb5ed66304de9cf809bd274ca73bab4af5a6e9c76a4bc09e76eae8991ef5ece45a",
+        "DRAND_GENESIS": "1692803367",
+        "DRAND_PERIOD": "3",
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "flocked-staging",
+          "database_id": "OWNER_SUPPLIED_STAGING_D1_DATABASE_ID",
+          "migrations_dir": "migrations",
+        },
+      ],
+      "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "flocked-staging" }],
+      "kv_namespaces": [{ "binding": "KV", "id": "OWNER_SUPPLIED_STAGING_KV_NAMESPACE_ID" }],
+      "analytics_engine_datasets": [
+        { "binding": "ANALYTICS", "dataset": "flocked_events_staging" },
+      ],
+      "vectorize": [{ "binding": "VECTORIZE", "index_name": "flocked-questions-staging" }],
+      "ai": { "binding": "AI" },
+      "send_email": [{ "name": "EMAIL" }],
+      // Staging and production share the owner's account, so staging queue names carry a suffix;
+      // logicalQueue() in src/queues/index.ts strips it.
+      "queues": {
+        "producers": [
+          { "binding": "QUEUE_SETTLE", "queue": "settle-staging" },
+          { "binding": "QUEUE_DECRYPT_DAILY", "queue": "decrypt-daily-staging" },
+          { "binding": "QUEUE_DECRYPT_ROOMS", "queue": "decrypt-rooms-staging" },
+          { "binding": "QUEUE_CARDS", "queue": "cards-staging" },
+          { "binding": "QUEUE_NOTIFY", "queue": "notify-staging" },
+        ],
+        "consumers": [
+          {
+            "queue": "settle-staging",
+            "max_batch_size": 1,
+            "max_retries": 10,
+            "retry_delay": 5,
+            "dead_letter_queue": "settle-dlq-staging",
+          },
+          {
+            "queue": "decrypt-daily-staging",
+            "max_batch_size": 1,
+            "max_concurrency": 250,
+            "max_retries": 5,
+            "retry_delay": 2,
+            "dead_letter_queue": "decrypt-daily-dlq-staging",
+          },
+          {
+            "queue": "decrypt-rooms-staging",
+            "max_batch_size": 1,
+            "max_concurrency": 250,
+            "max_retries": 5,
+            "retry_delay": 2,
+            "dead_letter_queue": "decrypt-rooms-dlq-staging",
+          },
+          {
+            "queue": "cards-staging",
+            "max_batch_size": 10,
+            "max_batch_timeout": 5,
+            "max_retries": 5,
+            "retry_delay": 10,
+            "dead_letter_queue": "cards-dlq-staging",
+          },
+          {
+            "queue": "notify-staging",
+            "max_batch_size": 50,
+            "max_batch_timeout": 5,
+            "max_retries": 5,
+            "retry_delay": 30,
+            "dead_letter_queue": "notify-dlq-staging",
+          },
+        ],
+      },
+    },
+
+    "production": {
+      "name": "flocked-api",
+      // Routes / custom domain: OWNER_SUPPLIED at launch (W16-A).
+      "durable_objects": {
+        "bindings": [
+          { "name": "ROUND", "class_name": "RoundDO" },
+          { "name": "ROUND_VIEWER", "class_name": "RoundViewerDO" },
+          { "name": "ANCHOR", "class_name": "AnchorDO" },
+          { "name": "SETTLEMENT", "class_name": "SettlementDO" },
+          { "name": "AUTH", "class_name": "AuthDO" },
+          { "name": "RATE_LIMIT", "class_name": "RateLimitDO" },
+          { "name": "INDEXER", "class_name": "IndexerDO" },
+        ],
+      },
+      "vars": {
+        "ENVIRONMENT": "production",
+        "CHAIN_ID": "8453",
+        "DRAND_CHAIN_HASH": "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971",
+        "DRAND_PUBLIC_KEY": "83cf0f2896adee7eb8b5f01fcad3912212c437e0073e911fb90022d3e760183c8c4b450b6a0a6c3ac6a5776a2d1064510d1fec758c921cc22b0e17e63aaf4bcb5ed66304de9cf809bd274ca73bab4af5a6e9c76a4bc09e76eae8991ef5ece45a",
+        "DRAND_GENESIS": "1692803367",
+        "DRAND_PERIOD": "3",
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "flocked-production",
+          "database_id": "OWNER_SUPPLIED_PRODUCTION_D1_DATABASE_ID",
+          "migrations_dir": "migrations",
+        },
+      ],
+      "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "flocked-production" }],
+      "kv_namespaces": [{ "binding": "KV", "id": "OWNER_SUPPLIED_PRODUCTION_KV_NAMESPACE_ID" }],
+      "analytics_engine_datasets": [{ "binding": "ANALYTICS", "dataset": "flocked_events" }],
+      "vectorize": [{ "binding": "VECTORIZE", "index_name": "flocked-questions" }],
+      "ai": { "binding": "AI" },
+      "send_email": [{ "name": "EMAIL" }],
+      "queues": {
+        "producers": [
+          { "binding": "QUEUE_SETTLE", "queue": "settle" },
+          { "binding": "QUEUE_DECRYPT_DAILY", "queue": "decrypt-daily" },
+          { "binding": "QUEUE_DECRYPT_ROOMS", "queue": "decrypt-rooms" },
+          { "binding": "QUEUE_CARDS", "queue": "cards" },
+          { "binding": "QUEUE_NOTIFY", "queue": "notify" },
+        ],
+        "consumers": [
+          {
+            "queue": "settle",
+            "max_batch_size": 1,
+            "max_retries": 10,
+            "retry_delay": 5,
+            "dead_letter_queue": "settle-dlq",
+          },
+          {
+            "queue": "decrypt-daily",
+            "max_batch_size": 1,
+            "max_concurrency": 250,
+            "max_retries": 5,
+            "retry_delay": 2,
+            "dead_letter_queue": "decrypt-daily-dlq",
+          },
+          {
+            "queue": "decrypt-rooms",
+            "max_batch_size": 1,
+            "max_concurrency": 250,
+            "max_retries": 5,
+            "retry_delay": 2,
+            "dead_letter_queue": "decrypt-rooms-dlq",
+          },
+          {
+            "queue": "cards",
+            "max_batch_size": 10,
+            "max_batch_timeout": 5,
+            "max_retries": 5,
+            "retry_delay": 10,
+            "dead_letter_queue": "cards-dlq",
+          },
+          {
+            "queue": "notify",
+            "max_batch_size": 50,
+            "max_batch_timeout": 5,
+            "max_retries": 5,
+            "retry_delay": 30,
+            "dead_letter_queue": "notify-dlq",
+          },
+        ],
+      },
+    },
+  },
+}

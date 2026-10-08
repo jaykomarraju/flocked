@@ -157,8 +157,14 @@ interface IFlockedEscrow {
     /// @notice Pauses `enter` and `enterWithPermit`. PAUSER_ROLE. Takes effect immediately.
     function pause() external;
 
-    /// @notice Unpauses entries. PAUSER_ROLE.
+    /// @notice Unpauses entries. DEFAULT_ADMIN_ROLE only, so a stolen pauser key can't undo a pause. Immediate.
     function unpause() external;
+
+    /// @notice Hands GUARDIAN_ROLE to `newGuardian`, immediately. GUARDIAN_ROLE.
+    /// @dev The role always has exactly one holder: the caller loses it in the same call. `grantRole`, `revokeRole`
+    ///      and `renounceRole` revert for it; the admin can replace the guardian only through the 7-day timelock.
+    /// @param newGuardian The new guardian (non-zero).
+    function transferGuardian(address newGuardian) external;
 
     // ---------------------------------------------------------------------------------------------
     // Pinned additions (docs/plan/wave-1.md, P1.3)
@@ -199,6 +205,7 @@ interface IFlockedEscrow {
     event TicketSignerSet(address indexed previous, address indexed current);
     event TreasurySet(address indexed previous, address indexed current);
     event GuardianReplaced(address indexed newGuardian);
+    event GuardianTransferred(address indexed previous, address indexed current);
     event Rescued(address indexed token, address indexed to, uint256 amount);
 
     error ZeroAddress();
@@ -247,6 +254,7 @@ interface IFlockedEscrow {
     error NotScheduled(bytes32 id);
     error TimelockNotReady(bytes32 id, uint256 readyAt);
     error RescueExceedsSurplus(uint256 amount, uint256 surplus);
+    error SingleGuardian();
 
     /// @notice The full state of a round.
     /// @param roundId The round.
@@ -265,6 +273,10 @@ interface IFlockedEscrow {
     /// @notice The treasury credited with fees and dust at finalize.
     /// @return The treasury address.
     function treasury() external view returns (address);
+
+    /// @notice The one GUARDIAN_ROLE holder.
+    /// @return The guardian address.
+    function guardian() external view returns (address);
 
     /// @notice Whether `account` has entered `roundId`.
     /// @param roundId The round.
@@ -348,11 +360,12 @@ interface IFlockedEscrow {
     /// @param account The scheduled account.
     function cancelOperatorGrant(address account) external;
 
-    /// @notice Schedules replacing every GUARDIAN_ROLE holder with `newGuardian` (7 days). DEFAULT_ADMIN_ROLE.
+    /// @notice Schedules replacing the guardian with `newGuardian` (7 days). DEFAULT_ADMIN_ROLE.
     /// @param newGuardian The replacement guardian (non-zero).
     function scheduleGuardianReplacement(address newGuardian) external;
 
     /// @notice Replaces the guardian once its 7-day timelock has passed. DEFAULT_ADMIN_ROLE.
+    /// @dev A single write: revokes the one current holder (whoever it is by then) and grants `newGuardian`.
     /// @param newGuardian The scheduled guardian.
     function executeGuardianReplacement(address newGuardian) external;
 

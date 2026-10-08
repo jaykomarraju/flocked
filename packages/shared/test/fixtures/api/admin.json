@@ -1,0 +1,687 @@
+{
+  "valid": {
+    "AdminUserParamsSchema": [
+      {
+        "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE"
+      }
+    ],
+    "SetUserRoleRequestSchema": [
+      {
+        "role": "admin"
+      }
+    ],
+    "SetUserRoleResponseSchema": [
+      {
+        "userId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+        "role": "admin",
+        "auditId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CX"
+      }
+    ],
+    "AdminScheduleQuerySchema": [
+      {
+        "from": "2026-10-08",
+        "to": "2026-10-21"
+      }
+    ],
+    "AdminScheduleResponseSchema": [
+      {
+        "days": [
+          {
+            "gameDay": "2026-10-08",
+            "round": {
+              "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+              "status": "open",
+              "lockedAt": 1791400000000,
+              "question": {
+                "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CG",
+                "prompt": "Pineapple on pizza?"
+              },
+              "modes": {
+                "free": "pending",
+                "stakes": "pending"
+              }
+            }
+          },
+          {
+            "gameDay": "2026-10-09",
+            "round": null
+          }
+        ]
+      }
+    ],
+    "AdminScheduleDayParamsSchema": [
+      {
+        "gameDay": "2026-10-09"
+      }
+    ],
+    "AssignQuestionRequestSchema": [
+      {
+        "questionId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CG"
+      }
+    ],
+    "AssignQuestionResponseSchema": [
+      {
+        "gameDay": "2026-10-09",
+        "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CY",
+        "questionId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CG",
+        "auditId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CX"
+      }
+    ],
+    "EditRoundConfigRequestSchema": [
+      {
+        "stakes": {
+          "minEntrants": 30
+        },
+        "reason": "Big launch day"
+      },
+      {
+        "free": {
+          "stakeMax": "200"
+        },
+        "reason": "Promo"
+      }
+    ],
+    "EditRoundConfigResponseSchema": [
+      {
+        "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+        "config": {
+          "beaconDelay": 120,
+          "free": {
+            "stakeMin": "10",
+            "stakeMax": "100",
+            "presets": ["10", "25", "50", "100"],
+            "feeBps": 0,
+            "creatorBps": 0,
+            "capMultiple": 10,
+            "minEntrants": 1,
+            "creatorAwardBps": 100,
+            "awardRecipient": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+            "configHash": "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          "stakes": {
+            "chainRoundId": "17",
+            "opensAt": 1791421200,
+            "closesAt": 1791507600,
+            "beaconRound": 32901452,
+            "stake": "5000000",
+            "feeBps": 500,
+            "creatorBps": 100,
+            "capMultiple": 10,
+            "minEntrants": 20,
+            "creator": "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+            "questionHash": "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "authorHandle": "woolly",
+            "payoutAddress": "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"
+          },
+          "overrides": [
+            {
+              "field": "stakes.minEntrants",
+              "value": 20,
+              "auditId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CS"
+            }
+          ]
+        },
+        "auditId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CX"
+      }
+    ],
+    "AdminLiveRoundResponseSchema": [
+      {
+        "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+        "status": "closed",
+        "modes": {
+          "free": {
+            "status": "revealing",
+            "entrantCount": 153,
+            "pool": "8150",
+            "settlementProgress": "decrypting 3/8"
+          },
+          "stakes": {
+            "status": "pending",
+            "entrantCount": 37,
+            "pool": "185000000",
+            "settlementProgress": null
+          }
+        },
+        "doHealthy": true,
+        "indexerLagBlocks": 2,
+        "safeHeadLagBlocks": null,
+        "anchors": [
+          {
+            "kind": "lock",
+            "status": "confirmed",
+            "txHash": "0x0101010101010101010101010101010101010101010101010101010101010101"
+          },
+          {
+            "kind": "commit",
+            "status": "pending",
+            "txHash": null
+          }
+        ]
+      }
+    ],
+    "VoidRoundRequestSchema": [
+      {
+        "reason": "Question leaked early"
+      }
+    ],
+    "VoidRoundResponseSchema": [
+      {
+        "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+        "auditId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CX"
+      }
+    ],
+    "RetrySettlementRequestSchema": [
+      {
+        "mode": "stakes"
+      }
+    ],
+    "RetrySettlementResponseSchema": [
+      {
+        "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+        "mode": "stakes",
+        "auditId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CX"
+      }
+    ],
+    "PauseContractRequestSchema": [
+      {
+        "reason": "Incident 42"
+      }
+    ],
+    "PauseContractResponseSchema": [
+      {
+        "txHash": "0x0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+        "auditId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CX"
+      },
+      {
+        "txHash": null,
+        "auditId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CX"
+      }
+    ],
+    "AdminChallengesResponseSchema": [
+      {
+        "proposals": [
+          {
+            "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+            "chainRoundId": "17",
+            "kind": "settle",
+            "txHash": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "proposedAt": 1791507780000,
+            "challengeEndsAt": 1791514980000,
+            "verdict": {
+              "verdict": "match",
+              "reasons": [],
+              "checkedAt": 1791507840000
+            }
+          },
+          {
+            "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CN",
+            "chainRoundId": "16",
+            "kind": "refund",
+            "txHash": "0xfefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefe",
+            "proposedAt": 1791507780000,
+            "challengeEndsAt": 1791514980000,
+            "verdict": null
+          }
+        ]
+      }
+    ],
+    "AdminQuestionsQuerySchema": [
+      {},
+      {
+        "status": "submitted",
+        "limit": 50
+      }
+    ],
+    "AdminQuestionsResponseSchema": [
+      {
+        "questions": [
+          {
+            "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CG",
+            "prompt": "Pineapple on pizza?",
+            "options": [
+              {
+                "label": "Pineapple",
+                "emoji": "🍍"
+              },
+              {
+                "label": "No pineapple",
+                "emoji": ""
+              }
+            ],
+            "category": "food",
+            "status": "queued",
+            "score": 14,
+            "author": {
+              "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+              "handle": "woolly",
+              "displayName": "Woolly",
+              "avatarUrl": "https://img.example/u/woolly.png"
+            },
+            "createdAt": 1791468191250,
+            "moderation": {
+              "verdict": "ok",
+              "categories": []
+            },
+            "predictedSplit": 0.42
+          }
+        ],
+        "nextCursor": "c-2"
+      }
+    ],
+    "AddHouseQuestionRequestSchema": [
+      {
+        "prompt": "Tea or coffee?",
+        "options": [
+          {
+            "label": "Tea",
+            "emoji": "🍵"
+          },
+          {
+            "label": "Coffee",
+            "emoji": "☕"
+          }
+        ],
+        "category": "food"
+      }
+    ],
+    "AddHouseQuestionResponseSchema": [
+      {
+        "question": {
+          "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CG",
+          "prompt": "Pineapple on pizza?",
+          "options": [
+            {
+              "label": "Pineapple",
+              "emoji": "🍍"
+            },
+            {
+              "label": "No pineapple",
+              "emoji": ""
+            }
+          ],
+          "category": "food",
+          "status": "queued",
+          "score": 14,
+          "author": null,
+          "createdAt": 1791468191250,
+          "moderation": {
+            "verdict": "ok",
+            "categories": []
+          },
+          "predictedSplit": 0.42
+        },
+        "auditId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CX"
+      }
+    ],
+    "EditQuestionRequestSchema": [
+      {
+        "prompt": "Pineapple on pizza: yes or no?",
+        "reason": "Clarity"
+      },
+      {
+        "options": [
+          {
+            "label": "Yes"
+          },
+          {
+            "label": "No"
+          }
+        ],
+        "category": "food",
+        "reason": "Shorter labels"
+      }
+    ],
+    "AdminQuestionActionResponseSchema": [
+      {
+        "question": {
+          "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CG",
+          "prompt": "Pineapple on pizza?",
+          "options": [
+            {
+              "label": "Pineapple",
+              "emoji": "🍍"
+            },
+            {
+              "label": "No pineapple",
+              "emoji": ""
+            }
+          ],
+          "category": "food",
+          "status": "queued",
+          "score": 14,
+          "author": {
+            "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+            "handle": "woolly",
+            "displayName": "Woolly",
+            "avatarUrl": "https://img.example/u/woolly.png"
+          },
+          "createdAt": 1791468191250,
+          "moderation": {
+            "verdict": "ok",
+            "categories": []
+          },
+          "predictedSplit": 0.42
+        },
+        "auditId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CX"
+      }
+    ],
+    "RejectQuestionRequestSchema": [
+      {
+        "reason": "Has a factual answer."
+      }
+    ],
+    "AdminUsersQuerySchema": [
+      {
+        "q": "woolly"
+      },
+      {
+        "q": "0x1111",
+        "cursor": "c",
+        "limit": 10
+      }
+    ],
+    "AdminUsersResponseSchema": [
+      {
+        "users": [
+          {
+            "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+            "handle": "woolly",
+            "displayName": "Woolly",
+            "avatarUrl": "https://img.example/u/woolly.png",
+            "role": "user",
+            "status": "active",
+            "personVerified": true,
+            "createdAt": 1791468191250
+          }
+        ],
+        "nextCursor": null
+      }
+    ],
+    "AdminUserDetailResponseSchema": [
+      {
+        "user": {
+          "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+          "handle": "woolly",
+          "displayName": "Woolly",
+          "avatarUrl": "https://img.example/u/woolly.png",
+          "role": "user",
+          "status": "active",
+          "personVerified": true,
+          "createdAt": 1791468191250
+        },
+        "identities": [
+          {
+            "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CK",
+            "provider": "wallet",
+            "externalId": "0x1111111111111111111111111111111111111111",
+            "verifiedAt": 1791468191250
+          },
+          {
+            "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CP",
+            "provider": "coinbase",
+            "externalId": null,
+            "verifiedAt": 1791468191250
+          }
+        ],
+        "merges": [
+          {
+            "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CJ",
+            "status": "pending",
+            "keptUserId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+            "losingUserId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CF",
+            "provider": "farcaster",
+            "otherHandle": "baa-baa",
+            "createdAt": 1791468191250,
+            "expiresAt": 1791554591250,
+            "confirmedAt": null
+          }
+        ],
+        "entries": [
+          {
+            "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CH",
+            "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+            "mode": "free",
+            "stake": "50",
+            "valid": true,
+            "createdAt": 1791468191250
+          }
+        ],
+        "ledger": [
+          {
+            "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CR",
+            "scope": "global",
+            "delta": "-50",
+            "reason": "stake",
+            "refId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CH",
+            "createdAt": 1791468191250
+          },
+          {
+            "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CZ",
+            "scope": "01K6Z8Y4N2R7VQ3M5T9W1XB0CM",
+            "delta": "500",
+            "reason": "room_grant",
+            "refId": null,
+            "createdAt": 1791468191250
+          }
+        ],
+        "limits": {
+          "dailyStakeCap": "25000000",
+          "pendingCap": "50000000",
+          "pendingCapEffectiveAt": 1791515000000,
+          "selfExclusion": {
+            "startedAt": null,
+            "until": null,
+            "permanent": false,
+            "liftRequestedAt": null,
+            "liftEffectiveAt": null
+          },
+          "excluded": false,
+          "questionBlockUntil": null
+        }
+      }
+    ],
+    "SetUserStatusRequestSchema": [
+      {
+        "status": "suspended",
+        "reason": "Multi-accounting"
+      }
+    ],
+    "SetUserStatusResponseSchema": [
+      {
+        "userId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+        "status": "suspended",
+        "auditId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CX"
+      }
+    ],
+    "AdjustPointsRequestSchema": [
+      {
+        "scope": "global",
+        "delta": "-250",
+        "reason": "Refund of a duplicate grant"
+      },
+      {
+        "scope": "01K6Z8Y4N2R7VQ3M5T9W1XB0CM",
+        "delta": "100",
+        "reason": "Goodwill"
+      }
+    ],
+    "AdjustPointsResponseSchema": [
+      {
+        "userId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+        "scope": "global",
+        "balance": "990",
+        "auditId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CX"
+      }
+    ],
+    "AdminConfigResponseSchema": [
+      {
+        "flags": {
+          "stakes_enabled": false,
+          "stakes_rooms": false
+        },
+        "geo": {
+          "stakesAllow": ["US-NY", "GB"],
+          "deny": ["KP"]
+        },
+        "feeDefaults": {
+          "free": {
+            "stakeMin": "10",
+            "stakeMax": "100",
+            "capMultiple": 10,
+            "minEntrants": 1,
+            "creatorAwardBps": 100
+          },
+          "stakes": {
+            "stake": "5000000",
+            "feeBps": 500,
+            "creatorBps": 100,
+            "capMultiple": 10,
+            "minEntrants": 20
+          }
+        },
+        "notificationCopy": {
+          "question_live": "A new question is live."
+        }
+      }
+    ],
+    "UpdateAdminConfigRequestSchema": [
+      {
+        "flags": {
+          "stakes_enabled": false,
+          "stakes_rooms": false
+        },
+        "geo": {
+          "stakesAllow": ["US-NY", "GB"],
+          "deny": ["KP"]
+        },
+        "feeDefaults": {
+          "free": {
+            "stakeMin": "10",
+            "stakeMax": "100",
+            "capMultiple": 10,
+            "minEntrants": 1,
+            "creatorAwardBps": 100
+          },
+          "stakes": {
+            "stake": "5000000",
+            "feeBps": 500,
+            "creatorBps": 100,
+            "capMultiple": 10,
+            "minEntrants": 20
+          }
+        },
+        "notificationCopy": {
+          "question_live": "A new question is live."
+        },
+        "reason": "Open NY"
+      }
+    ],
+    "UpdateAdminConfigResponseSchema": [
+      {
+        "flags": {
+          "stakes_enabled": false,
+          "stakes_rooms": false
+        },
+        "geo": {
+          "stakesAllow": ["US-NY", "GB"],
+          "deny": ["KP"]
+        },
+        "feeDefaults": {
+          "free": {
+            "stakeMin": "10",
+            "stakeMax": "100",
+            "capMultiple": 10,
+            "minEntrants": 1,
+            "creatorAwardBps": 100
+          },
+          "stakes": {
+            "stake": "5000000",
+            "feeBps": 500,
+            "creatorBps": 100,
+            "capMultiple": 10,
+            "minEntrants": 20
+          }
+        },
+        "notificationCopy": {
+          "question_live": "A new question is live."
+        },
+        "auditId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CX"
+      }
+    ]
+  },
+  "invalid": {
+    "SetUserRoleRequestSchema": [
+      {
+        "why": "unknown role",
+        "value": {
+          "role": "owner"
+        }
+      }
+    ],
+    "AdjustPointsRequestSchema": [
+      {
+        "why": "zero delta",
+        "value": {
+          "scope": "global",
+          "delta": "0",
+          "reason": "x"
+        }
+      },
+      {
+        "why": "missing reason",
+        "value": {
+          "scope": "global",
+          "delta": "5"
+        }
+      },
+      {
+        "why": "delta as a number",
+        "value": {
+          "scope": "global",
+          "delta": 5,
+          "reason": "x"
+        }
+      }
+    ],
+    "VoidRoundRequestSchema": [
+      {
+        "why": "missing reason",
+        "value": {}
+      }
+    ],
+    "AdminConfigResponseSchema": [
+      {
+        "why": "lowercase country",
+        "value": {
+          "flags": {
+            "stakes_enabled": false,
+            "stakes_rooms": false
+          },
+          "geo": {
+            "stakesAllow": ["us"],
+            "deny": []
+          },
+          "feeDefaults": {
+            "free": {
+              "stakeMin": "10",
+              "stakeMax": "100",
+              "capMultiple": 10,
+              "minEntrants": 1,
+              "creatorAwardBps": 100
+            },
+            "stakes": {
+              "stake": "5000000",
+              "feeBps": 500,
+              "creatorBps": 100,
+              "capMultiple": 10,
+              "minEntrants": 20
+            }
+          },
+          "notificationCopy": {
+            "question_live": "A new question is live."
+          }
+        }
+      }
+    ]
+  }
+}

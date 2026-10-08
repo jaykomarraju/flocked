@@ -70,3 +70,7 @@
 - AC-7 (cards), AC-8, PIPE-5 (Stakes), E2E-5, E2E-11 proven.
 - Confirm OA-D3 is frozen before W11-C.
 - Migrations for wave 11: W11-A `0024`, W11-B `watcher/0002`, W11-D `0025`.
+
+## Carry-over from W2-Z (Oct 8, 2026)
+
+- **W10-A:** share pages `/s/:shareId` and card images are served at the site root (Decision log, Oct 8), but `apps/api/wrangler.jsonc` `run_worker_first` covers only `/api/*`. Add the share and card paths (W10-A notes it for W10-D, which owns `wrangler.jsonc`).

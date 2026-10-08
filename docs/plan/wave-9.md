@@ -62,3 +62,8 @@
 - TL-1, E2E-1 (Free UI), E2E-2, E2E-8, PIPE-6 proven.
 - Confirm OA-D4 is frozen before W10-A.
 - Migrations for wave 10: W10-A `0022`, W10-B (watcher's own D1) `watcher/0001`, W10-D `0023`.
+
+## Carry-over from W2-Z (Oct 8, 2026)
+
+- **W9-A:** `push_subscriptions.endpoint` is unique, so subscribing upserts when another user re-subscribes from the same browser.
+- **W9-C:** tlock in the browser bundle: tlock-js's indirect `require("crypto")` must be external for Vite/rolldown; `@flocked/tlock` imports noble's ESM build while tlock-js requires the CJS one (possible duplicate); measure bundle size. Add a ciphertext made by the Go reference (`tle`) to the tlock fixtures (interop).
