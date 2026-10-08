@@ -18,7 +18,7 @@ complete — Foundations and all nine component sheets (light and dark) are buil
   conventions (states, errors, borders, where the accent may appear, scrim, rounding) and Paper MCP notes.
 
 ## Branch and head commit
-`w2-c-design` @ `(this commit)`. W2-C's last design commit was `45557e0`.
+`w2-c-design` @ `4abf4ef` (this head-commit fix follows). W2-C's last design commit was `45557e0`.
 
 ## Files touched
 - W2-C (new): `packages/shared/design-tokens.json`, `docs/design/{screens,README}.md`,
