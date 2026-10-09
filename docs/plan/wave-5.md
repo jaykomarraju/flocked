@@ -64,3 +64,11 @@
 
 - **W5-A:** payouts are written only at finalize (the unique key ignores proposals; Decision log, Oct 8). `ALERT_VOID_RATE` fires when a mode's VOIDs exceed 2% of its entries and number at least 10. Decrypt costs about 6.4 ms in workerd (W2-A), so the decrypt queues must batch within the Worker-wide `cpu_ms` of 60,000.
 - **W5-B:** see the ownership change above (handlers in `routes/me.ts`).
+
+## Carry-over from W3-Z (Oct 9, 2026)
+
+- **W5-C:** before its own pages, two Paper fixes that the owner decided on Oct 9:
+  - update the navigation-sheet note on the Components page (the 30-day net replaced "balance hidden in Stakes");
+  - add the countdown exception to the round-status sheet (hh:mm:ss, except the unsealing countdown, which is m:ss).
+  Re-export both sheets.
+- **W5-B:** the Coinbase identity must not block sign-in. Today `findAccount` (`apps/api/src/auth/accounts.ts`) ignores unverified identity rows, so a create can hit the unique index and answer 500. See W7-B's item.

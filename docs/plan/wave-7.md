@@ -68,3 +68,18 @@
 
 - **W7-A:** the WS `refunded` message gains `provisional` and `finalAt` (Decision log, Oct 8; `packages/shared/src/ws.ts`).
 - **W7-B:** see the ownership change above (identity handlers in `routes/me.ts`).
+
+## Carry-over from W3-Z (Oct 9, 2026)
+
+- **W7-B** (W3-A review and owner decisions, Oct 9):
+  - **Reserved handles:** a case-insensitive blocklist in `packages/shared`, enforced by `PATCH /me`.
+  - **Email enumeration (owner chose W7-B):** `/auth/email/verify` reveals whether an address has an account ("Wrong code; 4 attempts left" vs "No valid code"). For unlinked addresses, issue a code with a no-op sender inside the same background task, and give unknown and used codes the same message. Add a test.
+  - **Write email codes through `AuthDO`, not KV.** KV's edge cache can be about 60 s stale, so a resent code can fail and the old one lives on.
+  - **AuthDO KV calls:** wrap them and return `unavailable`; a throw inside `blockConcurrencyWhile` resets the object.
+  - **Migration test:** a test that `users` after `0002` equals `0001` except the nullable handle: CHECKs, defaults, types, and existing rows surviving.
+  - **Unverified identity rows** (wallet, Farcaster) must not block sign-in (`accounts.ts` `findAccount`).
+  - **Suspended accounts** sign in read-only. Every write route refuses `account_suspended` (spec, Oct 9). Check the routes that exist by then.
+- **W7-D:**
+  - reuse `e2e/stack/env.mjs` and the seam;
+  - add a local Turnstile siteverify mock (the stack smoke calls `challenges.cloudflare.com` today);
+  - make the seam's 404 body match the app's ("Not found", `apps/api/src/lib/errors.ts`).

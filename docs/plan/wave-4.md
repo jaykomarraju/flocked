@@ -58,3 +58,20 @@
 - **W4-A:** add `UNIQUE (closes_at) WHERE kind = 'daily'` (or equivalent) on `rounds` in `0005`, so overlapping cron runs can't create two daily rounds. Config validation runs `checkTargetRound` on any non-default close or `beaconDelay` (Decision log, Oct 8). Cap the Free `stakeMax` in `packages/shared/src/config.ts` at 2^53 − 1 (it's UINT64 today, but points need safe integers). `anchors.block_timestamp` is Unix seconds. AnchorDO gas per item (W2-B): about 75k `lock`, 55k `commit`, 73k `anchorManifest`.
 - **W4-B:** an `Entered` event with no matching ticket is stored with `user_id` NULL and the foreign flag, raises `ALERT_FOREIGN_EVENT`, and holds that round's settlement for the guardian (Decision log, Oct 8; the columns are in `0001`).
 - **W4-C (audit prep):** escrow nits from the W2-Z review: `GuardianReplaced` has no `previous` field and admin replacement doesn't emit `GuardianTransferred`; `_setRoleAdmin(GUARDIAN_ROLE, GUARDIAN_ROLE)` is dead. `packages/abi/scripts/gen.mjs`'s source hash leaves out `foundry.toml` and `remappings.txt` (CI's `--check` still catches drift). `anchorManifest` needs a lock but not a commit (now in the spec). Confirm the CREATE2 factory exists on Base Sepolia and Base (also W14-A).
+
+## Carry-over from W3-Z (Oct 9, 2026)
+
+- **All:** the local stack (`pnpm stack:up`, `e2e/stack/README.md`) and the local-only seam (`apps/api/src/local/seam.ts`, `/__test/*`) exist. Add seam routes rather than reaching into D1 from stack tests, and reuse `e2e/stack/env.mjs` (`readState`, `readDevVars`).
+- **W4-A** also owns `apps/api/src/routes/entries.ts` and `apps/api/src/rounds/grant.ts` this wave, for two unbuilt spec rules ("Anti-abuse"; owner decision Oct 9):
+  - Turnstile on the first Free entry of each game day: `POST /rounds/:id/entries` requires and verifies `turnstileToken` when the user has no Free entry yet that game day (New York date of `closesAt`).
+  - Daily-grant anti-farming: grant only if the account is at least 24 h old and has a linked Farcaster identity or a wallet with at least one prior onchain transaction (read through `chain/client.ts`). An ineligible user gets no grant and no `daily_grant_skips` row, so linking later that day still works. Record this reading in the handoff's Spec issues.
+- **W4-D** owns `apps/api/src/do/round-do.ts` this wave. Hardening from the W3-Z review:
+  - a repeated `init` on an initialised round calls `advance()`, so the scheduler's tick restarts a stalled alarm chain;
+  - a failed event backs off instead of retrying every 10 s forever, and `ALERT_DO_ERROR` is throttled per round and event;
+  - an identical replay after close returns the stored receipt (look the leaf up before the closed check);
+  - the `commitment_root` update checks `changes` and alerts when it's 0;
+  - optionally, a user short of points on a sealed round gets `round_closed`, not `insufficient_balance`.
+- **W4-D** also builds `requestVoid` (the two-phase void), the receiving side of `onModeResult` (wave 5 calls it), and the `ingestStakesEntry` counter update its indexer handler needs (W6-A builds the rest of Stakes ingestion).
+- **W4-D:** make `apps/api/test/round-do/close-race.test.ts`'s in-flight precondition deterministic (hold the D1 commit with a test hook instead of polling ticks). It failed once under heavy local load in W3-Z and passed on every other run.
+- **W4-D:** run the open → closed → committed test on the W3-D stack (pin the clock through the seam).
+- **W4-D:** if the Stack job breaks after Oct 19 (Ubuntu 26 becomes `ubuntu-latest`), pin `ubuntu-24.04` in `.github/workflows/stack.yml`.

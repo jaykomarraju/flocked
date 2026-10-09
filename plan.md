@@ -214,7 +214,7 @@ complete | partial | blocked — <one line>
 
 1. Read the four handoffs. Every one must be `complete`.
 2. `git diff --stat main...w{n}-integration`; read full diffs only where a handoff flags risk, plus any change to a pinned interface.
-3. On `w{n}-integration` in a fresh worktree: `pnpm install --frozen-lockfile && (cd contracts && forge soldeer install) && pnpm check` and `(cd contracts && FOUNDRY_PROFILE=ci forge test)`, plus `pnpm e2e` once it exists. Check CI is green on the pushed branch (`gh run list --branch w{n}-integration`).
+3. On `w{n}-integration` in a fresh worktree: `pnpm install --frozen-lockfile && (cd contracts && forge soldeer install) && pnpm check` and `(cd contracts && FOUNDRY_PROFILE=ci forge test)`, plus the stack smoke (`pnpm stack:up && pnpm --filter @flocked/e2e exec vitest run tests/stack-smoke.test.ts && pnpm stack:down`, from W3-D) and `pnpm e2e` once it exists. Check CI and Stack are green on the pushed branch (`gh run list --branch w{n}-integration`).
 4. Every traceability row assigned to this wave has a named, passing test. Update the row's status.
 5. Collect "Spec issues" and raise them with the owner. Apply decisions to the spec and Decision log.
 6. Merge into `main` (`--no-ff`) and push it, delete merged branches and the wave's worktrees. Tag `wave-{n}` on `main` once the wave summary and the next wave's prompts are committed (steps 7 and 9), so the tag, which the next wave branches from, contains them and `main` equals the tag (2.4).
@@ -241,7 +241,8 @@ packages/verify   Verification library and CLI (@flocked/verify)
 packages/shared   zod schemas, types, enums, brand copy, mascot components, design tokens (@flocked/shared)
 packages/abi    + Generated TypeScript ABIs and addresses from contracts/ (@flocked/abi)
 contracts         Foundry project: FlockedEscrow, FlockedAnchor
-e2e             + Playwright tests and the local stack (docker compose, scripts)
+e2e             + The local stack (e2e/stack: docker compose, up/down/status scripts), service mocks
+                  (e2e/mocks), stack tests (e2e/tests, Vitest); Playwright from W7-D
 scripts           Repo scripts (spec-section, codegen, stack)
 docs/             plan/, prompts/, sessions/, design/, runbooks/, audit/
 ```
@@ -261,7 +262,7 @@ docs/             plan/, prompts/, sessions/, design/, runbooks/, audit/
 | Timelock crypto | `tlock-js` (and its drand client) wrapped by `@flocked/tlock` |
 | Web | React + Vite, react-router, wagmi + viem with Coinbase Smart Wallet, `@farcaster/miniapp-sdk` |
 | Cards | satori + resvg-wasm in a Worker |
-| e2e | Playwright; local stack = `wrangler dev` + anvil (fork of Base) + local drand network (drand Docker image via OrbStack) |
+| e2e | Playwright (from W7-D); local stack = `wrangler dev --local` + anvil (optionally forking Base) + a 3-node local drand network (`ghcr.io/drand/go-drand-local`, pinned by digest; Docker via OrbStack on the Mac). Stack tests in `e2e/tests` run in Vitest |
 | CI | GitHub Actions |
 | Deploy | wrangler (Workers, DOs, D1, R2, KV, Queues, Vectorize); Foundry scripts for contracts |
 
@@ -276,7 +277,8 @@ Exact library versions are chosen at install time by the session that adds them 
 | `pnpm contracts:test` | `forge test --root contracts` (unit, fuzz, invariant, vectors). The CI profile runs as `FOUNDRY_PROFILE=ci forge test` in `contracts/` (doubled fuzz and invariant runs; Foundry 1.7 has no `--profile` flag) |
 | `pnpm contracts:build` | `forge build --root contracts && node packages/abi/scripts/gen.mjs` (ABI codegen into `packages/abi`) |
 | `pnpm spec "<heading>" [--sub "<label>"]` | Prints one `## ` section of `Product_Spec.md` (or one bold sub-block of it) |
-| `pnpm stack:up` / `pnpm stack:down` | Local stack: drand network, anvil, contract deploy, `wrangler dev` (from W3-D) |
+| `pnpm stack:up` / `pnpm stack:down` / `pnpm stack:status` | Local stack (W3-D, `e2e/stack/README.md`): drand network, anvil 31337 (forks Base only with `STACK_FORK_URL`), CREATE2 deploy, D1 migrations, `wrangler dev --local`, Farcaster mock. Writes `e2e/stack/.dev.vars` and `.state.json` (gitignored). Needs Docker (OrbStack) and Foundry on `PATH`; up ~18 s cold |
+| `pnpm --filter @flocked/e2e exec vitest run tests/stack-smoke.test.ts` | Stack smoke: a real Free round end to end on the running stack (~70 s) |
 | `pnpm e2e` | Playwright against the local stack (from W7-D) |
 | `pnpm e2e:ui` | Playwright UI tests with screenshot comparisons (from W8-C) |
 
@@ -301,8 +303,9 @@ Exact library versions are chosen at install time by the session that adds them 
 
 ### 4.6 CI
 
-- `.github/workflows/ci.yml` (from W1-A): on push and PR, three jobs. `check`: install with the frozen lockfile, `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm format:check`, the settle and tlock vector-freshness checks, and the design-tokens schema test. `contracts` (from W1-D): Foundry v1.7.1, `forge soldeer install`, `forge fmt --check`, `forge build`, the ABI freshness check (`node ../packages/abi/scripts/gen.mjs --check`), `FOUNDRY_PROFILE=ci forge test`. `properties` (from W1-D): settle's and tlock's property tests with `FAST_CHECK_RUNS=10000`, selected by file path. Every `pnpm --filter` step uses `--fail-if-no-match` (W2-D), so a renamed package can't make a step pass on nothing.
+- `.github/workflows/ci.yml` (from W1-A): on push and PR, three jobs. `check`: install with the frozen lockfile, `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm format:check`, the settle and tlock vector-freshness checks, and the design-tokens schema test. `contracts` (from W1-D): Foundry v1.7.1, `forge soldeer install`, `forge fmt --check`, `forge build`, the ABI freshness check (`node ../packages/abi/scripts/gen.mjs --check`), `FOUNDRY_PROFILE=ci forge test`. `properties` (from W1-D): settle's and tlock's property tests with `FAST_CHECK_RUNS=10000`, selected by file path (tlock: `test/plaintext.test.ts` and `test/classify.properties.test.ts`, the second from W3-D). Every `pnpm --filter` step uses `--fail-if-no-match` (W2-D), so a renamed package can't make a step pass on nothing.
 - A fresh worktree needs `pnpm install` and `(cd contracts && forge soldeer install)` before `pnpm check` (Soldeer dependencies are gitignored).
+- `.github/workflows/stack.yml` (from W3-D): the `smoke` job brings up the local stack and runs the stack smoke on pushes to `main` and `w*-integration`. It doesn't run on PRs, so it can't be a required check; Z checks it before merging (3.4 step 3). It runs on `ubuntu-latest`, which becomes Ubuntu 26 on Oct 19, 2026: pin `ubuntu-24.04` if the job breaks.
 - `e2e.yml` (from W7-D) runs the local stack plus Playwright on `w*-integration` and `main`.
 - `deploy.yml` (from W13-D) deploys to staging on `main`, and to production on manual dispatch with a required reviewer.
 - CI must be green before Z merges. `main` is protected by two rulesets (OA-03): no force pushes or deletion for anyone, and the three CI jobs required, with repository admins allowed to bypass so Z can push its `--no-ff` merge after checking CI itself.
@@ -478,11 +481,11 @@ Legend: ⬜ not started · 🟡 in progress · ✅ complete · ⛔ blocked. Z se
 | W2-C | Design: foundations + components (+ W2-C.2) | M | ✅ |
 | W2-D | Pinned interfaces: schemas, D1 schema, API skeleton | M | ✅ |
 | W2-Z | Consolidate wave 2 | M | ✅ |
-| W3-A | API auth and sessions | M | ⬜ |
-| W3-B | RoundDO Free entries | M | ⬜ |
-| W3-C | Design: core round flow | M | ⬜ |
-| W3-D | Local stack + first Free entry end to end | M | ⬜ |
-| W3-Z | Consolidate wave 3 | S | ⬜ |
+| W3-A | API auth and sessions | M | ✅ |
+| W3-B | RoundDO Free entries | M | ✅ |
+| W3-C | Design: core round flow (+ W3-C.2) | M | ✅ |
+| W3-D | Local stack + first Free entry end to end | M | ✅ |
+| W3-Z | Consolidate wave 3 | M | ✅ |
 | W4-A | Scheduler, question lock, AnchorDO | M | ⬜ |
 | W4-B | Chain indexer | M | ⬜ |
 | W4-C | Contracts audit prep | M | ⬜ |
@@ -550,7 +553,7 @@ Legend: ⬜ not started · 🟡 in progress · ✅ complete · ⛔ blocked. Z se
 
 | ID | Short name | Needed by | Status |
 | --- | --- | --- | --- |
-| OA-01 | Finish OrbStack setup | W3 | ⬜ |
+| OA-01 | Finish OrbStack setup | W3 | ✅ |
 | OA-02 | Reconnect Paper MCP | W2 | ✅ |
 | OA-03 | GitHub Actions + branch protection | W1/W2 | ✅ |
 | OA-04 | Cloudflare Workers Paid + deploy token | W13 | ⬜ |
@@ -570,13 +573,13 @@ Legend: ⬜ not started · 🟡 in progress · ✅ complete · ⛔ blocked. Z se
 | OA-18 | Guardian paging + charter | W14 | ⬜ |
 | OA-19 | Dead-man's switch | W14 | ⬜ |
 | OA-20 | Gate 3: audit | W15 | ⬜ |
-| OA-21 | Gate 1: legal sign-off (+ ToS/privacy text by W12) | W16 | ⬜ |
-| OA-22 | Gate 2: Coinbase personhood | W16 | ⬜ |
+| OA-21 | Gate 1: legal sign-off (+ ToS/privacy text by W12) | W16 | 🟡 |
+| OA-22 | Gate 2: Coinbase personhood | W16 | ✅ |
 | OA-23 | Gate 4: load-test sign-off | W16 | ⬜ |
 | OA-24 | Approve house questions | W14 | ⬜ |
 | OA-25 | Staging soak review | W16 | ⬜ |
 | OA-26 | Production approvals | W16 | ⬜ |
-| OA-D1 | Freeze: foundations | W8 | ⬜ |
+| OA-D1 | Freeze: foundations | W8 | ✅ |
 | OA-D2 | Freeze: core round flow | W9 | ⬜ |
 | OA-D3 | Freeze: profiles, boards, rooms, settings, verify | W11 | ⬜ |
 | OA-D4 | Freeze: share cards + notifications | W10 | ⬜ |
@@ -597,7 +600,7 @@ Defaults chosen by PLAN-0. Z may revisit any of them with the owner.
 6. **Email** uses Cloudflare Email Service; **web push** uses VAPID from a Worker; **paging** uses a webhook to whichever paging service the owner picks (OA-18).
 7. **Analytics dashboard** is a tab in the admin console that queries Workers Analytics Engine's SQL API. The spec asks for "one internal dashboard" without naming a tool.
 8. **The local drand network** runs drand's Docker image under OrbStack (installed by PLAN-0; owner finishes setup, OA-01). Unit tests use recorded quicknet beacons so they don't need Docker.
-9. **Time travel in tests:** contract tests use `vm.warp`; local-stack e2e uses anvil `evm_setNextBlockTimestamp` plus a test-only clock override in the API (`FLOCKED_TEST_CLOCK`, enabled only when `ENVIRONMENT=local`). Rule-8 e2e (drand down 24 h) uses that clock, not real waiting.
+9. **Time travel in tests:** contract tests use `vm.warp`; local-stack e2e uses anvil `evm_setNextBlockTimestamp` plus a test-only clock override in the API (`FLOCKED_TEST_CLOCK`, enabled only when `ENVIRONMENT=local`; on the stack it is set through the `/__test/clock` seam, W3-D). Rule-8 e2e (drand down 24 h) uses that clock, not real waiting.
 10. **Coinbase OAuth, EAS attestation indexer, Farcaster, Anthropic, email and push** are mocked in unit/integration tests and the local stack (local mock servers in `e2e/mocks/`). Real services are exercised in staging only, once the owner actions exist.
 11. **Tooling versions:** Node 22.23.1 (from W2-A; wave 1 used 20.19.5) and pnpm 10.34.5 are installed, and `packageManager` pins pnpm 10. Foundry 1.7.1 is installed; CI uses `foundry-rs/foundry-toolchain` with the same version. Vitest 5 no longer waits on Node (it needed 22); TypeScript 7 still waits on typescript-eslint.
 12. **Design export location:** tokens at `packages/shared/design-tokens.json` (owned by design sessions; schema pinned in `docs/plan/wave-2.md`), screen inventory at `docs/design/screens.md`, PNGs at `docs/design/exports/<surface>/<artboard-name>.png`. Exports double as the Playwright screenshot baselines.

@@ -45,20 +45,20 @@ Every item in the spec's "Testing and acceptance criteria" (Required tests and A
 
 | ID | Requirement | Session | Proof (planned) | Status |
 | --- | --- | --- | --- | --- |
-| TL-1 | Encrypt in the browser bundle, decrypt in the Worker with a recorded drand signature | W2-A (library, Workers runtime), W9-C (real browser bundle via Playwright) | Workers half (W2-A): `packages/tlock/test/roundtrip.workers.test.ts` :: "decrypts and classifies ciphertexts made in Node with the recorded signatures", "round-trips a pick encrypted inside workerd"; Node: `test/roundtrip.test.ts`. Open (W9-C): `e2e/ui/tlock-bundle.spec.ts` | 🟡 |
+| TL-1 | Encrypt in the browser bundle, decrypt in the Worker with a recorded drand signature | W2-A (library, Workers runtime), W9-C (real browser bundle via Playwright) | Workers half (W2-A): `packages/tlock/test/roundtrip.workers.test.ts` :: "decrypts and classifies ciphertexts made in Node with the recorded signatures", "round-trips a pick encrypted inside workerd"; Node: `test/roundtrip.test.ts`. W3-D also checks the real `wrangler dev` esbuild bundle against a live local beacon: `e2e/tests/stack-smoke.test.ts` :: "opens every pick with the local beacon, in Node and in the wrangler dev bundle". Open (W9-C): `e2e/ui/tlock-bundle.spec.ts` | 🟡 |
 | TL-2 | Corrupted signature rejected before decryption | W2-A | `packages/tlock/test/signature.test.ts` :: "flipping signature bit %i fails verification", "classify throws on a corrupted signature instead of returning VOIDs" | ✅ |
-| TL-3 | Malformed, extra-stanza, wrong-round, wrong-chain ciphertexts → VOID; plaintext with wrong length, version or round reference → VOID | W2-A | `packages/tlock/test/classify.test.ts` :: "TL-3: malformed ciphertexts and bad plaintexts are VOID with their exact reason" (21 header, 4 target, 16 decrypt, 8 plaintext, 4 option cases). W3-B adds the non-canonical G2 `U` case (Decision log, Oct 8) | ✅ |
+| TL-3 | Malformed, extra-stanza, wrong-round, wrong-chain ciphertexts → VOID; plaintext with wrong length, version or round reference → VOID | W2-A, W3-B | `packages/tlock/test/classify.test.ts` :: "TL-3: malformed ciphertexts and bad plaintexts are VOID with their exact reason" (21 header, 4 target, 16 decrypt, 8 plaintext, 4 option cases); W3-B: "decrypt_failed: U must be the canonical compressed encoding of a G2 point" (`x_c0 + p`, `x_c0 + 2p`, `x_c1 + p`, infinity; Decision log, Oct 8), `test/environment.test.ts` :: "TL-3: a broken runtime throws instead of turning entries into VOIDs", `test/classify.properties.test.ts` | ✅ |
 | TL-4 | Client-side target-round checks match the contract | W2-A (vectors), W2-D (forge cross-check) | `packages/tlock/test/vectors.test.ts` :: "TL-4 (TypeScript half): target-round vectors"; `contracts/test/TargetRound.t.sol` :: `test_targetRound_vectorsMatchCreateRound` (36 cases) | ✅ |
 
 ## Required tests: RoundDO
 
 | ID | Requirement | Session | Proof (planned) | Status |
 | --- | --- | --- | --- | --- |
-| DO-1 | Entry after close rejected; duplicate entry rejected | W3-B | `apps/api/test/round-do/entries.test.ts` | ⬜ |
-| DO-2 | Missing or insufficient balance rejected atomically; non-member room entry rejected | W3-B | same | ⬜ |
-| DO-3 | Receipts verify against the root; no acknowledged entry missing from the root at a close-boundary race | W3-B | `apps/api/test/round-do/close-race.test.ts` | ⬜ |
-| DO-4 | Out-of-range stake, suspended and self-excluded entries rejected | W3-B | `apps/api/test/round-do/entries.test.ts` | ⬜ |
-| DO-5 | Alarm chain; reconnect snapshot | W3-B (alarms), W7-A (snapshot) | `apps/api/test/round-do/alarms.test.ts`, `apps/api/test/ws/snapshot.test.ts` | ⬜ |
+| DO-1 | Entry after close rejected; duplicate entry rejected | W3-B | `apps/api/test/round-do/entries.test.ts` :: "rejects an entry at or after closesAt, and before opensAt", "rejects a second, different entry from the same user and keeps the first" (plus identical-retry, concurrent-request and lost-reply cases) | ✅ |
+| DO-2 | Missing or insufficient balance rejected atomically; non-member room entry rejected | W3-B | `apps/api/test/round-do/entries.test.ts` :: "insufficient balance leaves no entry, no ledger row and no seq gap", "a member with no balance row in the room is rejected the same way", "rejects a room entry from a non-member, even with points in that scope" | ✅ |
+| DO-3 | Receipts verify against the root; no acknowledged entry missing from the root at a close-boundary race | W3-B | `apps/api/test/round-do/close-race.test.ts` :: "every acknowledged entry is in the root, and its receipt verifies against it" (40 entries, close alarm fires mid-flight), "an entry committed to D1 whose leaf was lost is recovered into the root at close"; `packages/abi/test/receipt.test.ts` :: "reproduces the fixture signature with the shared builder and settle userIdHash". Its in-flight precondition flaked once under heavy local load (W3-Z); W4-D makes it deterministic | ✅ |
+| DO-4 | Out-of-range stake, suspended and self-excluded entries rejected | W3-B | `apps/api/test/round-do/entries.test.ts` :: "stake %s is outside 10–100", "accepts the bounds of the locked range…", "rejects suspended and deleted accounts", "rejects a self-excluded user under the single exclusion rule" | ✅ |
+| DO-5 | Alarm chain; reconnect snapshot | W3-B (alarms), W7-A (snapshot) | Alarms (W3-B): `apps/api/test/round-do/alarms.test.ts` :: "runs every event in order, once, at its time" (plus rule 8, missed alarms, late open, commit retry and deadline, idempotent init). Open (W7-A): `apps/api/test/ws/snapshot.test.ts` | 🟡 |
 
 ## Required tests: identity and auth
 
@@ -67,7 +67,7 @@ Every item in the spec's "Testing and acceptance criteria" (Required tests and A
 | ID-1 | Linking; pending merges and confirmation; merge refusals (unsettled entries, different person IDs, restrictions) | W7-B | `apps/api/test/identity/*.test.ts` | ⬜ |
 | ID-2 | One person ID per user | W5-B | `apps/api/test/personhood/person-id.test.ts` | ⬜ |
 | ID-3 | Login-CSRF on the OAuth callback | W5-B | `apps/api/test/personhood/callback.test.ts` | ⬜ |
-| ID-4 | Email-code brute force and replay; mini-app Bearer flow | W3-A | `apps/api/test/auth/*.test.ts` | ⬜ |
+| ID-4 | Email-code brute force and replay; mini-app Bearer flow | W3-A | `apps/api/test/auth/email.test.ts` :: "ID-4 replay: a used code is refused", "ID-4 brute force: 5 attempts per code, then even the right code is refused", "ID-4 brute force: a new code resets the attempts, and the old code dies", "ID-4 brute force: concurrent guesses cannot exceed 5 attempts"; `test/auth/farcaster.test.ts` :: "ID-4 Bearer flow: Quick Auth token → Bearer session → /me → logout → 401" | ✅ |
 | ID-5 | `/prepare` eligibility: geo, age, ToS, self-exclusion, cap with live tickets, kill switch, one live ticket per person | W6-B | `apps/api/test/stakes/prepare.test.ts` | ⬜ |
 
 ## Required tests: pipeline
@@ -125,7 +125,7 @@ Every item in the spec's "Testing and acceptance criteria" (Required tests and A
 | NFR-5 | Availability: 99.9% read paths in the 30 min around reveal | W13-A (monitor), W14-D (measure during soak) | Uptime checks + soak report | ⬜ |
 | NFR-6 | Correctness: invariant every settlement; settlement idempotent (identical output, no double writes) | W1-C, W5-A, W5-D, W6-A | PROP-1, `apps/api/test/settlement/idempotency.test.ts` | 🟡 |
 | NFR-7 | Security: separate keys, ticket signer isolated in its own Worker, guardian multisig, admin behind Access, audit before mainnet funds | W6-B, W13-C, W13-D, W16-A, OA-17, OA-20 | Security review checklist; deploy config review | ⬜ |
-| NFR-8 | Privacy: no plaintext picks logged or stored before beacon; per-round person tags; raw Coinbase data never stored; IPs only within rate-limit windows | W3-A, W5-B, W13-C | Unit tests + log/storage scan | ⬜ |
+| NFR-8 | Privacy: no plaintext picks logged or stored before beacon; per-round person tags; raw Coinbase data never stored; IPs only within rate-limit windows | W3-A, W5-B, W13-C | IPs (W3-A): `apps/api/test/auth/privacy.test.ts` :: "no D1 table has an IP column", "no D1 row and no KV entry contains the client IP after every sign-in flow", "no session token, nonce or email code appears in D1 or KV"; `test/auth/rate-limit.test.ts` :: "keys the bucket by a hash of the IP, never the IP", "enforces the bucket and drops its state when the alarm fires". Open: person tags and Coinbase data (W5-B), log/storage scan (W13-C) | 🟡 |
 | NFR-9 | Accessibility: WCAG 2.1 AA; reveal honours `prefers-reduced-motion` | W9-C (motion), W14-B (audit) | axe in Playwright; manual audit report | ⬜ |
 | NFR-10 | Observability: structured logs and alerts | W13-A | Alert injection test log | ⬜ |
 

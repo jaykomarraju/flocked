@@ -67,3 +67,11 @@
 
 - **W9-A:** `push_subscriptions.endpoint` is unique, so subscribing upserts when another user re-subscribes from the same browser.
 - **W9-C:** tlock in the browser bundle: tlock-js's indirect `require("crypto")` must be external for Vite/rolldown; `@flocked/tlock` imports noble's ESM build while tlock-js requires the CJS one (possible duplicate); measure bundle size. Add a ciphertext made by the Go reference (`tle`) to the tlock fixtures (interop).
+
+## Carry-over from W3-Z (Oct 9, 2026)
+
+- **W9-A:** RoundDO's `open`, `streak_at_risk` and `closing_soon` hooks can enqueue twice after an eviction or a retry. Give each notification an idempotency key.
+- **W9-C:**
+  - the refund lines and core-flow copy now in Design_Language Voice (Oct 9) become a copy table keyed by `RefundReasonName`;
+  - on tablet and desktop, Submit, Queue, Claims and Settings sit in the header avatar menu;
+  - the unsealing countdown is m:ss.

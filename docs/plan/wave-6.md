@@ -70,3 +70,8 @@
 
 - **W6-D:** `GET /rounds/:id`, `/rounds/:id/verify`, `/rounds/:id/ws` and `/rounds/:id/card` are `auth: 'none'` in `ENDPOINTS`, but room rounds are members-only. Gate room rounds on membership (make them `optional`) and keep room-round responses out of the unauthenticated edge cache.
 - **W6-A:** `payouts.user_id` is NOT NULL, but a foreign entry (Decision log, Oct 8: `entries.user_id` NULL with `foreign_entry` = 1) has no user. If the guardian lets such a round settle, its payout lives only in the Stakes payout tree and bundle, or W6-A makes `payouts.user_id` nullable in its migration. Decide and test it.
+
+## Carry-over from W3-Z (Oct 9, 2026)
+
+- **W6-D:** the first-visit daily grant: `GET /rounds/today` with a session calls `applyDailyGrant` (`apps/api/src/rounds/grant.ts`), never `grantMovement`, or a skipped grant could be credited later that day.
+- **W6-A:** Stakes ingestion beyond the `ingestStakesEntry` counters W4-D adds.
