@@ -13,6 +13,9 @@
     "test": "node --test --test-reporter=spec scripts/*.test.mjs && pnpm -r --if-present test",
     "contracts:build": "forge build --root contracts && node packages/abi/scripts/gen.mjs",
     "contracts:test": "forge test --root contracts",
+    "stack:up": "node e2e/stack/up.mjs",
+    "stack:down": "node e2e/stack/down.mjs",
+    "stack:status": "node e2e/stack/status.mjs",
     "spec": "node scripts/spec-section.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

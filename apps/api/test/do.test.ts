@@ -3,9 +3,9 @@
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import { ANCHOR_SINGLETON, INDEXER_SINGLETON, settlementName } from '../src/do/index.js';
-import type { AnchorCommitItem, LockedRound, StakesEntryEvent } from '../src/do/types.js';
+import type { AnchorCommitItem, StakesEntryEvent } from '../src/do/types.js';
 import { isNotImplemented } from '../src/lib/errors.js';
-import { FIXTURE_CONFIG, FIXTURE_IDS, FIXTURE_ROUND } from './helpers/index.js';
+import { FIXTURE_IDS } from './helpers/index.js';
 
 const HASH = `0x${'12'.repeat(32)}` as const;
 
@@ -18,19 +18,6 @@ async function expectNotImplemented(call: Promise<unknown>, what: string): Promi
   expect((err as Error).message).toBe(`not_implemented: ${what}`);
   expect(isNotImplemented(err)).toBe(true);
 }
-
-const locked: LockedRound = {
-  roundId: FIXTURE_IDS.round,
-  kind: 'daily',
-  roomId: null,
-  questionId: FIXTURE_IDS.question,
-  opensAt: FIXTURE_ROUND.opensAt,
-  closesAt: FIXTURE_ROUND.closesAt,
-  beaconRound: 1,
-  beaconTimeSec: 1,
-  config: FIXTURE_CONFIG,
-  modes: ['free', 'stakes'],
-};
 
 const stakesEvent: StakesEntryEvent = {
   roundId: FIXTURE_IDS.round,
@@ -62,18 +49,9 @@ const commit: AnchorCommitItem = {
 describe('RoundDO (binding ROUND)', () => {
   const stub = () => env.ROUND.get(env.ROUND.idFromName(FIXTURE_IDS.round));
 
-  it('pins init, enterFree, getState, ingestStakesEntry, onModeResult, requestVoid', async () => {
+  // init, enterFree and getState are implemented (W3-B): test/round-do/.
+  it('pins ingestStakesEntry, onModeResult, requestVoid', async () => {
     const s = stub();
-    await expectNotImplemented(s.init(locked), 'RoundDO.init');
-    await expectNotImplemented(
-      s.enterFree({
-        roundId: FIXTURE_IDS.round,
-        userId: FIXTURE_IDS.user,
-        body: { stake: '10', ciphertext: 'AA' },
-      }),
-      'RoundDO.enterFree',
-    );
-    await expectNotImplemented(s.getState(), 'RoundDO.getState');
     await expectNotImplemented(s.ingestStakesEntry(stakesEvent), 'RoundDO.ingestStakesEntry');
     await expectNotImplemented(
       s.onModeResult('free', { outcome: 'refunded', reason: 1, provisional: false }),
@@ -162,34 +140,20 @@ describe('SettlementDO (binding SETTLEMENT)', () => {
   });
 });
 
+// AuthDO and RateLimitDO are implemented (W3-A); test/auth/auth-do.test.ts and
+// test/auth/rate-limit.test.ts cover their behaviour. Here: the bindings reach the classes.
 describe('AuthDO (binding AUTH)', () => {
-  it('pins consumeNonce, consumeEmailCode, bindOAuthState, consumeOAuthState', async () => {
-    const s = env.AUTH.get(env.AUTH.idFromName('auth'));
-    await expectNotImplemented(s.consumeNonce('h'), 'AuthDO.consumeNonce');
-    await expectNotImplemented(
-      s.consumeEmailCode({ emailHash: 'e', codeHash: 'c' }),
-      'AuthDO.consumeEmailCode',
-    );
-    await expectNotImplemented(
-      s.bindOAuthState({
-        stateHash: 's',
-        userId: FIXTURE_IDS.user,
-        codeVerifier: 'v',
-        expiresAt: 1,
-      }),
-      'AuthDO.bindOAuthState',
-    );
-    await expectNotImplemented(s.consumeOAuthState('s'), 'AuthDO.consumeOAuthState');
+  it('answers consumeNonce for an unknown nonce', async () => {
+    const s = env.AUTH.get(env.AUTH.idFromName('nonce:unknown'));
+    expect(await s.consumeNonce('unknown')).toEqual({ ok: false, reason: 'unknown' });
   });
 });
 
 describe('RateLimitDO (binding RATE_LIMIT)', () => {
-  it('pins take', async () => {
-    const s = env.RATE_LIMIT.get(env.RATE_LIMIT.idFromName(`user:${FIXTURE_IDS.user}`));
-    await expectNotImplemented(
-      s.take({ key: `user:${FIXTURE_IDS.user}:entries`, capacity: 10, periodMs: 60_000 }, 1),
-      'RateLimitDO.take',
-    );
+  it('answers take', async () => {
+    const bucket = { key: `user:${FIXTURE_IDS.user}:entries`, capacity: 10, periodMs: 60_000 };
+    const s = env.RATE_LIMIT.get(env.RATE_LIMIT.idFromName(bucket.key));
+    expect(await s.take(bucket, 1)).toEqual({ allowed: true, remaining: 9, retryAfterMs: 0 });
   });
 });
 

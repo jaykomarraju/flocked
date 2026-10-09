@@ -64,3 +64,8 @@
 - ALERT-1..8, NFR-10, PIPE-1 (all), AC-2, NFR-8 proven.
 - Security findings triaged; W15-B gets the list.
 - Wave 14 needs OA-04 through OA-19 for staging. List exactly which are missing; if any block W14-A, wave 14 waits on that hold point.
+
+## Carry-over from W3-Z (Oct 9, 2026)
+
+- **W13-A:** a cron sweep that deletes expired `sessions` rows (W3-A never purges them).
+- **W13-C:** review W3-B's sticky tlock self-test: a failure keeps `classify` throwing until the isolate is replaced. Also review the email and session findings that W7-B fixed.

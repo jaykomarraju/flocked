@@ -1,0 +1,19 @@
+{
+  "name": "@flocked/e2e",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Flocked end-to-end tests and the local stack (drand in Docker, anvil, contracts, wrangler dev).",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "smoke": "vitest run tests/stack-smoke.test.ts"
+  },
+  "dependencies": {
+    "@flocked/abi": "workspace:*",
+    "@flocked/settle": "workspace:*",
+    "@flocked/shared": "workspace:*",
+    "@flocked/tlock": "workspace:*",
+    "viem": "2.57.3"
+  }
+}

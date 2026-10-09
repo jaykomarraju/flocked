@@ -69,3 +69,8 @@
 
 - **W8-B:** the CHECK `best_stray_streak >= stray_streak` means both columns change in one `UPDATE`.
 - **W8-C:** navigation is five tabs: Today, Archive, Boards, Rooms, You; Submit, Queue, Claims and Settings under You on mobile and in the header on desktop (plus Questions) (Decision log, Oct 8). W8-C also builds the placeholder mascot React components in `packages/shared/mascot` from the Paper `sheep/*` layers (Design_Language "Mascot").
+
+## Carry-over from W3-Z (Oct 9, 2026)
+
+- **W8-D:** room-round grants (owner decision, Oct 9): +100 room points per room round below a room balance of 1,000, ledger reason `room_grant`. A skip is final for that round and recorded in `daily_grant_skips`, keyed by the round. Reuse `src/rounds/grant.ts`.
+- **W8-B:** the crowd-history hint (Client app, Today; Oct 9): the category's average winning-side share over its last 30 settled daily rounds, hidden below 5. Expose it on `GET /rounds/today`.

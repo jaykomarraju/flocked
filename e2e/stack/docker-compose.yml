@@ -1,0 +1,34 @@
+# Local drand network for the e2e stack (e2e/stack/README.md): three nodes, threshold 2, scheme
+# bls-unchained-g1-rfc9380 (quicknet's), 3 s period. `pnpm stack:up` starts it and runs the DKG
+# (drand/dkg.sh); only drand0's public HTTP API is published, on 127.0.0.1.
+#
+# go-drand-local is drand's own build for local networks: the same release, with plain gRPC between
+# nodes (the regular go-drand image insists on TLS for node-to-node calls). amd64 only; OrbStack on
+# Apple Silicon runs it under Rosetta. Pinned by digest.
+name: flocked-stack
+
+x-drand-node: &drand-node
+  image: ghcr.io/drand/go-drand-local:v2.1.8@sha256:eb8a6a8fbbeb4e1b95c630a904b8d5f729072b6a938d139e285aabec168be950
+  platform: linux/amd64
+  entrypoint: ['/sbin/tini', '--', '/bin/sh', '/stack/node.sh']
+  volumes:
+    - ./drand:/stack:ro
+
+services:
+  drand0:
+    <<: *drand-node
+    hostname: drand0
+    environment:
+      NODE_ADDRESS: drand0:4444
+    ports:
+      - 127.0.0.1:${STACK_DRAND_PORT:-18080}:8080
+  drand1:
+    <<: *drand-node
+    hostname: drand1
+    environment:
+      NODE_ADDRESS: drand1:4444
+  drand2:
+    <<: *drand-node
+    hostname: drand2
+    environment:
+      NODE_ADDRESS: drand2:4444

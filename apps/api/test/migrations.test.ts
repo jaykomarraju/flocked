@@ -171,11 +171,14 @@ const SPEC_COLUMNS: Record<string, readonly string[]> = {
   indexer_state: ['chain_id', 'contract', 'last_block_number', 'last_block_hash', 'updated_at'],
   anchors: ['id', 'kind', 'round_keys_json', 'tx_hash', 'block_timestamp', 'created_at'],
   audit_log: ['id', 'actor', 'actor_user_id', 'action', 'target', 'data_json', 'created_at'],
+  // 0003_round_do (W3-B): the final skip of a daily grant; not yet a row in the spec's data model.
+  daily_grant_skips: ['user_id', 'round_id', 'balance', 'skipped_at'],
 };
 
 /** Primary keys the spec names ("PK (...)", or "(PK)" on a column). */
 const SPEC_PRIMARY_KEYS: Record<string, readonly string[]> = {
   question_votes: ['question_id', 'user_id'],
+  daily_grant_skips: ['user_id', 'round_id'],
   round_modes: ['round_id', 'mode'],
   stakes_tickets: ['ticket_hash'],
   settlements: ['round_id', 'mode', 'proposal_seq'],

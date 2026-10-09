@@ -89,13 +89,23 @@ export default defineConfig(async () => {
       include: ['test/**/*.test.ts'],
       setupFiles: ['./test/setup.ts'],
       testTimeout: 30_000,
-      // @openzeppelin/merkle-tree (via @flocked/settle) is CommonJS with CommonJS dependencies that
-      // workerd's module fallback cannot interop; Vite pre-bundles it to ESM (wrangler's esbuild
-      // does the same for the deployed Worker). The Worker does not import @flocked/tlock yet; when
-      // it does, add tlock-js's deep imports here as packages/tlock/vitest.config.ts does.
+      // @openzeppelin/merkle-tree (via @flocked/settle) and tlock-js (via @flocked/tlock) are
+      // CommonJS with CommonJS dependencies that workerd's module fallback cannot interop; Vite
+      // pre-bundles them to ESM (wrangler's esbuild does the same for the deployed Worker), as
+      // packages/tlock/vitest.config.ts does.
       deps: {
         optimizer: {
-          ssr: { enabled: true, include: ['@flocked/settle > @openzeppelin/merkle-tree'] },
+          ssr: {
+            enabled: true,
+            include: [
+              '@flocked/settle > @openzeppelin/merkle-tree',
+              '@flocked/tlock > tlock-js/age/age-encrypt-decrypt.js',
+              '@flocked/tlock > tlock-js/crypto/ibe.js',
+              '@flocked/tlock > tlock-js/drand/timelock-encrypter.js',
+            ],
+            // tlock-js reaches `require("crypto")` only when there is no `window` (its file-key RNG).
+            rolldownOptions: { external: ['crypto'] },
+          },
         },
       },
     },

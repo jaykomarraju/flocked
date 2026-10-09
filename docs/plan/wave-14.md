@@ -46,3 +46,7 @@
 ## Carry-over from W2-Z (Oct 8, 2026)
 
 - **W14-A:** `apps/api/wrangler.jsonc` staging has `workers_dev: false` and no routes, so staging is unreachable until routes are added; staging and production resource IDs are owner-supplied placeholders. Confirm the CREATE2 factory `0x4e59b44847b379578588920cA78FbF26c0B4956C` exists on Base Sepolia and Base before the first deploy.
+
+## Carry-over from W3-Z (Oct 9, 2026)
+
+- **W14-D (soak):** watch for KV-consistency failures on email codes and SIWE nonces ("invalid" right after a send) if W7-B hasn't moved them into the AuthDO.

@@ -1,0 +1,52 @@
+# Local stack smoke test (e2e/stack/README.md): drand in Docker, anvil, the CREATE2 deploy and
+# `wrangler dev`, then one real Free round end to end. Runs on integration branches and main only,
+# as the stack takes a minute to start and the round another to reach its beacon.
+name: Stack
+
+on:
+  push:
+    branches: [main, 'w*-integration']
+  workflow_dispatch:
+
+concurrency:
+  group: stack-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    # ubuntu-latest moves to Ubuntu 26 from Oct 19, 2026; pin ubuntu-24.04 if the stack breaks there.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.7.1
+      - run: pnpm install --frozen-lockfile
+      - run: forge soldeer install
+        working-directory: contracts
+      - run: pnpm stack:up
+      - run: pnpm --filter @flocked/e2e --fail-if-no-match exec vitest run tests/stack-smoke.test.ts
+      - name: Stack status and drand logs
+        if: failure()
+        run: |
+          pnpm stack:status || true
+          docker compose -f e2e/stack/docker-compose.yml logs --tail 100
+      - name: Upload stack logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: stack-logs
+          path: e2e/stack/.run/logs
+          if-no-files-found: ignore
+      - name: Stop the stack
+        if: always()
+        run: pnpm stack:down

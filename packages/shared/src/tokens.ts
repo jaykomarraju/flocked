@@ -3,6 +3,8 @@
 import { z } from 'zod';
 
 const Hex = z.string().regex(/^#[0-9A-F]{6}$/, 'uppercase #RRGGBB');
+/** Colour with alpha, for the scrim: uppercase `#RRGGBBAA`. */
+const HexAlpha = z.string().regex(/^#[0-9A-F]{8}$/, 'uppercase #RRGGBBAA');
 const Px = z.number().nonnegative();
 
 /** One colour scheme. Spec: Design_Language.md "Color tokens". */
@@ -14,6 +16,8 @@ export const ColorSchemeTokensSchema = z.strictObject({
   line: Hex,
   accent: Hex,
   accentInk: Hex,
+  /** Dims the page behind sheets and dialogs. */
+  scrim: HexAlpha,
 });
 
 export const TypeRoleTokenSchema = z.strictObject({

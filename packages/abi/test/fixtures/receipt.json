@@ -3,16 +3,18 @@
   "chainId": 31337,
   "verifyingContract": "0xf10cced000000000000000000000000000000001",
   "signer": "0x9aD0b42735e799056648335E17Fb0910C99032c1",
+  "roundUlid": "01JBRW99XKFS0B5GEKWKTTDDY8",
+  "userId": "01JAB2C3D4E5F6G7H8J9K0M1N2",
   "receipt": {
     "roundId": "0x0192f1c4a7b37e40b2c1d3e4f5a6b7c8",
     "mode": 0,
-    "userIdHash": "0x6a9acfb6d9fdc80d72f54b92178ae08b4bc45ddcddd54c007f2cbece659145ed",
+    "userIdHash": "0x49278da9815c629ea49f81760d757ab10c2a08bade158e738cb2ed74ad55e885",
     "stake": 250,
     "commitment": "0x043502c5dae5c8aea91afd10cce363be4484c027ebb55c17a3125eda62f7827f",
     "seq": 41,
     "closesAt": 1760003600,
     "beaconRound": 22390119
   },
-  "digest": "0xdd69a82838df9b9fde487a14fb7f6624e5ab9ba59a77dcbb4947e59cbc9f453f",
-  "signature": "0x510c0ee4cadd6383fb18bb2edaeca018c104577e4253d3ac627a8850d6cac5620d957a93e412e8f26f817031b2a28792011e54116929045233ce1ddb30a31dce1b"
+  "digest": "0xb36d39cbd817112686e79fe3891ebd0e675876773babd9dec98565bfaf6d1361",
+  "signature": "0x1baad61c7ae79969bef7ff1f7995861bf19c1fcdae4c4188375dad40eee8f7d54970457762ea7ccc81c84330803f00bf946f27d7f82bed4682c1351cbbdf9d7a1b"
 }

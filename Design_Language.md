@@ -30,6 +30,7 @@ Rules:
 - Body and UI: Inter (400–600).
 - Numbers (percentages, stakes, timers): Inter with tabular figures.
 - Labels on the accent fill are Fredoka 700 at 20px or larger (light --accent-ink on --accent is 3.28:1, large text only).
+- Numerals on the accent fill may use Inter 600 with tabular figures at 24px or larger (WCAG large text, 3:1). Smaller text on the accent follows the label rule above.
 - Use sentence case everywhere. ALL CAPS only for result lines: "UNFLOCKED", "GOT FLOCKED".
 
 ## Shape and layout
@@ -60,6 +61,30 @@ Short, dry, deadpan. Copy should never explain the joke and never use exclamatio
 - Offline: "You're offline. Nothing can be sealed until you're back."
 - Entry rejected at close: "This round just closed. Your pick wasn't sent."
 - Daily cap: "You've hit today's cap. The flock will still be here tomorrow."
+
+Refund lines, one per refund reason (`packages/shared/src/reasons.ts`):
+
+| Code | Reason | Line |
+| --- | --- | --- |
+| 1 | `too_few_entrants` | "Not enough sheep showed up. Everyone gets their stake back." |
+| 2 | `one_sided` | "Everyone picked the same side. No strays, no round. Everyone gets their stake back." |
+| 3 | `headcount_tie` | The "Refunded (tie only)" line above |
+| 4 | `voided` | "This round was called off before it closed. Everyone gets their stake back." |
+| 5 | `vetoed` | "The result was challenged and thrown out. Everyone gets their stake back." |
+| 6 | `timeout` | "No result was posted in time. Everyone gets their stake back." |
+| 7 | `commitment_not_anchored` | "The picks weren't locked in on time, so this round doesn't count. Points returned." |
+| 8 | `beacon_unavailable` | "The timelock never opened, so the picks stay sealed. Points returned." |
+
+Core flow (amounts, addresses, dates and times are examples):
+- Unsealing: "Entries closed at 9pm. The timelock opens for everyone at once."
+- Counting: "The timelock is open. Every pick is being tallied."
+- Next question live: "Last round" / "See the reveal"
+- Mode toggle, mode not played: "You didn't play Stakes this round." / "Back to your Free result"
+- Verification sheet: "I'm 18 or older", "I accept the Stakes terms", "18+ only", "Responsible play"
+- Entry pending: "Confirming", "Waiting for Base to include your entry. Usually a few seconds."
+- Config mismatch: "This round doesn't match its onchain record", "The published stake is 10 USDC. Onchain it's 50 USDC. We won't build your entry while they differ.", "See what doesn't match"
+- Claims: "Stakes payouts and refunds you haven't claimed yet.", "Ready to claim", "2 of 3 are ready. The third opens at 11:03pm.", "Payouts go to the wallet that entered, 0x3f2c…a91c. Claims from rounds you already entered stay open, wherever you are.", "Claim 17.67 USDC", "Two payouts, one transaction. They go to 0x3f2c…a91c.", "The Oct 8 payout opens at 11:03pm. Claim it then.", "Claiming", "Waiting for Base to confirm. Usually a few seconds.", "Nothing to claim. The flock owes you nothing.", "Back to Today"
+- Self-excluded: "You're on a break until Nov 7.", "No picks in either mode until then, and no game notifications.", "Claims and refunds still work"
 
 ## Share cards
 - Follow the same tokens: bg background, ink text, and the accent only on the winning bar and the "UNFLOCKED" line.

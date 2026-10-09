@@ -57,6 +57,27 @@ export interface Env {
 
   /** Epoch ms; honoured only when ENVIRONMENT is 'local' (src/lib/clock.ts). Tests and e2e only. */
   FLOCKED_TEST_CLOCK?: string;
+  /**
+   * The JSON of `contracts/deployments/31337.json`, written by the local stack (`pnpm stack:up`);
+   * receipt signing reads the FlockedAnchor address from it on chain 31337 (src/crypto/receipt.ts).
+   */
+  LOCAL_DEPLOYMENT?: string;
+  /**
+   * Bearer key for the local test seam (`/__test/*`, src/local/seam.ts), generated per stack run.
+   * The seam answers 404 unless ENVIRONMENT is 'local' and this is set.
+   */
+  FLOCKED_TEST_SEAM_KEY?: string;
+
+  // Sign-in vars (W3-A; src/auth/config.ts). Optional in the type so a missing var answers 503
+  // `unavailable` on the routes that need it instead of failing every request.
+  /** The web app's origin, e.g. `https://flocked.app`; its host is the SIWE domain and the Quick Auth audience. */
+  APP_ORIGIN?: string;
+  /** The current Terms of Service version; `POST /me/tos` accepts only this one. */
+  TOS_VERSION?: string;
+  /** Sender of sign-in codes, e.g. `codes@flocked.app` (a verified Email Sending address). */
+  EMAIL_FROM?: string;
+  /** Farcaster Quick Auth origin override (e2e mock); honoured only when ENVIRONMENT is 'local'. */
+  FARCASTER_AUTH_ORIGIN?: string;
 
   // Secrets (wrangler.jsonc header lists them). Optional until the owning session needs them.
   TURNSTILE_SECRET_KEY?: string;

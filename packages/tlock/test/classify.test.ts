@@ -1,5 +1,9 @@
 import type { VoidReason } from '@flocked/settle';
 import { VOID_REASONS } from '@flocked/settle';
+import { bls12_381 } from '@noble/curves/bls12-381';
+import type { Stanza } from 'tlock-js/age/age-encrypt-decrypt.js';
+import { decryptAge } from 'tlock-js/age/age-encrypt-decrypt.js';
+import { decryptOnG2 } from 'tlock-js/crypto/ibe.js';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
   QUICKNET,
@@ -9,9 +13,20 @@ import {
   isCanonicalHeader,
   roundRefFromChainId,
 } from '../src/index.js';
-import { base64Decode, base64Encode, latin1ToBytes } from '../src/encoding.js';
+import { bytesToLatin1, latin1ToBytes } from '../src/encoding.js';
 import { sealBytes } from '../src/seal.js';
-import { beacon, joinCt, otherG2PublicKey, randomBytes, splitCt } from './helpers.js';
+import {
+  beacon,
+  fixturePick,
+  hex,
+  joinCt,
+  otherG2PublicKey,
+  randomBytes,
+  remac,
+  splitCt,
+  stanzaBody,
+  withBody,
+} from './helpers.js';
 
 const ROUND = 1_000_000;
 const { signature } = beacon(ROUND);
@@ -24,13 +39,17 @@ beforeAll(async () => {
   valid = await encryptPick(QUICKNET, ROUND, encodePlaintext({ roundRef, optionIndex: 1, nonce }));
 });
 
-async function reasonOf(ct: Uint8Array, beaconRound = ROUND): Promise<VoidReason | 'valid'> {
+async function reasonOf(
+  ct: Uint8Array,
+  beaconRound = ROUND,
+  ref = roundRef,
+): Promise<VoidReason | 'valid'> {
   const r = await classify({
     ct,
     chain: QUICKNET,
     beaconRound,
     signature: beacon(beaconRound).signature,
-    roundRef,
+    roundRef: ref,
   });
   return r.valid ? 'valid' : r.voidReason;
 }
@@ -41,16 +60,9 @@ function editLines(edit: (lines: string[]) => string[]): Uint8Array {
   return joinCt(edit([...lines]), payload);
 }
 
-/** Edits the decoded stanza body and re-wraps it canonically. */
-function editBody(edit: (body: Uint8Array) => Uint8Array): Uint8Array {
-  return editLines((lines) => {
-    const body = base64Decode(lines.slice(2, -1).join(''));
-    if (!body) throw new Error('bad body');
-    const b64 = base64Encode(edit(body.slice()));
-    const wrapped: string[] = b64.match(/.{1,64}/g) ?? [];
-    if ((wrapped.at(-1)?.length ?? 0) === 64) wrapped.push('');
-    return [lines[0] ?? '', lines[1] ?? '', ...wrapped, lines.at(-1) ?? ''];
-  });
+/** Edits the decoded stanza body of `ct` (by default the valid ciphertext) and re-wraps it canonically. */
+function editBody(edit: (body: Uint8Array) => Uint8Array, ct = valid): Uint8Array {
+  return withBody(ct, edit(stanzaBody(ct)));
 }
 
 const sealed = (pt: Uint8Array) => sealBytes(QUICKNET, ROUND, pt);
@@ -271,6 +283,31 @@ describe('TL-3: malformed ciphertexts and bad plaintexts are VOID with their exa
       ['a flipped bit in V', () => editBody(flip(100))],
       ['a flipped bit in W', () => editBody(flip(120))],
       ['U is not a curve point', () => editBody(flip(50))],
+      [
+        'U without the compression flag',
+        () =>
+          editBody((b) => {
+            b[0] = (b[0] ?? 0) & 0x7f;
+            return b;
+          }),
+      ],
+      [
+        'U flagged as infinity with a non-zero x',
+        () =>
+          editBody((b) => {
+            b[0] = (b[0] ?? 0) | 0x40;
+            b[0] &= 0xdf; // compressed + infinity + sort is itself an invalid flag combination
+            return b;
+          }),
+      ],
+      [
+        'U with its sort flag flipped (the canonical encoding of −U)',
+        () =>
+          editBody((b) => {
+            b[0] = (b[0] ?? 0) ^ 0x20;
+            return b;
+          }),
+      ],
       ['stanza body one byte short', () => editBody((b) => b.slice(0, -1))],
       ['stanza body one byte long', () => editBody((b) => new Uint8Array([...b, 0]))],
       ['a wrong header MAC', () => editLines((l) => [...l.slice(0, -1), `--- ${'A'.repeat(42)}E`])],
@@ -310,6 +347,91 @@ describe('TL-3: malformed ciphertexts and bad plaintexts are VOID with their exa
     ];
     it.each(cases)('%s', async (_name, make) => {
       expect(await reasonOf(await make())).toBe('decrypt_failed');
+    });
+  });
+
+  describe('decrypt_failed: U must be the canonical compressed encoding of a G2 point', () => {
+    const G2 = bls12_381.G2.ProjectivePoint;
+    const P = bls12_381.fields.Fp.ORDER;
+    // A committed pick whose x_c1 is below 2^381 − p, so x_c1 + p still fits under the three flag bits.
+    const PICK_ROUND = 32_870_075;
+    const pick = fixturePick(PICK_ROUND);
+    const sig = hex(pick.signature);
+    const U = stanzaBody(pick.ct).subarray(0, 96);
+    const split = (body: Uint8Array) => ({
+      U: body.subarray(0, 96),
+      V: body.subarray(96, 112),
+      W: body.subarray(112),
+    });
+    let fileKey: Uint8Array;
+    beforeAll(async () => {
+      fileKey = await decryptOnG2(sig, split(stanzaBody(pick.ct)));
+    });
+
+    const num = (b: Uint8Array) => b.reduce((n, x) => (n << 8n) | BigInt(x), 0n);
+    const be48 = (n: bigint) =>
+      Uint8Array.from({ length: 48 }, (_, k) => Number((n >> BigInt(8 * (47 - k))) & 0xffn));
+    /** x = x_c0 + x_c1·u: bytes 0..47 are x_c1 under the 3 flag bits, bytes 48..95 are x_c0. */
+    const x1 = (u: Uint8Array) => num(Uint8Array.from([(u[0] ?? 0) & 0x1f, ...u.subarray(1, 48)]));
+    const x0 = (u: Uint8Array) => num(u.subarray(48, 96));
+    const withX0 = (u: Uint8Array, x: bigint) => {
+      const out = u.slice();
+      out.set(be48(x), 48);
+      return out;
+    };
+    const withX1 = (u: Uint8Array, x: bigint) => {
+      if (x >= 2n ** 381n) throw new Error('x_c1 does not fit under the flag bits');
+      const out = u.slice();
+      out.set(be48(x), 0);
+      out[0] = (out[0] ?? 0) | ((u[0] ?? 0) & 0xe0);
+      return out;
+    };
+
+    /** The pick with U replaced and the header MAC re-signed under its file key, as its author could. */
+    const forge = (u: Uint8Array) =>
+      remac(
+        editBody((b) => {
+          b.set(u, 0);
+          return b;
+        }, pick.ct),
+        fileKey,
+      );
+    /** What `openParsed` did before it checked U: tlock-js's age layer and `decryptOnG2` alone. */
+    const openWithTlockJs = async (ct: Uint8Array) =>
+      Uint8Array.from(
+        await decryptAge(bytesToLatin1(ct), ([s]: Stanza[]) =>
+          decryptOnG2(sig, split(s?.body ?? new Uint8Array(0))),
+        ),
+      );
+    const reason = (ct: Uint8Array) => reasonOf(ct, PICK_ROUND, pick.roundRef);
+
+    it('the committed pick is valid, and re-signing its own header reproduces its MAC', async () => {
+      expect(await reason(pick.ct)).toBe('valid');
+      expect(remac(pick.ct, fileKey)).toEqual(pick.ct);
+      expect(forge(U)).toEqual(pick.ct);
+    });
+
+    it.each([
+      ['x_c0 + p', (u: Uint8Array) => withX0(u, x0(u) + P)],
+      ['x_c0 + 2p', (u: Uint8Array) => withX0(u, x0(u) + 2n * P)],
+      ['x_c1 + p, flag bits kept', (u: Uint8Array) => withX1(u, x1(u) + P)],
+    ])('%s: noble and tlock-js accept it, classify says decrypt_failed', async (_name, make) => {
+      const u = make(U);
+      expect(u).not.toEqual(U);
+      // Without the canonical check this ciphertext is a valid pick: noble reduces the coordinate mod p
+      // and decodes the same point, and tlock-js alone opens the re-signed ciphertext to the pick.
+      expect(G2.fromHex(u).equals(G2.fromHex(U))).toBe(true);
+      const forged = forge(u);
+      expect(await openWithTlockJs(forged)).toEqual(pick.plaintext);
+      expect(await reason(forged)).toBe('decrypt_failed');
+    });
+
+    it('U = compressed infinity (0xc0, then zeros): a canonical encoding, still decrypt_failed', async () => {
+      const inf = new Uint8Array(96);
+      inf[0] = 0xc0;
+      expect(G2.fromHex(inf).equals(G2.ZERO)).toBe(true);
+      expect(G2.ZERO.toRawBytes(true)).toEqual(inf);
+      expect(await reason(forge(inf))).toBe('decrypt_failed');
     });
   });
 

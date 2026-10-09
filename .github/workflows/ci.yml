@@ -73,6 +73,6 @@ jobs:
       - run: pnpm --filter @flocked/settle --fail-if-no-match exec vitest run test/properties.test.ts
         env:
           FAST_CHECK_RUNS: '10000'
-      - run: pnpm --filter @flocked/tlock --fail-if-no-match exec vitest run --project node test/plaintext.test.ts
+      - run: pnpm --filter @flocked/tlock --fail-if-no-match exec vitest run --project node test/plaintext.test.ts test/classify.properties.test.ts
         env:
           FAST_CHECK_RUNS: '10000'

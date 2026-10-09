@@ -57,23 +57,53 @@ describe('route modules', () => {
   });
 });
 
-describe.each(ENDPOINTS.map((ep) => [`${ep.method} ${ep.path}`, ep] as const))(
-  '%s',
-  (_label, ep) => {
-    it('answers 501 not_implemented through the Worker', async () => {
-      const res = await exports.default.fetch(requestFor(ep));
-      expect(res.status).toBe(501);
-      const body = ErrorEnvelopeSchema.parse(await res.json());
-      expect(body.error.code).toBe('not_implemented');
-      expect(body.error.message).toContain(ep.path);
-    });
+/**
+ * Endpoints whose owner session has landed; their own tests (test/auth, test/me, ...) cover them,
+ * so here they only have to be mounted. Owners add their `METHOD path` rows.
+ */
+const IMPLEMENTED = new Set([
+  // W3-A
+  'POST /auth/siwe/nonce',
+  'POST /auth/siwe/verify',
+  'POST /auth/farcaster',
+  'POST /auth/email/start',
+  'POST /auth/email/verify',
+  'POST /auth/logout',
+  'GET /me',
+  'PATCH /me',
+  'POST /me/tos',
+  // W3-B (test/round-do/route.test.ts)
+  'POST /rounds/:id/entries',
+]);
 
-    it('answers 501 with a signed-in user too', async () => {
-      const res = await withSession(app, fakeUser({ role: 'admin' })).request(requestFor(ep));
-      expect(res.status).toBe(501);
-    });
-  },
-);
+const label = (ep: EndpointDef) => `${ep.method} ${ep.path}`;
+
+describe.each(
+  ENDPOINTS.filter((ep) => IMPLEMENTED.has(label(ep))).map((ep) => [label(ep), ep] as const),
+)('%s (implemented)', (_label, ep) => {
+  it('is mounted: answers through the Worker, not 404', async () => {
+    const res = await exports.default.fetch(requestFor(ep));
+    expect(res.status).not.toBe(404);
+    expect(res.status).not.toBe(501);
+  });
+});
+
+describe.each(
+  ENDPOINTS.filter((ep) => !IMPLEMENTED.has(label(ep))).map((ep) => [label(ep), ep] as const),
+)('%s', (_label, ep) => {
+  it('answers 501 not_implemented through the Worker', async () => {
+    const res = await exports.default.fetch(requestFor(ep));
+    expect(res.status).toBe(501);
+    const body = ErrorEnvelopeSchema.parse(await res.json());
+    expect(body.error.code).toBe('not_implemented');
+    expect(body.error.message).toContain(ep.path);
+  });
+
+  it('answers 501 with a signed-in user too', async () => {
+    const res = await withSession(app, fakeUser({ role: 'admin' })).request(requestFor(ep));
+    expect(res.status).toBe(501);
+  });
+});
 
 describe('unknown routes', () => {
   it.each([
