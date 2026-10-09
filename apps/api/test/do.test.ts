@@ -162,34 +162,20 @@ describe('SettlementDO (binding SETTLEMENT)', () => {
   });
 });
 
+// AuthDO and RateLimitDO are implemented (W3-A); test/auth/auth-do.test.ts and
+// test/auth/rate-limit.test.ts cover their behaviour. Here: the bindings reach the classes.
 describe('AuthDO (binding AUTH)', () => {
-  it('pins consumeNonce, consumeEmailCode, bindOAuthState, consumeOAuthState', async () => {
-    const s = env.AUTH.get(env.AUTH.idFromName('auth'));
-    await expectNotImplemented(s.consumeNonce('h'), 'AuthDO.consumeNonce');
-    await expectNotImplemented(
-      s.consumeEmailCode({ emailHash: 'e', codeHash: 'c' }),
-      'AuthDO.consumeEmailCode',
-    );
-    await expectNotImplemented(
-      s.bindOAuthState({
-        stateHash: 's',
-        userId: FIXTURE_IDS.user,
-        codeVerifier: 'v',
-        expiresAt: 1,
-      }),
-      'AuthDO.bindOAuthState',
-    );
-    await expectNotImplemented(s.consumeOAuthState('s'), 'AuthDO.consumeOAuthState');
+  it('answers consumeNonce for an unknown nonce', async () => {
+    const s = env.AUTH.get(env.AUTH.idFromName('nonce:unknown'));
+    expect(await s.consumeNonce('unknown')).toEqual({ ok: false, reason: 'unknown' });
   });
 });
 
 describe('RateLimitDO (binding RATE_LIMIT)', () => {
-  it('pins take', async () => {
-    const s = env.RATE_LIMIT.get(env.RATE_LIMIT.idFromName(`user:${FIXTURE_IDS.user}`));
-    await expectNotImplemented(
-      s.take({ key: `user:${FIXTURE_IDS.user}:entries`, capacity: 10, periodMs: 60_000 }, 1),
-      'RateLimitDO.take',
-    );
+  it('answers take', async () => {
+    const bucket = { key: `user:${FIXTURE_IDS.user}:entries`, capacity: 10, periodMs: 60_000 };
+    const s = env.RATE_LIMIT.get(env.RATE_LIMIT.idFromName(bucket.key));
+    expect(await s.take(bucket, 1)).toEqual({ allowed: true, remaining: 9, retryAfterMs: 0 });
   });
 });
 
