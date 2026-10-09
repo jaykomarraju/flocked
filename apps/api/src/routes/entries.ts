@@ -3,6 +3,7 @@
 import { CreateEntryRequestSchema, ERROR_STATUS, IdParamsSchema } from '@flocked/shared';
 import { Hono } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
+import { limitUser } from '../auth/rate-limit.js';
 import { getUser, requireUser, type AppEnv } from '../lib/auth-context.js';
 import { HttpError } from '../lib/errors.js';
 import { validate } from '../lib/validate.js';
@@ -12,12 +13,13 @@ const app = new Hono<AppEnv>();
 
 /**
  * POST /rounds/:id/entries: a sealed Free entry. The round's RoundDO checks, commits and signs it;
- * the response is the committed entry and its receipt. Registered before the module's stubs, so it
- * answers instead of the 501.
+ * the response is the committed entry and its receipt. Rate limited per user (`entries`, 10/min).
+ * Registered before the module's stubs, so it answers instead of the 501.
  */
 app.post(
   '/rounds/:id/entries',
   requireUser,
+  limitUser('entries'),
   validate('param', IdParamsSchema),
   validate('json', CreateEntryRequestSchema),
   async (c) => {

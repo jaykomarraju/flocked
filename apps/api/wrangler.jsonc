@@ -14,11 +14,17 @@
 //   COINBASE_CLIENT_ID, COINBASE_CLIENT_SECRET  Coinbase OAuth (W5-B)
 //   ANCHOR_KEY            FlockedAnchor ANCHOR_ROLE key, used only by AnchorDO (W4-A)
 //   OPERATOR_KEY          FlockedEscrow OPERATOR_ROLE key (W6-A)
-//   BASE_RPC_URL, BASE_RPC_URL_FALLBACK  RPC providers (W4-B)
+//   BASE_RPC_URL, BASE_RPC_URL_FALLBACK  RPC providers (W4-B); W3-A's SIWE also uses them for
+//                         ERC-1271/6492 smart-wallet signatures (EOA sign-in works without them)
 //   ANTHROPIC_API_KEY     moderation (W8-A)
 //   VAPID_PRIVATE_KEY     web push (W9-A)
 //   PAYMASTER_URL, BUNDLER_URL  paymaster proxy (W10-D)
 // The ticket signer key (TICKET_SIGNER_KEY) lives only in apps/signer.
+// Local only, written by `pnpm stack:up` into e2e/stack/.dev.vars (never deployed):
+//   LOCAL_DEPLOYMENT      JSON of contracts/deployments/31337.json (receipt domain on anvil; W3-B)
+//   FLOCKED_TEST_SEAM_KEY Bearer key for the /__test/* seam (src/local/seam.ts; W3-D)
+//   FARCASTER_AUTH_ORIGIN Quick Auth mock (e2e/mocks/farcaster; W3-A)
+//   FLOCKED_TEST_CLOCK    fixed game clock, epoch ms (src/lib/clock.ts)
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   // Never deployed: `wrangler deploy` without --env would fail on the placeholder IDs below.
@@ -41,12 +47,13 @@
   //   15 8 * * *  nightly point_balances vs points_ledger reconciliation
   "triggers": { "crons": ["* * * * *", "0 * * * *", "15 8 * * *"] },
 
-  // The React SPA from apps/web, served by this Worker; /api/* always reaches the Worker first.
+  // The React SPA from apps/web, served by this Worker; /api/* always reaches the Worker first, and
+  // so does /__test/* (the local-only test seam, which answers 404 outside `local`).
   "assets": {
     "directory": "../web/dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*"],
+    "run_worker_first": ["/api/*", "/__test/*"],
   },
 
   // Durable Objects are SQLite-backed. Bindings are repeated per environment.
@@ -85,6 +92,11 @@
     "DRAND_PUBLIC_KEY": "83cf0f2896adee7eb8b5f01fcad3912212c437e0073e911fb90022d3e760183c8c4b450b6a0a6c3ac6a5776a2d1064510d1fec758c921cc22b0e17e63aaf4bcb5ed66304de9cf809bd274ca73bab4af5a6e9c76a4bc09e76eae8991ef5ece45a",
     "DRAND_GENESIS": "1692803367",
     "DRAND_PERIOD": "3",
+    // Sign-in (W3-A, src/auth/config.ts). APP_ORIGIN (its host is the SIWE domain and the Quick
+    // Auth audience) and EMAIL_FROM differ per deployment, so they are not top-level vars (wrangler
+    // would warn that the named environments lack them): locally `pnpm stack:up` writes them to
+    // e2e/stack/.dev.vars; staging and production get theirs from the owner (W14-A).
+    "TOS_VERSION": "2026-10-01",
   },
   "d1_databases": [
     {
@@ -176,6 +188,9 @@
         "DRAND_PUBLIC_KEY": "83cf0f2896adee7eb8b5f01fcad3912212c437e0073e911fb90022d3e760183c8c4b450b6a0a6c3ac6a5776a2d1064510d1fec758c921cc22b0e17e63aaf4bcb5ed66304de9cf809bd274ca73bab4af5a6e9c76a4bc09e76eae8991ef5ece45a",
         "DRAND_GENESIS": "1692803367",
         "DRAND_PERIOD": "3",
+        // APP_ORIGIN and EMAIL_FROM: OWNER_SUPPLIED with the staging domain (W14-A). Until then the
+        // sign-in routes answer 503 `unavailable`.
+        "TOS_VERSION": "2026-10-01",
       },
       "d1_databases": [
         {
@@ -268,6 +283,9 @@
         "DRAND_PUBLIC_KEY": "83cf0f2896adee7eb8b5f01fcad3912212c437e0073e911fb90022d3e760183c8c4b450b6a0a6c3ac6a5776a2d1064510d1fec758c921cc22b0e17e63aaf4bcb5ed66304de9cf809bd274ca73bab4af5a6e9c76a4bc09e76eae8991ef5ece45a",
         "DRAND_GENESIS": "1692803367",
         "DRAND_PERIOD": "3",
+        // APP_ORIGIN and EMAIL_FROM: OWNER_SUPPLIED with the production domain (W14-A). Until then the
+        // sign-in routes answer 503 `unavailable`.
+        "TOS_VERSION": "2026-10-01",
       },
       "d1_databases": [
         {

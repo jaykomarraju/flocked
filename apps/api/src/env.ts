@@ -57,6 +57,16 @@ export interface Env {
 
   /** Epoch ms; honoured only when ENVIRONMENT is 'local' (src/lib/clock.ts). Tests and e2e only. */
   FLOCKED_TEST_CLOCK?: string;
+  /**
+   * The JSON of `contracts/deployments/31337.json`, written by the local stack (`pnpm stack:up`);
+   * receipt signing reads the FlockedAnchor address from it on chain 31337 (src/crypto/receipt.ts).
+   */
+  LOCAL_DEPLOYMENT?: string;
+  /**
+   * Bearer key for the local test seam (`/__test/*`, src/local/seam.ts), generated per stack run.
+   * The seam answers 404 unless ENVIRONMENT is 'local' and this is set.
+   */
+  FLOCKED_TEST_SEAM_KEY?: string;
 
   // Sign-in vars (W3-A; src/auth/config.ts). Optional in the type so a missing var answers 503
   // `unavailable` on the routes that need it instead of failing every request.

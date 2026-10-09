@@ -22,9 +22,7 @@ import type { Env } from '../env.js';
  * `contracts/deployments/31337.json` (local chain only, written by the local stack); staging and
  * production use the committed deployments in @flocked/abi.
  */
-export type ReceiptEnv = Pick<Env, 'CHAIN_ID' | 'RECEIPT_SIGNER_KEY'> & {
-  LOCAL_DEPLOYMENT?: string;
-};
+export type ReceiptEnv = Pick<Env, 'CHAIN_ID' | 'RECEIPT_SIGNER_KEY' | 'LOCAL_DEPLOYMENT'>;
 
 /** The fields of one Free receipt, before signing. */
 export interface FreeReceiptFields {
