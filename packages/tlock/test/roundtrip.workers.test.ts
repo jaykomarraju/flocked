@@ -10,6 +10,7 @@ import {
   fromBase64Url,
   verifyBeacon,
 } from '../src/index.js';
+import { selfTest } from '../src/seal.js';
 import { BEACONS, PICKS, beacon, flipBit, hex, randomBytes } from './helpers.js';
 
 function pickCiphertext(p: (typeof PICKS)[number]): Uint8Array {
@@ -28,6 +29,10 @@ describe('TL-1 (Workers): decrypt and verifyBeacon in workerd', () => {
   it('runs in workerd', () => {
     const { navigator } = globalThis as { navigator?: { userAgent?: string } };
     expect(navigator?.userAgent).toBe('Cloudflare-Workers');
+  });
+
+  it("classify's self-test (the embedded quicknet case) passes in workerd", async () => {
+    await expect(selfTest()).resolves.toBeUndefined();
   });
 
   it.each(BEACONS)('verifyBeacon accepts recorded round $round and rejects a flipped bit', (b) => {

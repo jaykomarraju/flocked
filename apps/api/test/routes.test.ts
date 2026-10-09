@@ -72,6 +72,8 @@ const IMPLEMENTED = new Set([
   'GET /me',
   'PATCH /me',
   'POST /me/tos',
+  // W3-B (test/round-do/route.test.ts)
+  'POST /rounds/:id/entries',
 ]);
 
 const label = (ep: EndpointDef) => `${ep.method} ${ep.path}`;

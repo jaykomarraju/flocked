@@ -25,7 +25,7 @@ Spec: "Sealed picks (timelock encryption)" and "Round lifecycle" › Scheduling.
 | `isCanonicalHeader(ct, chain, round)`     | The header is canonical and targets exactly that round and chain.                                                                             |
 | `verifyBeacon(chain, round, sig)`         | BLS check of a 96-hex-char signature for exactly `round`. False, never throws, on bad input.                                                  |
 | `decryptWithSignature(chain, ct, sig)`    | Opens `ct` with a signature already checked by `verifyBeacon`. Throws on any failure.                                                         |
-| `classify(i)`                             | `{ valid, optionIndex, nonce }` or `{ valid: false, voidReason }`. Throws only for a bad signature or a malformed `roundRef`.                 |
+| `classify(i)`                             | `{ valid, optionIndex, nonce }` or `{ valid: false, voidReason }`. Throws for a bad signature, a bad `roundRef` or a broken runtime.          |
 | `commitment(ct)`                          | `keccak256(ct)` as `0x…`.                                                                                                                     |
 | `toBase64Url`, `fromBase64Url`            | The JSON transport for ciphertexts: unpadded base64url, strict decoding.                                                                      |
 
@@ -56,14 +56,23 @@ base64. tlock-js's own reader is lenient, so every ciphertext passes this parser
 1. `non_canonical_header`: the header fails the rules above (including garbage, armor, extra stanzas, CRLF).
 2. `wrong_target`: the stanza names another round or another chain hash (the wave-2 open question: a right
    round with a different chain hash is `wrong_target`).
-3. `decrypt_failed`: the stanza body is not 128 bytes or does not open (IBE `rP` check), the header MAC is wrong,
-   or the payload is short, truncated, extended or corrupt. tlock-js seals an empty plaintext as a nonce with
-   no STREAM chunk, which is not valid age; it lands here.
+3. `decrypt_failed`: the stanza body is not 128 bytes, U is not a canonical compressed G2 point, the body does
+   not open (IBE `rP` check), the header MAC is wrong, or the payload is short, truncated, extended or corrupt.
+   noble's `fromHex` reduces each coordinate mod p, so a U with p added to a coordinate (by an author who then
+   re-signs the header MAC) would decode to the same point and open; `openParsed` decodes U, re-encodes it
+   compressed and requires the same 96 bytes, and also rejects the point at infinity. tlock-js seals an empty
+   plaintext as a nonce with no STREAM chunk, which is not valid age; it lands here.
 4. `bad_plaintext`: not 34 bytes, version ≠ 0x01, or a round reference other than the round's.
 5. `bad_option`: `optionIndex` ∉ {0, 1}.
 
 `classify` first checks the signature with `verifyBeacon` (cached per chain, round and signature, so a round's
 thousands of entries cost one pairing check) and throws if it fails: a bad signature must never produce VOIDs.
+
+A broken runtime must not produce VOIDs either, since it would fail every entry alike. The first `classify` call
+in an isolate runs `selfTest` (`src/seal.ts`): it opens one committed quicknet pick, embedded as constants, with
+its recorded signature and checks the plaintext. If that fails, this and every later call in the isolate throws.
+A bad ciphertext only makes noble and tlock-js throw a plain `Error`, so a `TypeError` or `ReferenceError` from
+decryption (a missing global or API) is rethrown instead of becoming `decrypt_failed`.
 
 ## Decrypting with a given signature
 
@@ -107,6 +116,7 @@ Non-integer `closesAt` or `now` is a caller error (`RangeError`).
   source URL). The script checks the info against `QUICKNET`. Tests never touch the network.
 - `fixtures/quicknet-ciphertexts.json`: one pick per recorded round, encrypted in Node by
   `scripts/make-ciphertexts.ts`. Encryption is randomized, so it ran once; the Workers test decrypts these.
+  `SELF_TEST_CASE` in `src/seal.ts` copies the round 32 870 075 pick; `test/environment.test.ts` checks the copy.
 - `vectors/target-round.json`: `{ cases: [{ id, closesAt, beaconDelay, beaconRound, genesis, period, now,
 gameDay, expectedOk, reason, contractError }] }`, numbers as decimal strings, sorted by `id`. Each case states
   its expected client result by hand; `contractError` comes from an independent bigint model of `createRound`.
@@ -118,7 +128,8 @@ gameDay, expectedOk, reason, contractError }] }`, numbers as decimal strings, so
 
 `pnpm --filter @flocked/tlock test` runs two Vitest projects:
 
-- `node`: everything in `test/*.test.ts`. `FAST_CHECK_RUNS` sets the property-test runs (default 1000).
+- `node`: everything in `test/*.test.ts`. `FAST_CHECK_RUNS` sets the property-test runs (default 1000; the
+  classify mutation property in `test/classify.properties.test.ts` runs a quarter of that, as most runs decrypt).
 - `workers`: `test/*.workers.test.ts` inside workerd through `@cloudflare/vitest-plugin`. Vite pre-bundles the
   CommonJS tlock-js modules (workerd's CJS fallback cannot resolve their nested requires). `nodejs_compat` is
   only needed to _encrypt_ in a Worker: tlock-js draws its file key from `require("crypto")` when there is no
