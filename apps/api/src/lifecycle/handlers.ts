@@ -70,6 +70,23 @@ export const stakesIngestHandler: EventHandler = async (evt, env) => {
   }
 };
 
+/**
+ * A removal whose transaction's log is on the canonical chain again: re-mined in another block or at
+ * another index, a removal plus a re-add since W4-F1 I10 (removals are dispatched first, so the re-add
+ * is already mirrored). `key` narrows it to one round key's log of a batch.
+ */
+async function liveAgain(db: D1Database, evt: ChainEvent, key?: Hex): Promise<boolean> {
+  const row = await db
+    .prepare(
+      `SELECT 1 AS ok FROM chain_events
+       WHERE chain_id = ?1 AND tx_hash = ?2 AND event = ?3 AND removed = 0
+         AND (?4 IS NULL OR json_extract(args_json, '$.roundKey') = ?4) LIMIT 1`,
+    )
+    .bind(evt.chainId, evt.txHash, evt.event, key ?? null)
+    .first<{ ok: number }>();
+  return row !== null;
+}
+
 /** The app round whose Free round key is `key`, from the lock's `closesAt`; null if none. */
 async function freeRoundOfKey(db: D1Database, evt: ChainEvent, key: Hex): Promise<string | null> {
   let closesAtSec: string | null;
@@ -112,6 +129,8 @@ export const anchorConfirmationHandler: EventHandler = async (evt, env) => {
   const column = evt.event === 'Locked' ? 'lock_tx' : 'commit_tx';
   const db = env.DB;
   if (evt.removed) {
+    // Re-mined elsewhere: the same transaction wrote it, so lock_tx / commit_tx stand.
+    if (await liveAgain(db, evt, key)) return;
     log.warn('anchor_write_reorged', { roundId, chainEvent: evt.event, txHash: evt.txHash });
     await resubmitWrite(env, evt, roundId, key);
     return [
@@ -214,6 +233,11 @@ export const stakesVoidHandler: EventHandler = async (evt, env) => {
   if (!row) return;
   const roundId = row.round_id;
   if (evt.removed) {
+    // Re-mined in another block or at another index: the void stands.
+    if (await liveAgain(db, evt)) {
+      log.info('void_remined', { roundId, txHash: evt.txHash });
+      return;
+    }
     // A void cannot be undone onchain, so a reorged-out void is re-mined or the chain disagrees
     // with D1; either way someone has to look.
     raiseAlert(env, 'ALERT_DO_ERROR', { roundId, step: 'void_reorged', txHash: evt.txHash });

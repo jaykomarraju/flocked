@@ -9,6 +9,7 @@ import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { LockedRound } from '../../src/do/types.js';
 import { handlers } from '../../src/indexer/handlers.js';
 import { recordSentTx } from '../../src/indexer/sent.js';
+import type { ChainEvent } from '../../src/indexer/types.js';
 import {
   anchorConfirmationHandler,
   stakesIngestHandler,
@@ -166,6 +167,52 @@ describe('the guardian void: Stakes voided, Free continues', () => {
     expect(captured.alerts.map((a) => [a.code, a.step])).toEqual([
       ['ALERT_DO_ERROR', 'void_reorged'],
     ]);
+    expect((await modeRow(r.locked.roundId, 'stakes'))?.status).toBe('pending');
+  });
+
+  it('a void or an anchor write re-mined in another block is not a removal for its handler', async () => {
+    const fake = fakeChainAt(T0);
+    const r = await stakesRound(fake);
+    const key = roundKey(r.locked.roundId, 'free');
+    await env.DB.prepare(
+      "UPDATE round_modes SET lock_tx = ?2 WHERE round_id = ?1 AND mode = 'free'",
+    )
+      .bind(r.locked.roundId, `0x${'4c'.repeat(32)}`)
+      .run();
+    const captured = captureAlerts();
+    // The indexer has mirrored both again in their new block before it dispatches the removals.
+    const mirror = (evt: ChainEvent) =>
+      env.DB.prepare(
+        `INSERT INTO chain_events (chain_id, contract, block_number, block_hash, block_timestamp, tx_hash,
+           log_index, event, args_json, revision, created_at, updated_at)
+         VALUES (?1, ?2, 201, ?3, 1, ?4, ?5, ?6, ?7, 2, 0, 0)`,
+      )
+        .bind(
+          evt.chainId,
+          evt.contract,
+          `0x${'cd'.repeat(32)}`,
+          evt.txHash,
+          evt.logIndex,
+          evt.event,
+          JSON.stringify(evt.args),
+        )
+        .run();
+    const voided = chainEvent('escrow', 'RoundRefunded', { roundId: r.chainRoundId, reason: '4' });
+    const locked = chainEvent(
+      'anchor',
+      'Locked',
+      { roundKey: key, closesAt: String(r.locked.closesAt / 1000) },
+      { txHash: `0x${'4c'.repeat(32)}` },
+    );
+    await mirror(voided);
+    await mirror(locked);
+    await commitStatements(await stakesVoidHandler({ ...voided, removed: true }, env, ctx));
+    await commitStatements(await anchorConfirmationHandler({ ...locked, removed: true }, env, ctx));
+    captured.restore();
+    expect(captured.alerts).toEqual([]);
+    expect(await modeRow(r.locked.roundId, 'free')).toMatchObject({
+      lock_tx: `0x${'4c'.repeat(32)}`,
+    });
     expect((await modeRow(r.locked.roundId, 'stakes'))?.status).toBe('pending');
   });
 });
