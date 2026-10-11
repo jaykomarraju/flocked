@@ -73,7 +73,8 @@ export function canonicalJson(value: unknown): string {
 // ---- Locked config schema ----
 
 const UINT32_MAX = 2 ** 32 - 1;
-const UINT64_MAX = (1n << 64n) - 1n;
+/** 2^53 − 1: points are JavaScript numbers in the ledger and the UI, so a stake must be a safe integer. */
+const SAFE_INTEGER_MAX = BigInt(Number.MAX_SAFE_INTEGER);
 const BPS = 10_000;
 
 /** Bounds the schema enforces. Stakes bounds equal FlockedEscrow's `createRound` checks. */
@@ -81,8 +82,11 @@ export const LOCKED_CONFIG_BOUNDS = {
   /** MIN_BEACON_DELAY / MAX_BEACON_DELAY, seconds (FlockedEscrow, FlockedAnchor, @flocked/tlock). */
   beaconDelay: { min: 60, max: 600 },
   free: {
-    /** Points. The receipt and commitment leaf carry the stake as uint64. */
-    stake: { min: 1n, max: UINT64_MAX },
+    /**
+     * Points. The receipt and commitment leaf carry the stake as uint64, but points must stay safe
+     * integers (2^53 − 1), which is the tighter bound.
+     */
+    stake: { min: 1n, max: SAFE_INTEGER_MAX },
     presets: { min: 1, max: 8 },
     capMultiple: { min: 1, max: 255 },
     minEntrants: { min: 1, max: UINT32_MAX },

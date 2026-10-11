@@ -1,6 +1,7 @@
 // Every Durable Object binding resolves to its class in the Workers runtime and each pinned RPC
 // method answers "not implemented" (plan P2.4: src/do/types.ts).
 import { env } from 'cloudflare:test';
+import { roundKey } from '@flocked/shared';
 import { describe, expect, it } from 'vitest';
 import { ANCHOR_SINGLETON, INDEXER_SINGLETON, settlementName } from '../src/do/index.js';
 import type { AnchorCommitItem, StakesEntryEvent } from '../src/do/types.js';
@@ -83,34 +84,44 @@ describe('RoundViewerDO (binding ROUND_VIEWER)', () => {
 });
 
 describe('AnchorDO (binding ANCHOR)', () => {
+  // Implemented in W4-A; its behaviour is in test/anchor-do. Here: the pinned RPC shapes.
   it('pins submitLock, submitCommit, submitManifest, status', async () => {
     const s = env.ANCHOR.get(env.ANCHOR.idFromName(ANCHOR_SINGLETON));
-    await expectNotImplemented(
-      s.submitLock([
+    const key = roundKey(FIXTURE_IDS.round, 'free');
+    expect(
+      await s.submitLock([
         {
-          roundKey: HASH,
+          roundKey: key,
           roundId: FIXTURE_IDS.round,
           mode: 'free',
-          closesAtSec: 1,
+          closesAtSec: 4_000_000_000,
           beaconRound: 1,
           questionHash: HASH,
           configHash: HASH,
         },
       ]),
-      'AnchorDO.submitLock',
-    );
-    await expectNotImplemented(s.submitCommit(commit), 'AnchorDO.submitCommit');
-    await expectNotImplemented(
-      s.submitManifest({
+    ).toEqual({ queued: [key], alreadyAnchored: [] });
+    // Past its deadline (closesAt 1): refused at once, so neither queued nor anchored.
+    expect(await s.submitCommit({ ...commit, roundKey: key })).toEqual({
+      queued: [],
+      alreadyAnchored: [],
+    });
+    // A round key that isn't keccak256(abi.encode(roundId, mode)) is ignored.
+    expect(
+      await s.submitManifest({
         roundKey: HASH,
         roundId: FIXTURE_IDS.round,
         mode: 'free',
         manifestHash: HASH,
         beaconTimeSec: 2,
       }),
-      'AnchorDO.submitManifest',
-    );
-    await expectNotImplemented(s.status(HASH), 'AnchorDO.status');
+    ).toEqual({ queued: [], alreadyAnchored: [] });
+    expect(await s.status(key)).toEqual({
+      roundKey: key,
+      lock: { state: 'queued' },
+      commit: { state: 'failed', deadlineSec: -28, detail: 'deadline_passed' },
+      manifest: { state: 'none' },
+    });
   });
 });
 

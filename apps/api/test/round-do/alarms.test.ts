@@ -244,14 +244,14 @@ describe('DO-5: the alarm chain', () => {
     expect(commits).toEqual([]);
   });
 
-  it('records not_implemented while the AnchorDO is a stub (real binding)', async () => {
+  it('hands the root to the real AnchorDO binding, which queues it (W4-A)', async () => {
     restoreAnchor();
     const r = await createRound();
     setClock(r.locked.closesAt - 60_000);
     await r.stub.init(r.locked);
     await enterOne(r);
     await alarmAt(r.stub, r.locked.closesAt);
-    expect((await readMeta(r.stub))?.freeClose?.anchor).toBe('not_implemented');
+    expect((await readMeta(r.stub))?.freeClose?.anchor).toBe('queued');
   });
 
   it('init is idempotent for the same config and refuses a different one', async () => {
