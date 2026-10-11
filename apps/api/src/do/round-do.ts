@@ -24,7 +24,8 @@
 // Void: a requested void stops entries at once. The alarm then pushes `voidRound` (Stakes) until it
 // is mined, which FlockedEscrow allows only in a block stamped before closesAt; a confirmed void
 // refunds and voids every mode in D1 and ends the alarm chain. A void still unconfirmed at close is
-// abandoned once the chain is past closesAt, and the round closes normally.
+// abandoned only on proof (the head stamped at or after closesAt, read first, then a definite final
+// push; W4-F1 V1), its `voidRound` is cancelled, and the round closes normally.
 import { DurableObject } from 'cloudflare:workers';
 import {
   LockedConfigSchema,
@@ -36,15 +37,16 @@ import {
 } from '@flocked/shared';
 import { beaconTime, chainFromEnv, type DrandChain } from '@flocked/tlock';
 import type { Hex } from 'viem';
-import type { OperatorDeps } from '../chain/operator.js';
+import { cancelVoidRound, type OperatorDeps } from '../chain/operator.js';
 import { receiptSigner, receiptUserIdHash, type ReceiptSigner } from '../crypto/receipt.js';
 import type { Env } from '../env.js';
 import { operatorDeps } from '../lifecycle/sent.js';
 import {
   VOID_REFUND_REASON,
   applyVoid,
-  chainPastClose,
+  chainHeadPastClose,
   pushVoid,
+  voidAbandonable,
   type VoidStep,
 } from '../lifecycle/void.js';
 import { raiseAlert } from '../lib/alert.js';
@@ -100,6 +102,8 @@ const ALERT_THROTTLE_MS = 15 * 60_000;
 const COMMIT_RETRY_MS = 5_000;
 /** A pending void is pushed again after this long (about one Base block and a half). */
 const VOID_RETRY_MS = 3_000;
+/** A void whose `voidRound` is refused this many times in a row alerts once (V2). */
+export const VOID_REFUSED_ALERT_AFTER = 5;
 
 /** The retry delay after `attempt` consecutive failures of one event. */
 export function eventRetryDelay(attempt: number): number {
@@ -145,6 +149,10 @@ export interface VoidRecord {
   /** Epoch ms (game clock) of the next push while `requested`. */
   retryAt: number;
   detail: string | null;
+  /** Consecutive `refused` pushes (V2). Absent in records written before W4-F1. */
+  refusals?: number;
+  /** ALERT_DO_ERROR fired because the void can't confirm (V2), once. */
+  alerted?: boolean;
 }
 
 interface Meta {
@@ -779,13 +787,14 @@ export class RoundDO extends DurableObject<Env> implements RoundDORpc {
     }
   }
 
+  /** One push of `voidRound`. Never throws: a thrown error is a pending, indefinite step. */
   private async pushVoid(m: Meta, t: number): Promise<VoidStep> {
     const v = m.void as VoidRecord;
     let step: VoidStep;
     try {
       step = await pushVoid(this.env, this.operatorDeps ?? operatorDeps(this.env), m.locked);
     } catch (err) {
-      step = { status: 'pending', txHash: v.txHash, detail: String(err) };
+      step = { status: 'pending', txHash: v.txHash, detail: String(err), definite: false };
     }
     v.txHash = step.txHash ?? v.txHash;
     if (step.status === 'confirmed') {
@@ -795,7 +804,25 @@ export class RoundDO extends DurableObject<Env> implements RoundDORpc {
     } else {
       v.detail = step.detail;
       v.retryAt = t + VOID_RETRY_MS;
+      v.refusals = step.outcome === 'refused' ? (v.refusals ?? 0) + 1 : 0;
       log.info('void_pending', { roundId: m.locked.roundId, detail: step.detail });
+      // V2: retrying can't confirm a reverted voidRound (final for its purpose), nor, most likely,
+      // one refused again and again, and Free entries stay stopped until close: someone must know.
+      // At close the void is resolved instead.
+      const stuck =
+        step.outcome === 'reverted' ||
+        step.outcome === 'cancelled' ||
+        (v.refusals ?? 0) >= VOID_REFUSED_ALERT_AFTER;
+      if (stuck && !v.alerted && t < m.locked.closesAt) {
+        v.alerted = true;
+        raiseAlert(this.env, 'ALERT_DO_ERROR', {
+          roundId: m.locked.roundId,
+          step: 'void_cannot_confirm',
+          outcome: step.outcome ?? null,
+          detail: step.detail,
+          txHash: v.txHash,
+        });
+      }
     }
     await this.save();
     return step;
@@ -803,20 +830,37 @@ export class RoundDO extends DurableObject<Env> implements RoundDORpc {
 
   /**
    * At close, a void that is still `requested` is decided: confirmed if `voidRound` is mined, else
-   * abandoned once the chain is past closesAt (src/lifecycle/void.ts chainPastClose). Until then
-   * close waits.
+   * abandoned only on proof (src/lifecycle/void.ts voidAbandonable): the head is read first, then a
+   * final push must answer definitely. Without proof close waits and retries. An abandoned void's
+   * `voidRound` is cancelled (T4; the scheduler tick finishes the cancellation).
    */
   private async resolveVoidAtClose(m: Meta, t: number): Promise<void> {
     const v = m.void as VoidRecord;
+    const deps = this.operatorDeps ?? operatorDeps(this.env);
+    let headPast = false;
+    if (m.locked.modes.includes('stakes')) {
+      try {
+        headPast = await chainHeadPastClose(this.env, deps, m.locked);
+      } catch (err) {
+        log.warn('void_head_unreadable', { roundId: m.locked.roundId, error: String(err) });
+      }
+    }
     const step = await this.pushVoid(m, t);
     if (step.status === 'confirmed') return;
-    const deps = this.operatorDeps ?? operatorDeps(this.env);
-    if (!(await chainPastClose(this.env, deps, m.locked, t))) {
-      throw new RetryLater(VOID_RETRY_MS, 'the void is unresolved until the chain passes closesAt');
+    if (!voidAbandonable(this.env, m.locked, t, headPast, step)) {
+      throw new RetryLater(
+        VOID_RETRY_MS,
+        'the void is unresolved until the chain proves it missed',
+      );
     }
     v.state = 'abandoned';
     await this.save();
     log.warn('void_abandoned', { roundId: m.locked.roundId, detail: v.detail });
+    try {
+      await cancelVoidRound(this.env, deps, m.locked.roundId);
+    } catch (err) {
+      log.warn('void_cancel_failed', { roundId: m.locked.roundId, error: String(err) });
+    }
   }
 
   /** A confirmed void: drain entries, refund and void every mode in D1, end the alarm chain. */

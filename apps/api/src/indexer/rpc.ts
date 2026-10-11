@@ -79,6 +79,8 @@ export function viemIndexerRpc(
         throw err;
       }
     },
+    code: async (address, blockNumber) =>
+      lower((await client.getCode({ address, blockNumber: BigInt(blockNumber) })) ?? '0x'),
   };
 }
 

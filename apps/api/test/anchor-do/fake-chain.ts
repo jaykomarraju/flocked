@@ -136,6 +136,12 @@ export class FakeChain {
   readonly mined: Hex[] = [];
   /** RPC method → failures to inject before it works again. */
   readonly failNext = new Map<string, number>();
+  /** RPC method → calls made (W4-F1: receipt polling is bounded). */
+  readonly calls = new Map<string, number>();
+  /** Mined transactions whose receipts the provider doesn't serve yet (a lagging receipt index). */
+  readonly hiddenReceipts = new Set<Hex>();
+  /** Transactions that revert when mined, whatever they do. */
+  readonly revertHashes = new Set<Hex>();
   roundCount = 0n;
   /** FlockedEscrow rounds by ID: their close time (Unix seconds) and whether they are still Open. */
   readonly escrowRounds = new Map<bigint, { closesAt: bigint; open: boolean }>();
@@ -176,6 +182,21 @@ export class FakeChain {
     this.nonces.set(from, n + 1);
   }
 
+  /**
+   * Mines an earlier version that a replacement had evicted, as if another node held it and it won
+   * the race (W4-F1 N1).
+   */
+  mineVersion(hash: Hex): Hex[] {
+    const tx = this.sent.find((t) => t.hash === hash);
+    if (!tx) throw new Error(`fake: never sent ${hash}`);
+    const slot = `${tx.from}:${tx.nonce}`;
+    const current = this.pool.get(slot);
+    if (current) this.known.delete(current.hash);
+    this.pool.set(slot, tx);
+    this.known.set(tx.hash, tx);
+    return this.mine();
+  }
+
   /** Mines every pooled transaction that is next in its sender's nonce order, in one block. */
   mine(): Hex[] {
     this.block += 1n;
@@ -199,9 +220,9 @@ export class FakeChain {
 
   private execute(tx: PoolTx, index: number): void {
     let logs: RpcLog[] = [];
-    let ok = true;
+    let ok = !this.revertHashes.has(tx.hash);
     try {
-      logs = this.apply(tx.to, tx.data, true);
+      if (ok) logs = this.apply(tx.to, tx.data, true);
     } catch {
       ok = false;
     }
@@ -235,6 +256,8 @@ export class FakeChain {
   /** Runs a call against the contracts; `write` applies it. Throws `Revert`. */
   private apply(to: Address, data: Hex, write: boolean): RpcLog[] {
     const now = BigInt(this.time);
+    // A plain transfer to an account with no code (the operator's cancellation sends to itself).
+    if (data === '0x' && !this.code.has(to.toLowerCase())) return [];
     if (to.toLowerCase() === FAKE_ANCHOR) {
       const call = decodeFunctionData({ abi: flockedAnchorAbi, data });
       const logs: RpcLog[] = [];
@@ -416,7 +439,7 @@ export class FakeChain {
       from,
       nonce,
       to: (parsed.to as Address).toLowerCase() as Address,
-      data: parsed.data as Hex,
+      data: parsed.data ?? '0x',
       gas: parsed.gas as bigint,
       maxFeePerGas: parsed.maxFeePerGas as bigint,
       maxPriorityFeePerGas: parsed.maxPriorityFeePerGas as bigint,
@@ -441,6 +464,7 @@ export class FakeChain {
   }
 
   private async request(method: string, params: unknown[]): Promise<unknown> {
+    this.calls.set(method, (this.calls.get(method) ?? 0) + 1);
     const failures = this.failNext.get(method) ?? 0;
     if (failures > 0) {
       this.failNext.set(method, failures - 1);
@@ -480,6 +504,7 @@ export class FakeChain {
         return tx ? this.txObject(tx) : null;
       }
       case 'eth_getTransactionReceipt':
+        if (this.hiddenReceipts.has(params[0] as Hex)) return null;
         return this.receipts.get(params[0] as Hex) ?? null;
       case 'eth_estimateGas': {
         const { to, data } = params[0] as { to: Address; data: Hex };

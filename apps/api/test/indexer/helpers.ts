@@ -1,6 +1,6 @@
 // Indexer test helpers: a scripted chain behind the IndexerRpc interface (blocks, logs, reorgs, a
-// provider log-range limit, outages), real ABI encoding for FlockedEscrow and FlockedAnchor events, and
-// alert capture from the structured log.
+// provider log-range limit, outages, contract code, an inconsistent node), real ABI encoding for
+// FlockedEscrow and FlockedAnchor events, and alert capture from the structured log.
 import { env } from 'cloudflare:test';
 import { flockedAnchorAbi, flockedEscrowAbi } from '@flocked/abi';
 import {
@@ -46,6 +46,14 @@ export class FakeChain implements IndexerRpc {
   down: Error | null = null;
   /** Whether logs carry blockTimestamp (some providers add it). */
   logTimestamps = false;
+  /** Block each address got its code at (eth_getCode is '0x' before it, and for unknown addresses). */
+  readonly deployedAt = new Map<string, number>();
+  /** When set, eth_getCode rejects with it (a provider without historical state). */
+  codeDown: Error | null = null;
+  /** Rewrites (or throws on) each eth_getLogs answer: an inconsistent node, a mid-poll outage. */
+  onLogs: ((logs: RpcLog[], from: number, to: number, address: Hex) => RpcLog[]) | null = null;
+  /** Calls per method. */
+  readonly calls = { head: 0, block: 0, logs: 0, transaction: 0, code: 0 };
   private branch = 0;
   private txCounter = 0;
 
@@ -111,19 +119,26 @@ export class FakeChain implements IndexerRpc {
     if (this.down) throw this.down;
   }
 
+  get totalCalls(): number {
+    return Object.values(this.calls).reduce((a, b) => a + b, 0);
+  }
+
   head(): Promise<RpcBlock> {
+    this.calls.head++;
     this.check();
     const b = this.blocks[this.blocks.length - 1]!;
     return Promise.resolve({ number: b.number, hash: b.hash, timestamp: b.timestamp });
   }
 
   block(n: number): Promise<RpcBlock | null> {
+    this.calls.block++;
     this.check();
     const b = this.blocks[n];
     return Promise.resolve(b ? { number: b.number, hash: b.hash, timestamp: b.timestamp } : null);
   }
 
   logs(address: Hex, from: number, to: number): Promise<RpcLog[]> {
+    this.calls.logs++;
     this.check();
     this.logCalls.push([from, to]);
     if (this.maxLogRange !== null && to - from + 1 > this.maxLogRange) {
@@ -133,17 +148,29 @@ export class FakeChain implements IndexerRpc {
         }),
       );
     }
-    return Promise.resolve(
-      this.blocks
+    try {
+      const logs = this.blocks
         .slice(from, to + 1)
         .flatMap((b) => b.logs)
-        .filter((l) => l.address === address.toLowerCase()),
-    );
+        .filter((l) => l.address === address.toLowerCase());
+      return Promise.resolve(this.onLogs ? this.onLogs(logs, from, to, address) : logs);
+    } catch (err) {
+      return Promise.reject(err instanceof Error ? err : new Error(String(err)));
+    }
   }
 
   transaction(hash: Hex): Promise<RpcTransaction | null> {
+    this.calls.transaction++;
     this.check();
     return Promise.resolve(this.txs.get(hash) ?? null);
+  }
+
+  code(address: Hex, blockNumber: number): Promise<Hex> {
+    this.calls.code++;
+    this.check();
+    if (this.codeDown) return Promise.reject(this.codeDown);
+    const at = this.deployedAt.get(address.toLowerCase());
+    return Promise.resolve(at !== undefined && at <= blockNumber ? '0x6080' : '0x');
   }
 }
 
@@ -248,3 +275,34 @@ export async function storedEvents(chainId: number, contract: Hex) {
 }
 
 export type { IndexerTarget };
+
+/** chain_event_removals rows for one contract, in chain order. */
+export async function storedRemovals(chainId: number, contract: Hex) {
+  const { results } = await env.DB.prepare(
+    `SELECT block_number, block_hash, tx_hash, log_index, event, args_json, revision, dispatched
+     FROM chain_event_removals WHERE chain_id = ?1 AND contract = ?2
+     ORDER BY block_number, log_index, revision`,
+  )
+    .bind(chainId, contract.toLowerCase())
+    .all<{
+      block_number: number;
+      block_hash: string;
+      tx_hash: string;
+      log_index: number;
+      event: string;
+      args_json: string;
+      revision: number;
+      dispatched: number;
+    }>();
+  return results;
+}
+
+/** indexer_checkpoints rows for one contract, newest first. */
+export async function storedCheckpoints(chainId: number, contract: Hex) {
+  const { results } = await env.DB.prepare(
+    'SELECT block_number, block_hash FROM indexer_checkpoints WHERE chain_id = ?1 AND contract = ?2 ORDER BY block_number DESC',
+  )
+    .bind(chainId, contract.toLowerCase())
+    .all<{ block_number: number; block_hash: string }>();
+  return results;
+}

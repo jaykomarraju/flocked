@@ -13,6 +13,12 @@ import {
 } from 'viem';
 import type { Env } from '../env.js';
 
+/**
+ * The AnchorDO singleton's name: `env.ANCHOR.idFromName(ANCHOR_SINGLETON)`. Here, not in
+ * src/do/anchor-do.ts, so modules that also run in Node (the indexer's handlers) can name it.
+ */
+export const ANCHOR_SINGLETON = 'anchor';
+
 export type ChainEnv = Pick<
   Env,
   'CHAIN_ID' | 'BASE_RPC_URL' | 'BASE_RPC_URL_FALLBACK' | 'LOCAL_DEPLOYMENT'

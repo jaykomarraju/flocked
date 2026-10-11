@@ -16,6 +16,12 @@
 // Per-key deadlines (Unix seconds): lock closesAt − 30 s (the contract refuses at or after closesAt),
 // commit min(closesAt + 90 s, beaconTime − 30 s), manifest none (due at beacon time). Every transaction
 // version gets an `anchors` row in D1, and confirmations set `round_modes.lock_tx` / `commit_tx` (Free).
+//
+// W4-F1 (wave-4 review): the pending transaction keeps each version's kind and keys, so a receipt is
+// applied to the version it belongs to (N1); a manifest that reverts in a block stamped before beacon
+// time is retried. A key resubmitted after it was confirmed is checked onchain again and resent if its
+// write is gone (a reorg; N2). Every confirmation records its transaction and its `round_modes` value
+// (N3). A lock already sent stays in its replacement until closesAt, past its 30 s margin (N4).
 import { flockedAnchorAbi } from '@flocked/abi';
 import { newUlid, roundKey as roundKeyOf } from '@flocked/shared';
 import { DurableObject } from 'cloudflare:workers';
@@ -29,8 +35,8 @@ import {
   type Transport,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { chainIdOf, deploymentOf, publicClient } from '../chain/client.js';
-import { TxSender, type OnTxSent, type SentTx } from '../chain/tx.js';
+import { ANCHOR_SINGLETON, chainIdOf, deploymentOf, publicClient } from '../chain/client.js';
+import { TxSender, maxFeePerGasOf, type Fees, type OnTxSent, type SentTx } from '../chain/tx.js';
 import { sentTxRecorder } from '../lifecycle/sent.js';
 import type { Env } from '../env.js';
 import { raiseAlert } from '../lib/alert.js';
@@ -47,8 +53,8 @@ import type {
   AnchorSubmitAck,
 } from './types.js';
 
-/** The singleton's name: `env.ANCHOR.idFromName(ANCHOR_SINGLETON)`. */
-export const ANCHOR_SINGLETON = 'anchor';
+/** The singleton's name: `env.ANCHOR.idFromName(ANCHOR_SINGLETON)` (src/chain/client.ts). */
+export { ANCHOR_SINGLETON };
 
 export type AnchorKind = 'lock' | 'commit' | 'manifest';
 
@@ -68,6 +74,8 @@ export const COMMIT_BEFORE_BEACON_SEC = 30;
 /** Poll interval while a transaction is pending. */
 export const POLL_MS = 2_000;
 const ERROR_RETRY_MS = 10_000;
+/** A manifest that reverted before beacon time (the chain's clock behind ours) waits this long. */
+const MANIFEST_RETRY_SEC = 6;
 
 /** FlockedAnchor `Skipped` reasons. */
 export const SKIP_REASONS: Record<number, string> = {
@@ -105,10 +113,37 @@ interface ItemRow extends Record<string, SqlStorageValue> {
   alerted: number;
 }
 
+/** One signed version of the pending transaction: what it writes. */
+interface Version {
+  hash: Hex;
+  kind: AnchorKind;
+  keys: Hex[];
+}
+
 interface Pending {
+  /** The latest version's kind and keys. */
   kind: AnchorKind;
   keys: Hex[];
   tx: SentTx;
+  /** Every version by hash (N1); absent in rows written before W4-F1. */
+  versions?: Version[];
+}
+
+/** Every version of `p` (a pre-W4-F1 row: each hash with the latest kind and keys). */
+function versionsOf(p: Pending): Version[] {
+  return p.versions ?? p.tx.hashes.map((hash) => ({ hash, kind: p.kind, keys: p.keys }));
+}
+
+/** `p` with `tx`'s latest version, writing `keys` of `kind`, added. */
+function withVersion(p: Pending | null, kind: AnchorKind, keys: Hex[], tx: SentTx): Pending {
+  const hash = tx.hashes[tx.hashes.length - 1] as Hex;
+  const earlier = p ? versionsOf(p).filter((v) => v.hash !== hash) : [];
+  return { kind, keys, tx, versions: [...earlier, { hash, kind, keys }] };
+}
+
+/** `kind:key` for every key any version of `p` carries. */
+function inFlight(p: Pending | null): Set<string> {
+  return new Set(p ? versionsOf(p).flatMap((v) => v.keys.map((k) => `${v.kind}:${k}`)) : []);
 }
 
 /** FlockedAnchor's `RoundAnchor` (getAnchor). */
@@ -266,6 +301,7 @@ export class AnchorDO extends DurableObject<Env> implements AnchorDORpc {
   private async submit(entries: QueueEntry[]): Promise<AnchorSubmitAck> {
     const ack: AnchorSubmitAck = { queued: [], alreadyAnchored: [] };
     const t = now(this.env);
+    const recheck: ItemRow[] = [];
     for (const e of entries) {
       const key = lower(e.item.roundKey);
       if (key !== lower(roundKeyOf(e.item.roundId, e.item.mode))) {
@@ -274,7 +310,7 @@ export class AnchorDO extends DurableObject<Env> implements AnchorDORpc {
       }
       const existing = this.row(key, e.kind);
       if (existing) {
-        if (existing.state === 'confirmed') ack.alreadyAnchored.push(key);
+        if (existing.state === 'confirmed') recheck.push(existing);
         else if (existing.state === 'queued' || existing.state === 'sent') ack.queued.push(key);
         continue; // skipped and failed are final
       }
@@ -295,8 +331,44 @@ export class AnchorDO extends DurableObject<Env> implements AnchorDORpc {
       if (late) this.fail(key, e.kind, 'deadline_passed');
       else ack.queued.push(key);
     }
+    if (recheck.length > 0) await this.recheckConfirmed(recheck, ack);
     if (ack.queued.length > 0) await this.wake(0);
     return ack;
+  }
+
+  /**
+   * N2: callers resubmit a confirmed key only when its D1 record is missing, which is what the
+   * indexer leaves when the write was reorged out. Each key is read onchain again: still written, it
+   * stays confirmed (and its record is written again, N3); gone, it goes back to the queue, where the
+   * alarm checks it once more and resends it. A failed read queues it for the alarm to decide.
+   */
+  private async recheckConfirmed(rows: ItemRow[], ack: AnchorSubmitAck): Promise<void> {
+    let states: (OnchainAnchor | null)[];
+    try {
+      const c = this.reader();
+      states = await Promise.all(rows.map((r) => this.readAnchor(c, r.round_key as Hex)));
+    } catch (err) {
+      log.warn('anchor_recheck_read_failed', { error: message(err) });
+      states = rows.map(() => null);
+    }
+    const confirmed: ItemRow[] = [];
+    rows.forEach((r, i) => {
+      const a = states[i];
+      const key = r.round_key as Hex;
+      if (a && writtenAt(r.kind, a) !== 0n) {
+        ack.alreadyAnchored.push(key);
+        confirmed.push(r);
+        return;
+      }
+      log.warn('anchor_write_missing', { roundId: r.round_id, kind: r.kind, read: a !== null });
+      this.sql.exec(
+        "UPDATE items SET state = 'queued', detail = 'recheck', confirmed_at = NULL, alerted = 0 WHERE round_key = ? AND kind = ? AND state = 'confirmed'",
+        key,
+        r.kind,
+      );
+      ack.queued.push(key);
+    });
+    await this.writeConfirmations(confirmed);
   }
 
   private row(key: Hex, kind: AnchorKind): ItemRow | null {
@@ -324,9 +396,10 @@ export class AnchorDO extends DurableObject<Env> implements AnchorDORpc {
     else raiseAlert(this.env, 'ALERT_DO_ERROR', { do: 'AnchorDO', ...data });
   }
 
-  private backToQueue(key: Hex, kind: AnchorKind) {
+  private backToQueue(key: Hex, kind: AnchorKind, dueSec?: number) {
     this.sql.exec(
-      "UPDATE items SET state = 'queued', tx_hash = NULL WHERE round_key = ? AND kind = ? AND state = 'sent'",
+      "UPDATE items SET state = 'queued', tx_hash = NULL, due_sec = MAX(due_sec, ?) WHERE round_key = ? AND kind = ? AND state = 'sent'",
+      dueSec ?? 0,
       key,
       kind,
     );
@@ -360,8 +433,26 @@ export class AnchorDO extends DurableObject<Env> implements AnchorDORpc {
       now: () => now(this.env),
       ...(this.onTxSent ? { onTxSent: this.onTxSent } : {}),
       ...(this.stuckAfterMs !== undefined ? { stuckAfterMs: this.stuckAfterMs } : {}),
+      maxFeePerGas: maxFeePerGasOf(this.env),
     });
     return { client, sender, anchor: deploymentOf(this.env).anchor };
+  }
+
+  /** Read-only chain access (no key needed). */
+  private reader(): Pick<Chain, 'client' | 'anchor'> {
+    return {
+      client: publicClient(this.env, this.transportOverride),
+      anchor: deploymentOf(this.env).anchor,
+    };
+  }
+
+  private async readAnchor(c: Pick<Chain, 'client' | 'anchor'>, key: Hex): Promise<OnchainAnchor> {
+    return c.client.readContract({
+      address: c.anchor,
+      abi: flockedAnchorAbi,
+      functionName: 'getAnchor',
+      args: [key],
+    });
   }
 
   private async process(): Promise<void> {
@@ -371,26 +462,31 @@ export class AnchorDO extends DurableObject<Env> implements AnchorDORpc {
     const c = this.chain();
     const pending = this.pending();
     if (pending) {
-      const check = await c.sender.check(pending.tx);
-      if (check.status === 'pending') return this.wake(POLL_MS);
+      const check = await c.sender.check(pending.tx, `anchor.${pending.kind}`);
+      if (check.status === 'pending') {
+        if (check.tx) this.setPending({ ...pending, tx: check.tx });
+        return this.wake(POLL_MS);
+      }
       if (check.status === 'mined') {
         await this.applyReceipt(c, pending, check.hash, check.receipt);
         this.setPending(null);
       } else if (check.status === 'nonce_consumed') {
-        log.warn('anchor_nonce_consumed', { nonce: pending.tx.nonce, kind: pending.kind });
-        for (const key of pending.keys) this.backToQueue(key, pending.kind);
+        log.warn('anchor_nonce_consumed', { txNonce: pending.tx.nonce, kind: pending.kind });
+        for (const v of versionsOf(pending))
+          for (const key of v.keys) this.backToQueue(key, v.kind);
         this.setPending(null);
       } else {
         // Stuck: rebuild the batch from the onchain state and replace it at the same nonce.
-        for (const key of pending.keys) this.backToQueue(key, pending.kind);
-        if (!(await this.buildAndSend(c, pending))) {
+        for (const v of versionsOf(pending))
+          for (const key of v.keys) this.backToQueue(key, v.kind);
+        if (!(await this.buildAndSend(c, pending, check.bumpFrom))) {
           // Nothing left to write: the same calldata with higher fees, so the nonce is not blocked.
           const tx = await c.sender.sign(
             { to: pending.tx.to, data: pending.tx.data, gas: BigInt(pending.tx.gas) },
-            { replace: pending.tx },
+            { replace: pending.tx, bumpFrom: check.bumpFrom },
           );
           await this.record(pending.kind, pending.keys, tx);
-          this.setPending({ ...pending, tx });
+          this.setPending(withVersion(pending, pending.kind, pending.keys, tx));
           await this.broadcast(c, pending.kind, tx);
         }
         return this.wake(POLL_MS);
@@ -406,7 +502,11 @@ export class AnchorDO extends DurableObject<Env> implements AnchorDORpc {
     }
   }
 
-  /** Queued items past their deadline fail; sent ones alert once (a late confirmation still counts). */
+  /**
+   * Queued items past their deadline fail; sent ones alert once (a late confirmation still counts),
+   * and so do queued ones that a pending version still carries (N4) or that are being checked again
+   * (N2): the alarm's onchain check decides those.
+   */
   private expire(tSec: number) {
     const due = this.sql
       .exec<ItemRow>(
@@ -414,9 +514,10 @@ export class AnchorDO extends DurableObject<Env> implements AnchorDORpc {
         tSec,
       )
       .toArray();
+    const carried = inFlight(this.pending());
     for (const r of due) {
       const key = r.round_key as Hex;
-      if (r.state === 'queued') {
+      if (r.state === 'queued' && r.detail !== 'recheck' && !carried.has(`${r.kind}:${key}`)) {
         this.fail(key, r.kind, 'deadline_passed');
         continue;
       }
@@ -461,34 +562,39 @@ export class AnchorDO extends DurableObject<Env> implements AnchorDORpc {
    * Builds the next batch from the onchain state and sends it (as a replacement for `replacing` when
    * given). Returns false when there is nothing to send.
    */
-  private async buildAndSend(c: Chain, replacing: Pending | null): Promise<boolean> {
+  private async buildAndSend(
+    c: Chain,
+    replacing: Pending | null,
+    bumpFrom: Fees | null = null,
+  ): Promise<boolean> {
+    const carried = inFlight(replacing);
     for (let attempt = 0; attempt < 5; attempt++) {
       const tSec = Math.floor(now(this.env) / 1000);
       const batch = this.pickBatch(tSec, replacing?.kind ?? null);
       if (!batch) return false;
-      const rows = await this.checkOnchain(c, batch.kind, batch.rows);
+      const rows = await this.checkOnchain(c, batch.kind, batch.rows, carried);
       if (rows.length === 0) continue;
       const gas = ((TX_BASE_GAS + ANCHOR_GAS[batch.kind] * BigInt(rows.length)) * 125n) / 100n;
       const tx = await c.sender.sign(
         { to: c.anchor, data: this.calldata(batch.kind, rows), gas },
-        replacing ? { replace: replacing.tx } : { nonce: await c.sender.nextNonce() },
+        replacing ? { replace: replacing.tx, bumpFrom } : { nonce: await c.sender.nextNonce() },
       );
       const keys = rows.map((r) => r.round_key as Hex);
       await this.record(batch.kind, keys, tx);
       for (const key of keys) {
         this.sql.exec(
-          "UPDATE items SET state = 'sent', tx_hash = ? WHERE round_key = ? AND kind = ?",
+          "UPDATE items SET state = 'sent', tx_hash = ?, detail = NULL WHERE round_key = ? AND kind = ?",
           lastHash(tx),
           key,
           batch.kind,
         );
       }
-      this.setPending({ kind: batch.kind, keys, tx });
+      this.setPending(withVersion(replacing, batch.kind, keys, tx));
       await this.broadcast(c, batch.kind, tx);
       log.info('anchor_tx_sent', {
         kind: batch.kind,
         keys: keys.length,
-        nonce: tx.nonce,
+        txNonce: tx.nonce,
         replacement: replacing !== null,
       });
       return true;
@@ -511,7 +617,7 @@ export class AnchorDO extends DurableObject<Env> implements AnchorDORpc {
       await c.sender.broadcast(tx, `anchor.${kind}`);
     } catch (err) {
       // The next poll rebroadcasts, replaces or re-signs it.
-      log.warn('anchor_broadcast_failed', { kind, nonce: tx.nonce, error: message(err) });
+      log.warn('anchor_broadcast_failed', { kind, txNonce: tx.nonce, error: message(err) });
     }
   }
 
@@ -555,36 +661,41 @@ export class AnchorDO extends DurableObject<Env> implements AnchorDORpc {
   /**
    * Reads each key's onchain state and the chain's time. Keys already written are settled, keys that
    * can no longer be written fail, keys not writable yet stay queued; the rest are returned.
+   * `carried` holds the keys a version being replaced carries (`kind:key`).
    */
-  private async checkOnchain(c: Chain, kind: AnchorKind, rows: ItemRow[]): Promise<ItemRow[]> {
+  private async checkOnchain(
+    c: Chain,
+    kind: AnchorKind,
+    rows: ItemRow[],
+    carried: Set<string>,
+  ): Promise<ItemRow[]> {
     const [block, states] = await Promise.all([
       c.client.getBlock({ blockTag: 'latest' }),
-      Promise.all(
-        rows.map((r) =>
-          c.client.readContract({
-            address: c.anchor,
-            abi: flockedAnchorAbi,
-            functionName: 'getAnchor',
-            args: [r.round_key as Hex],
-          }),
-        ),
-      ),
+      Promise.all(rows.map((r) => this.readAnchor(c, r.round_key as Hex))),
     ]);
     // The next block's time: the head's, or the game clock when the head is older (anvil mines no
     // empty blocks, so its head can be minutes behind). A commit sent too early is retried.
     const chainSec = Math.max(Number(block.timestamp), Math.floor(now(this.env) / 1000));
     const out: ItemRow[] = [];
+    const settled: ItemRow[] = [];
     rows.forEach((r, i) => {
       const a = states[i] as OnchainAnchor;
       const key = r.round_key as Hex;
+      const settle = (writtenAtSec: bigint, matches: boolean) => {
+        if (this.settleExisting(r, writtenAtSec, matches)) settled.push(r);
+      };
       if (kind === 'lock') {
         const l = JSON.parse(r.item_json) as AnchorLockItem;
-        if (a.lockedAt !== 0n) return this.settleExisting(r, a.lockedAt, lockMatches(l, a));
-        if (chainSec >= l.closesAtSec - LOCK_MARGIN_SEC)
+        if (a.lockedAt !== 0n) return settle(a.lockedAt, lockMatches(l, a));
+        // A new lock isn't started inside the last LOCK_MARGIN_SEC, but one already sent stays in
+        // its replacement until closesAt, from which the contract refuses it (N4).
+        if (chainSec >= l.closesAtSec) return this.fail(key, kind, 'outside_window');
+        if (chainSec >= l.closesAtSec - LOCK_MARGIN_SEC && !carried.has(`${kind}:${key}`)) {
           return this.fail(key, kind, 'outside_window');
+        }
       } else if (kind === 'commit') {
         const m = JSON.parse(r.item_json) as AnchorCommitItem;
-        if (a.committedAt !== 0n) return this.settleExisting(r, a.committedAt, commitMatches(m, a));
+        if (a.committedAt !== 0n) return settle(a.committedAt, commitMatches(m, a));
         if (a.lockedAt === 0n) return this.fail(key, kind, 'not_locked');
         // Past its deadline only a version already sent is still tracked (expire() fails the rest);
         // at beacon time the contract refuses it.
@@ -593,27 +704,27 @@ export class AnchorDO extends DurableObject<Env> implements AnchorDORpc {
       } else {
         const m = JSON.parse(r.item_json) as AnchorManifestItem;
         if (a.manifestAnchoredAt !== 0n) {
-          return this.settleExisting(
-            r,
-            a.manifestAnchoredAt,
-            lower(a.manifestHash) === lower(m.manifestHash),
-          );
+          return settle(a.manifestAnchoredAt, lower(a.manifestHash) === lower(m.manifestHash));
         }
         if (a.lockedAt === 0n) return this.fail(key, kind, 'not_locked');
         if (chainSec < m.beaconTimeSec) return;
       }
       out.push(r);
     });
+    await this.writeConfirmations(await this.withTxHashes(c, settled));
     return out;
   }
 
-  /** A key already written onchain: confirmed if it holds our values, otherwise a mismatch. */
-  private settleExisting(r: ItemRow, writtenAtSec: bigint, matches: boolean) {
+  /**
+   * A key already written onchain: confirmed if it holds our values (true), otherwise a mismatch.
+   * The transaction is the item's own when it has one (N3); withTxHashes looks up the rest.
+   */
+  private settleExisting(r: ItemRow, writtenAtSec: bigint, matches: boolean): boolean {
     const key = r.round_key as Hex;
     if (!matches) {
       log.error('anchor_onchain_mismatch', { roundId: r.round_id, kind: r.kind });
       this.fail(key, r.kind, 'mismatch', 'skipped');
-      return;
+      return false;
     }
     this.sql.exec(
       "UPDATE items SET state = 'confirmed', detail = 'already_written', confirmed_at = COALESCE(confirmed_at, ?) WHERE round_key = ? AND kind = ?",
@@ -621,22 +732,79 @@ export class AnchorDO extends DurableObject<Env> implements AnchorDORpc {
       key,
       r.kind,
     );
+    return true;
   }
 
-  /** Applies a mined batch: each key's `Locked` / `Committed` / `ManifestAnchored`, or `Skipped`. */
+  /**
+   * N3: the transaction that wrote each settled key, when the item doesn't know it: the indexer's
+   * mirror of its `Locked` / `Committed` / `ManifestAnchored` event. Unknown ones stay without (the
+   * indexer's handler records them in `round_modes` when it mirrors the event).
+   */
+  private async withTxHashes(c: Pick<Chain, 'anchor'>, rows: ItemRow[]): Promise<ItemRow[]> {
+    const out: ItemRow[] = [];
+    for (const r of rows) {
+      let hash = r.tx_hash;
+      if (!hash) {
+        const ev = { lock: 'Locked', commit: 'Committed', manifest: 'ManifestAnchored' }[r.kind];
+        const found = await this.env.DB.prepare(
+          `SELECT tx_hash FROM chain_events WHERE chain_id = ?1 AND contract = ?2 AND event = ?3
+             AND removed = 0 AND json_extract(args_json, '$.roundKey') = ?4
+           ORDER BY block_number DESC LIMIT 1`,
+        )
+          .bind(chainIdOf(this.env), lower(c.anchor), ev, r.round_key)
+          .first<{ tx_hash: string }>();
+        hash = found?.tx_hash ?? null;
+        if (hash) {
+          this.sql.exec(
+            'UPDATE items SET tx_hash = ? WHERE round_key = ? AND kind = ?',
+            hash,
+            r.round_key,
+            r.kind,
+          );
+        }
+      }
+      if (hash) out.push({ ...r, tx_hash: hash });
+    }
+    return out;
+  }
+
+  /**
+   * Applies a mined batch to the version it is for (N1): each key's `Locked` / `Committed` /
+   * `ManifestAnchored`, or `Skipped`. Keys only the other versions carried go back to the queue.
+   */
   private async applyReceipt(c: Chain, p: Pending, hash: Hex, receipt: TransactionReceipt) {
     const block = await c.client.getBlock({ blockNumber: receipt.blockNumber });
     const blockSec = Number(block.timestamp);
     await this.env.DB.prepare('UPDATE anchors SET block_timestamp = ?1 WHERE tx_hash = ?2')
       .bind(blockSec, hash)
       .run();
+    const versions = versionsOf(p);
+    const mined = versions.find((v) => v.hash === hash) ?? { hash, kind: p.kind, keys: p.keys };
+    const kind = mined.kind;
+    const requeueOthers = () => {
+      for (const v of versions) {
+        if (v.hash !== hash) for (const key of v.keys) this.backToQueue(key, v.kind);
+      }
+    };
     if (receipt.status !== 'success') {
-      log.error('anchor_tx_reverted', { kind: p.kind, txHash: hash });
-      for (const key of p.keys) this.fail(key, p.kind, 'reverted');
+      log.error('anchor_tx_reverted', { kind, txHash: hash });
+      for (const key of mined.keys) {
+        const r = this.row(key, kind);
+        // anchorManifest reverts (BeaconNotReached) in a block stamped before beacon time: the
+        // chain's clock was behind ours, so it is retried a little later.
+        const early =
+          kind === 'manifest' &&
+          r !== null &&
+          blockSec < (JSON.parse(r.item_json) as AnchorManifestItem).beaconTimeSec;
+        if (early)
+          this.backToQueue(key, kind, Math.floor(now(this.env) / 1000) + MANIFEST_RETRY_SEC);
+        else this.fail(key, kind, 'reverted');
+      }
+      requeueOthers();
       return;
     }
     const writtenEvent = { lock: 'Locked', commit: 'Committed', manifest: 'ManifestAnchored' }[
-      p.kind
+      kind
     ];
     const written = new Set<Hex>();
     const skipped = new Map<Hex, number>();
@@ -649,39 +817,47 @@ export class AnchorDO extends DurableObject<Env> implements AnchorDORpc {
         written.add(lower((e.args as { roundKey: Hex }).roundKey));
       }
     }
-    // The mined version may be an earlier one than `p` (a replacement raced it), so every key the
-    // receipt names counts, not only `p.keys`.
+    // The receipt's own events name its keys, besides the version's list.
     const confirmed: ItemRow[] = [];
-    for (const key of new Set([...p.keys, ...written, ...skipped.keys()])) {
-      const r = this.row(key, p.kind);
-      if (!r || (r.state !== 'sent' && r.state !== 'queued')) continue;
+    for (const key of new Set([...mined.keys, ...written, ...skipped.keys()])) {
+      const r = this.row(key, kind);
+      if (!r) continue;
+      // Applied before, but its D1 record may not have been (a retried run): write it again (N3).
+      if (r.state === 'confirmed' && r.tx_hash === hash) {
+        confirmed.push(r);
+        continue;
+      }
+      // A write that lands after its key failed (its window closed on our clock) still counts.
+      const live = r.state === 'sent' || r.state === 'queued';
+      if (!live && !(r.state === 'failed' && written.has(key))) continue;
       if (written.has(key)) {
         this.sql.exec(
           "UPDATE items SET state = 'confirmed', tx_hash = ?, confirmed_at = ?, detail = NULL WHERE round_key = ? AND kind = ?",
           hash,
           blockSec * 1000,
           key,
-          p.kind,
+          kind,
         );
         confirmed.push({ ...r, tx_hash: hash });
       } else if (skipped.has(key)) {
         const reason = skipped.get(key) as number;
-        log.warn('anchor_item_skipped', { roundId: r.round_id, kind: p.kind, reason });
+        log.warn('anchor_item_skipped', { roundId: r.round_id, kind, reason });
         // Already written by someone else: the next build settles it against the onchain state. A
         // commit mined before close (the chain's clock behind ours) is simply early: retry it.
         const early =
-          p.kind === 'commit' &&
+          kind === 'commit' &&
           reason === 3 &&
           blockSec < (JSON.parse(r.item_json) as AnchorCommitItem).closesAtSec;
-        if (reason === 1 || early) this.backToQueue(key, p.kind);
-        else this.fail(key, p.kind, `skipped:${SKIP_REASONS[reason] ?? reason}`, 'skipped');
+        if (reason === 1 || early) this.backToQueue(key, kind);
+        else this.fail(key, kind, `skipped:${SKIP_REASONS[reason] ?? reason}`, 'skipped');
       } else {
-        this.backToQueue(key, p.kind);
+        this.backToQueue(key, kind);
       }
     }
+    requeueOthers();
     await this.writeConfirmations(confirmed);
     log.info('anchor_tx_mined', {
-      kind: p.kind,
+      kind,
       txHash: hash,
       written: written.size,
       skipped: skipped.size,
@@ -701,6 +877,11 @@ export class AnchorDO extends DurableObject<Env> implements AnchorDORpc {
       );
     if (stmts.length > 0) await this.env.DB.batch(stmts);
   }
+}
+
+/** When the key's `kind` was written onchain (Unix seconds), 0 when it wasn't. */
+function writtenAt(kind: AnchorKind, a: OnchainAnchor): bigint {
+  return kind === 'lock' ? a.lockedAt : kind === 'commit' ? a.committedAt : a.manifestAnchoredAt;
 }
 
 function lockMatches(l: AnchorLockItem, a: OnchainAnchor): boolean {
