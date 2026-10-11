@@ -74,3 +74,8 @@
 
 - **W8-D:** room-round grants (owner decision, Oct 9): +100 room points per room round below a room balance of 1,000, ledger reason `room_grant`. A skip is final for that round and recorded in `daily_grant_skips`, keyed by the round. Reuse `src/rounds/grant.ts`.
 - **W8-B:** the crowd-history hint (Client app, Today; Oct 9): the category's average winning-side share over its last 30 settled daily rounds, hidden below 5. Expose it on `GET /rounds/today`.
+
+## Carry-over from W4-Z (Oct 11, 2026)
+
+- **W8-B:** the referral bonus uses the daily grant's points-farming rule, as the spec revised it on Oct 11 ("Anti-abuse"). Reuse the eligibility check in `apps/api/src/rounds/grant.ts` (`recordPriorTransactions` first).
+- **W8-D:** the scheduler refuses to lock a room round without a question (`apps/api/src/scheduler/lock.ts`). Room questions and room config are defined here.

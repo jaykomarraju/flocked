@@ -53,3 +53,10 @@
 - Ask the owner to approve house questions (OA-24) and start OA-04 to OA-19 if not yet underway; staging needs them by wave 14.
 - Confirm OA-D5 is frozen before W12-C.
 - Migrations for wave 12: W12-D `0026`.
+
+## Carry-over from W4-Z (Oct 11, 2026)
+
+- **W11-A** (the spec decisions said "W12", but the admin API is W11-A's; W12-C draws the UI):
+  - the admin void calls `requestRoundVoid` (`apps/api/src/lifecycle/void.ts`) and writes an `audit_log` row. The void's state lives in the RoundDO;
+  - a guardian-only release of a settlement hold sets `settlement_holds.released_at` / `released_by` and writes `audit_log`;
+  - a non-default close publishes `nonDefaultAuditId` in the locked config. Add it to `LockedConfigSchema` (`packages/shared/src/config.ts`) and have `apps/api/src/scheduler/lock.ts` carry it. Today the scheduler only creates default closes.

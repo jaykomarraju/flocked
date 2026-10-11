@@ -72,3 +72,15 @@
   - add the countdown exception to the round-status sheet (hh:mm:ss, except the unsealing countdown, which is m:ss).
   Re-export both sheets.
 - **W5-B:** the Coinbase identity must not block sign-in. Today `findAccount` (`apps/api/src/auth/accounts.ts`) ignores unverified identity rows, so a create can hit the unique index and answer 500. See W7-B's item.
+
+## Carry-over from W4-Z (Oct 11, 2026)
+
+- **All:** W4-F1 (`wave-4.md` "W4-F1") runs alongside W5-A, B and C. It owns `apps/api/src/{chain,scheduler,indexer,lifecycle}/**` and `apps/api/src/do/{anchor-do,indexer-do}.ts`, plus the void, `ingestStakesEntry` and `onModeResult` paths of `round-do.ts`, so A, B and C don't edit them. Migration `0007` is W4-F1's.
+- **All:** stack tests can reuse `POST /__test/rounds/scheduled` (an unlocked daily-shaped round that the real scheduler locks) and the cron driver (`e2e/stack/cron.mjs`), so a round moves from lock to close with no manual call (`e2e/tests/lifecycle-open-close.test.ts` is the example).
+- **W5-A:** before the Stakes apply hook runs, SettlementDO checks `settlementHold(db, roundId, 'stakes')` (`apps/api/src/indexer/holds.ts`). It doesn't post while a hold is open; the guardian releases it through W11-A's admin action (Decision log, Oct 11). Free has no holds.
+- **W5-D:**
+  - merge W4-F1 as a fourth branch; if its handoff isn't `complete`, stop (plan.md 2.6);
+  - `applyFree` calls `RoundDO.onModeResult('free', …)` once the D1 outputs are durable. It updates only the DO and its broadcast, and D1 stays the settlement's to write;
+  - the manifest goes through `AnchorDO.submitManifest`, which relies on W4-F1's N1 fix (a manifest reverting before beacon time is retried);
+  - rule 4's Free refunds are already written at void confirmation (`void_refund`), so `applyFree` must not refund a voided round again. A voided Free mode still writes a bundle (spec "Data model" › Archival), but once a void is applied the RoundDO enqueues no settle message. Build that path, or raise it as a spec issue;
+  - add `e2e/tests/free-settle.test.ts` to the Stack job as its own step.

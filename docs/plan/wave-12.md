@@ -52,3 +52,7 @@
 
 - Every E2E row is proven. Every screen in `docs/design/screens.md` has a passing screenshot test, or a recorded reason.
 - Confirm OA-04, OA-14 and OA-15 (staging keys) are in progress; wave 13's deploy pipeline and wave 14's staging need them.
+
+## Carry-over from W4-Z (Oct 11, 2026)
+
+- **W12-C:** admin-console UI for the void (with its audit row), the guardian's settlement-hold release, and non-default closes (W11-A builds the API).

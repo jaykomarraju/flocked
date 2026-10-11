@@ -75,3 +75,8 @@
   - the refund lines and core-flow copy now in Design_Language Voice (Oct 9) become a copy table keyed by `RefundReasonName`;
   - on tablet and desktop, Submit, Queue, Claims and Settings sit in the header avatar menu;
   - the unsealing countdown is m:ss.
+
+## Carry-over from W4-Z (Oct 11, 2026)
+
+- **W9-A:** void and refund notifications. A guardian void of Stakes tells its entrants their stake is refunded, and a confirmed round void tells everyone who entered. There is no outcome notification kind yet.
+- **W9-C:** the client sends `turnstileToken` on the first Free entry of each New York game day. Without it, `POST /rounds/:id/entries` answers 403 `turnstile_failed`.

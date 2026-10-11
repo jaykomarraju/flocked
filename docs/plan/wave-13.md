@@ -69,3 +69,13 @@
 
 - **W13-A:** a cron sweep that deletes expired `sessions` rows (W3-A never purges them).
 - **W13-C:** review W3-B's sticky tlock self-test: a failure keeps `classify` throwing until the isolate is replaced. Also review the email and session findings that W7-B fixed.
+
+## Carry-over from W4-Z (Oct 11, 2026)
+
+- **W13-A:** route the wave-4 codes:
+  - `ALERT_COMMIT_LATE` (ALERT-2);
+  - `ALERT_INDEXER_LAG` (ALERT-4);
+  - `ALERT_SCHEDULE_GAP`, which now also covers a Free lock leaf that misses closesAt − 30 s (ALERT-6);
+  - `ALERT_FOREIGN_EVENT` (ALERT-8: role-only events and reason-4 `RoundRefunded`);
+  - `ALERT_DO_ERROR` (dispatch failures, step `void_reorged`, and W4-F1's void alerts).
+- **W13-D:** per-environment values for W4-F1's `TxSender` max-fee cap go in the deploy config and `docs/runbooks/secrets.md`.

@@ -75,3 +75,13 @@
 
 - **W6-D:** the first-visit daily grant: `GET /rounds/today` with a session calls `applyDailyGrant` (`apps/api/src/rounds/grant.ts`), never `grantMovement`, or a skipped grant could be credited later that day.
 - **W6-A:** Stakes ingestion beyond the `ingestStakesEntry` counters W4-D adds.
+
+## Carry-over from W4-Z (Oct 11, 2026)
+
+- **W6-A:**
+  - The rest of Stakes ingestion. That includes un-counting a reorged `Entered`: `StakesEntryEvent` has no `removed`, and the handler only logs `stakes_entry_removed`.
+  - Handlers for `OutcomeProposed`, `ProposalVetoed`, the other `RoundRefunded` reasons and `RoundFinalized`, plus `finalize` at `claimsOpenAt`. Register them with `registerHandler(event, name, fn)` in `apps/api/src/indexer/handlers.ts`, and keep handler names stable. Effects outside D1 are at least once.
+  - A serialised operator nonce: `createRound` (cron), `voidRound` (RoundDO alarm), and `propose` / `finalize` (indexer) share `OPERATOR_KEY`. W4-F1 hardens `TxSender`, but a single owner of the nonce is still needed.
+  - Stakes settlement doesn't post while `settlement_holds` has an open hold.
+- **W6-B:** ticket issuance refuses while the RoundDO has a void requested (`getState().voidRequested`) or the Stakes `round_modes.status` isn't `pending` (Decision log, Oct 11). `round_modes` alone misses a pending void.
+- **W6-D:** the first-visit grant calls `recordPriorTransactions` (`apps/api/src/rounds/grant.ts`) before `applyDailyGrant`, so a wallet-only account's onchain history counts.

@@ -50,3 +50,11 @@
 ## Carry-over from W3-Z (Oct 9, 2026)
 
 - **W14-D (soak):** watch for KV-consistency failures on email codes and SIWE nonces ("invalid" right after a send) if W7-B hasn't moved them into the AuthDO.
+
+## Carry-over from W4-Z (Oct 11, 2026)
+
+- **W14-A:**
+  - re-confirm the CREATE2 factory on Base Sepolia and Base before deploying (W4-C checked it on Oct 11);
+  - commit the deployments, so the IndexerDO stops logging `indexer_unconfigured`;
+  - set the fee cap;
+  - deal with orphan `anchors` rows. A crash between the `anchors` insert and the AnchorDO's pending write leaves a row that was never broadcast (`block_timestamp` NULL). Sweep them, or skip them in reconciliation.
