@@ -1,7 +1,9 @@
 // RoundDO: one per round (spec "Real-time and the reveal" › RoundDO responsibilities). W3-B: init,
 // the Free commit protocol (enterFree), getState and the alarm chain with close and the commitment
-// root. Still stubs: requestVoid and onModeResult (W4-D), ingestStakesEntry (W6-A), and the
-// WebSocket hub in fetch (W7-A; `broadcast` in src/rounds/hooks.ts is its seam).
+// root. W4-D: the two-phase void (requestVoid, then voidRound from the alarm; src/lifecycle/void.ts),
+// the Stakes counters (ingestStakesEntry; W6-A builds the rest of Stakes ingestion) and the
+// receiving side of onModeResult. Still a stub: the WebSocket hub in fetch (W7-A; `broadcast` in
+// src/rounds/hooks.ts is its seam).
 //
 // Commit protocol (enterFree), first failure wins:
 //   1. checks: initialized, open (opensAt ≤ now < closesAt), a Free mode, stake in the locked
@@ -18,6 +20,11 @@
 // Every accepted request is tracked in `inflight` from its first await to its answer, so close can
 // drain them. Close then marks the round closed in D1 (after which no entry insert can commit),
 // reconciles leaves against D1 and builds the root from D1's committed entries.
+//
+// Void: a requested void stops entries at once. The alarm then pushes `voidRound` (Stakes) until it
+// is mined, which FlockedEscrow allows only in a block stamped before closesAt; a confirmed void
+// refunds and voids every mode in D1 and ends the alarm chain. A void still unconfirmed at close is
+// abandoned once the chain is past closesAt, and the round closes normally.
 import { DurableObject } from 'cloudflare:workers';
 import {
   LockedConfigSchema,
@@ -29,8 +36,17 @@ import {
 } from '@flocked/shared';
 import { beaconTime, chainFromEnv, type DrandChain } from '@flocked/tlock';
 import type { Hex } from 'viem';
+import type { OperatorDeps } from '../chain/operator.js';
 import { receiptSigner, receiptUserIdHash, type ReceiptSigner } from '../crypto/receipt.js';
 import type { Env } from '../env.js';
+import { operatorDeps } from '../lifecycle/sent.js';
+import {
+  VOID_REFUND_REASON,
+  applyVoid,
+  chainPastClose,
+  pushVoid,
+  type VoidStep,
+} from '../lifecycle/void.js';
 import { raiseAlert } from '../lib/alert.js';
 import { now } from '../lib/clock.js';
 import { isNotImplemented } from '../lib/errors.js';
@@ -60,7 +76,7 @@ import {
   type RoundEventKind,
 } from '../rounds/schedule.js';
 import { ANCHOR_SINGLETON } from './anchor-do.js';
-import { notImplemented, notImplementedResponse } from './stub.js';
+import { notImplementedResponse } from './stub.js';
 import type {
   AnchorCommitItem,
   EnterFreeRequest,
@@ -75,10 +91,30 @@ import type {
   VoidRequestResult,
 } from './types.js';
 
-/** A failed alarm event is retried after this long (game clock). */
+/** A failed alarm event is first retried after this long (game clock), doubling up to the cap. */
 const EVENT_RETRY_MS = 10_000;
+const EVENT_RETRY_MAX_MS = 10 * 60_000;
+/** ALERT_DO_ERROR for one round and event at most this often while it keeps failing. */
+const ALERT_THROTTLE_MS = 15 * 60_000;
 /** A failed commit hand-off to the AnchorDO is retried after this long, until its deadline. */
 const COMMIT_RETRY_MS = 5_000;
+/** A pending void is pushed again after this long (about one Base block and a half). */
+const VOID_RETRY_MS = 3_000;
+
+/** The retry delay after `attempt` consecutive failures of one event. */
+export function eventRetryDelay(attempt: number): number {
+  return Math.min(EVENT_RETRY_MS * 2 ** Math.max(0, attempt - 1), EVENT_RETRY_MAX_MS);
+}
+
+/** An event that is not done yet but has not failed either: retried after `afterMs`, no alert. */
+class RetryLater extends Error {
+  constructor(
+    readonly afterMs: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
 
 /** The Free close record: the commitment root and its hand-off to the AnchorDO. */
 export interface FreeCloseRecord {
@@ -93,6 +129,24 @@ export interface FreeCloseRecord {
   nextAttemptAt: number | null;
 }
 
+/** The two-phase void (spec "Round lifecycle" › Void). */
+export interface VoidRecord {
+  /** Epoch ms (game clock): entries stopped here. */
+  requestedAt: number;
+  /**
+   * `requested`: entries are stopped and the void is not confirmed yet; `confirmed`: every mode is
+   * voided (refund rule 4); `abandoned`: it did not confirm before closesAt, so the round closed
+   * normally.
+   */
+  state: 'requested' | 'confirmed' | 'abandoned';
+  /** Confirmed only: the D1 side (refunds, mode rows, sealed round) is done. */
+  applied: boolean;
+  txHash: Hex | null;
+  /** Epoch ms (game clock) of the next push while `requested`. */
+  retryAt: number;
+  detail: string | null;
+}
+
 interface Meta {
   locked: LockedRound;
   status: RoundStatus;
@@ -100,8 +154,31 @@ interface Meta {
   done: RoundEventKind[];
   /** Per event kind: epoch ms (game clock) before which a failed event is not retried. */
   retryAt: Partial<Record<RoundEventKind, number>>;
+  /** Per event kind: consecutive failures (the retry backs off). */
+  attempts: Partial<Record<RoundEventKind, number>>;
+  /** Per event kind: when ALERT_DO_ERROR last fired for it (throttled). */
+  alertedAt: Partial<Record<RoundEventKind, number>>;
   freeClose: FreeCloseRecord | null;
+  void: VoidRecord | null;
+  /** The last result each mode handed back (onModeResult), so a repeat does not re-broadcast. */
+  results: Partial<Record<Mode, ModeResult>>;
 }
+
+type StoredMeta = Omit<Meta, 'attempts' | 'alertedAt' | 'void' | 'results'> & Partial<Meta>;
+
+/** Meta as stored, including by the W3 version of this class (before the W4-D fields). */
+function normalizeMeta(m: StoredMeta | undefined): Meta | null {
+  if (!m) return null;
+  return {
+    ...m,
+    attempts: m.attempts ?? {},
+    alertedAt: m.alertedAt ?? {},
+    void: m.void ?? null,
+    results: m.results ?? {},
+  };
+}
+
+const TERMINAL: readonly ModeStatus[] = ['settled', 'refunded', 'voided'];
 
 const ok = <T>(value: T): RpcResult<T> => ({ ok: true, value });
 const fail = (r: EntryRejection): RpcResult<never> => ({ ok: false, ...r });
@@ -116,6 +193,19 @@ const LEAVES_DDL = `CREATE TABLE IF NOT EXISTS leaves (
   created_at   INTEGER NOT NULL,
   -- 1 when recorded from D1 at close: committed, but its receipt was never returned
   recovered    INTEGER NOT NULL DEFAULT 0
+)`;
+
+/** Stakes `Entered` events counted so far, keyed like chain_events (W6-A adds the rest). */
+const STAKES_DDL = `CREATE TABLE IF NOT EXISTS stakes_entries (
+  tx_hash      TEXT    NOT NULL,
+  log_index    INTEGER NOT NULL,
+  player       TEXT    NOT NULL,
+  user_id      TEXT,
+  stake        TEXT    NOT NULL,
+  commitment   TEXT    NOT NULL,
+  block_number INTEGER NOT NULL,
+  created_at   INTEGER NOT NULL,
+  PRIMARY KEY (tx_hash, log_index)
 )`;
 
 type LeafRow = {
@@ -140,8 +230,14 @@ const toLeaf = (r: LeafRow): Leaf => ({
 });
 
 export class RoundDO extends DurableObject<Env> implements RoundDORpc {
+  /** Tests hold an entry between its checks and its D1 batch (set through `runInDurableObject`). */
+  beforeEntryBatch: (() => Promise<void>) | undefined;
+  /** Tests point the void's `voidRound` at a fake RPC. Fields are not RPC methods. */
+  operatorDeps: OperatorDeps | undefined;
+
   private meta: Meta | null = null;
   private counts = { entrantCount: 0, pool: 0n };
+  private stakesCounts = { entrantCount: 0, pool: 0n };
   /** Entry requests between their first await and their answer, by user. */
   private readonly inflight = new Map<string, Promise<RpcResult<EnterFreeResponse>>>();
   /** The running alarm-chain pass, so init, a late entry and the alarm never overlap. */
@@ -150,9 +246,11 @@ export class RoundDO extends DurableObject<Env> implements RoundDORpc {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     ctx.storage.sql.exec(LEAVES_DDL);
+    ctx.storage.sql.exec(STAKES_DDL);
     void ctx.blockConcurrencyWhile(async () => {
-      this.meta = (await ctx.storage.get<Meta>('meta')) ?? null;
+      this.meta = normalizeMeta(await ctx.storage.get<StoredMeta>('meta'));
       this.recount();
+      this.recountStakes();
     });
   }
 
@@ -170,9 +268,9 @@ export class RoundDO extends DurableObject<Env> implements RoundDORpc {
       throw new RangeError('init: roomId is required for room rounds only');
     }
     if (this.meta) {
-      if (JSON.stringify(this.meta.locked) !== JSON.stringify(locked)) {
-        throw new Error('conflict: the round is already initialized with a different config');
-      }
+      // The scheduler re-inits every live round each tick: a stalled alarm chain restarts here.
+      await this.adoptVoidedModes(this.meta, locked);
+      await this.advance();
       return this.getState();
     }
     this.meta = {
@@ -181,7 +279,11 @@ export class RoundDO extends DurableObject<Env> implements RoundDORpc {
       modeStatus: Object.fromEntries(locked.modes.map((m) => [m, 'pending'])),
       done: [],
       retryAt: {},
+      attempts: {},
+      alertedAt: {},
       freeClose: null,
+      void: null,
+      results: {},
     };
     await this.save();
     log.info('round_init', { roundId: locked.roundId, modes: locked.modes });
@@ -196,17 +298,17 @@ export class RoundDO extends DurableObject<Env> implements RoundDORpc {
     const l = m.locked;
     const modes: RoundState['modes'] = {};
     for (const mode of l.modes) {
-      const free = mode === 'free';
+      const c = mode === 'free' ? this.counts : this.stakesCounts;
       modes[mode] = {
         status: m.modeStatus[mode] ?? 'pending',
-        entrantCount: free ? this.counts.entrantCount : 0,
-        pool: free ? this.counts.pool.toString() : '0',
+        entrantCount: c.entrantCount,
+        pool: c.pool.toString(),
       };
     }
     return {
       roundId: l.roundId,
       status: m.status,
-      voidRequested: false,
+      voidRequested: voidPending(m),
       opensAt: l.opensAt,
       closesAt: l.closesAt,
       beaconRound: l.beaconRound,
@@ -227,10 +329,15 @@ export class RoundDO extends DurableObject<Env> implements RoundDORpc {
       await pending.catch(() => undefined);
       return this.enterFree(req);
     }
+    // The committed entry answers an identical retry even after close (or a void request), and
+    // refuses a second entry while the round is open.
+    const leaf = this.leafOf(req.userId);
+    if (leaf) {
+      const body = this.checkBody(m, req);
+      if (!isRejection(body) && sameEntry(leaf, body)) return this.answerExisting(m, leaf, body);
+    }
     const checked = this.checkSync(m, t, req);
     if (isRejection(checked)) return fail(checked);
-    // The committed entry answers a retry, or refuses a second entry.
-    const leaf = this.leafOf(req.userId);
     if (leaf) return this.answerExisting(m, leaf, checked);
     const signer = receiptSigner(this.env);
     if (signer instanceof Error) {
@@ -247,16 +354,120 @@ export class RoundDO extends DurableObject<Env> implements RoundDORpc {
     }
   }
 
-  ingestStakesEntry(_evt: StakesEntryEvent): Promise<StakesIngestResult> {
-    return notImplemented('RoundDO.ingestStakesEntry');
+  /**
+   * Counts one mirrored Stakes `Entered` event (the indexer's handler, src/lifecycle/handlers.ts).
+   * Idempotent by (txHash, logIndex): a replay or a re-index answers `counted: false`.
+   */
+  // eslint-disable-next-line @typescript-eslint/require-await -- RPC methods are async
+  async ingestStakesEntry(evt: StakesEntryEvent): Promise<StakesIngestResult> {
+    const m = this.meta;
+    if (!m) throw new Error('not_found: the round is not initialized');
+    const l = m.locked;
+    if (evt.roundId !== l.roundId) throw new RangeError('ingestStakesEntry: another round');
+    if (!l.modes.includes('stakes')) throw new RangeError('ingestStakesEntry: no Stakes mode');
+    if (l.chainRoundId !== undefined && evt.chainRoundId !== l.chainRoundId) {
+      throw new RangeError('ingestStakesEntry: the chain round ID does not match');
+    }
+    if (!/^[0-9]+$/.test(evt.stake)) throw new RangeError('ingestStakesEntry: stake is not a uint');
+    const sql = this.ctx.storage.sql;
+    const txHash = evt.txHash.toLowerCase();
+    // No await between the check and the insert, so the pair is atomic in the DO.
+    const seen =
+      sql
+        .exec(
+          'SELECT 1 FROM stakes_entries WHERE tx_hash = ? AND log_index = ?',
+          txHash,
+          evt.logIndex,
+        )
+        .toArray().length > 0;
+    if (!seen) {
+      sql.exec(
+        'INSERT INTO stakes_entries (tx_hash, log_index, player, user_id, stake, commitment, block_number, created_at) ' +
+          'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        txHash,
+        evt.logIndex,
+        evt.player.toLowerCase(),
+        evt.userId,
+        evt.stake,
+        evt.commitment.toLowerCase(),
+        evt.blockNumber,
+        evt.blockTimestampSec * 1000,
+      );
+      this.stakesCounts = {
+        entrantCount: this.stakesCounts.entrantCount + 1,
+        pool: this.stakesCounts.pool + BigInt(evt.stake),
+      };
+      this.broadcastCounts(m);
+    }
+    return {
+      counted: !seen,
+      entrantCount: this.stakesCounts.entrantCount,
+      pool: this.stakesCounts.pool.toString(),
+    };
   }
 
-  onModeResult(_mode: Mode, _result: ModeResult): Promise<void> {
-    return notImplemented('RoundDO.onModeResult');
+  /**
+   * A mode's outcome, from the settlement coordinator (wave 5) or the indexer (a guardian void):
+   * mirrors the mode's status and broadcasts `revealed` or `refunded`. A repeat is a no-op.
+   */
+  async onModeResult(mode: Mode, result: ModeResult): Promise<void> {
+    const m = this.meta;
+    if (!m) throw new Error('not_found: the round is not initialized');
+    const l = m.locked;
+    if (!l.modes.includes(mode)) throw new RangeError(`onModeResult: no ${mode} mode`);
+    if (JSON.stringify(m.results[mode]) === JSON.stringify(result)) return;
+    m.results[mode] = result;
+    m.modeStatus[mode] = modeStatusOf(mode, result);
+    await this.save();
+    log.info('mode_result', { roundId: l.roundId, mode, outcome: result.outcome });
+    if (result.outcome === 'revealed') {
+      broadcast(this.env, l.roundId, {
+        type: 'revealed',
+        roundId: l.roundId,
+        mode,
+        winningOption: result.winningOption,
+        tally: result.tally,
+        ...(mode === 'stakes' && result.claimsOpenAt !== undefined
+          ? { claimsOpenAt: result.claimsOpenAt }
+          : {}),
+      });
+    } else {
+      broadcast(this.env, l.roundId, {
+        type: 'refunded',
+        roundId: l.roundId,
+        mode,
+        refundReason: result.reason,
+      });
+    }
   }
 
-  requestVoid(): Promise<VoidRequestResult> {
-    return notImplemented('RoundDO.requestVoid');
+  /**
+   * Phase 1 of a void: entries stop now and the alarm pushes phase 2 (`voidRound`). Refused once
+   * closesAt has passed. A repeat answers the first request.
+   */
+  async requestVoid(): Promise<VoidRequestResult> {
+    const m = this.meta;
+    if (!m) throw new Error('not_found: the round is not initialized');
+    const l = m.locked;
+    if (m.void) {
+      return { accepted: m.void.state !== 'abandoned', stoppedAt: m.void.requestedAt };
+    }
+    const t = now(this.env);
+    if (m.status === 'closed' || t >= l.closesAt) {
+      return { accepted: false, stoppedAt: Math.min(t, l.closesAt) };
+    }
+    m.void = {
+      requestedAt: t,
+      state: 'requested',
+      applied: false,
+      txHash: null,
+      retryAt: t,
+      detail: null,
+    };
+    await this.save();
+    log.warn('void_requested', { roundId: l.roundId, modes: l.modes });
+    await this.schedule(m);
+    return { accepted: true, stoppedAt: t };
   }
 
   override fetch(_request: Request): Response {
@@ -277,6 +488,15 @@ export class RoundDO extends DurableObject<Env> implements RoundDORpc {
     if (m.status === 'closed' || t >= l.closesAt) {
       return reject('round_closed', 'the round is closed');
     }
+    if (voidPending(m)) return reject('round_closed', 'the round is being voided');
+    if (m.modeStatus.free === 'voided') {
+      return reject('mode_unavailable', 'Free mode is not available in this round');
+    }
+    return this.checkBody(m, req);
+  }
+
+  private checkBody(m: Meta, req: EnterFreeRequest): CheckedBody | EntryRejection {
+    const l = m.locked;
     if (!l.modes.includes('free') || !l.config.free) {
       return reject('mode_unavailable', 'Free mode is not available in this round');
     }
@@ -327,6 +547,7 @@ export class RoundDO extends DurableObject<Env> implements RoundDORpc {
     });
     let entry: CommittedEntry;
     try {
+      await this.beforeEntryBatch?.();
       const results = await db.batch([...movement.statements]);
       const row = results[2]?.results[0] as { receipt_seq?: unknown } | undefined;
       if (typeof row?.receipt_seq !== 'number') throw new Error('entry insert returned no seq');
@@ -343,21 +564,26 @@ export class RoundDO extends DurableObject<Env> implements RoundDORpc {
       // a commit whose reply was lost throws too: the user's entry decides the answer.
       const existing = await findFreeEntry(db, l.roundId, req.userId);
       if (existing) return this.answerExisting(m, this.recordLeaf(l.roundId, existing), body);
+      if (isRoundSealedError(err)) return fail(reject('round_closed', 'the round is closed'));
       if (classifyPointsError(err) === 'insufficient_balance') {
+        // The balance CHECK fails before the seal check, so a sealed round is asked directly.
+        if (await this.sealedInD1(l.roundId)) {
+          return fail(reject('round_closed', 'the round is closed'));
+        }
         return fail(reject('insufficient_balance', 'not enough points for this stake'));
       }
-      if (isRoundSealedError(err)) return fail(reject('round_closed', 'the round is closed'));
       throw err;
     }
     const leaf = this.recordLeaf(l.roundId, entry);
-    broadcast(this.env, l.roundId, {
-      type: 'counts',
-      roundId: l.roundId,
-      modes: {
-        free: { entrantCount: this.counts.entrantCount, pool: this.counts.pool.toString() },
-      },
-    });
+    this.broadcastCounts(m);
     return ok(await this.response(m, leaf, signer));
+  }
+
+  private async sealedInD1(roundId: string): Promise<boolean> {
+    const row = await this.env.DB.prepare('SELECT status FROM rounds WHERE id = ?1')
+      .bind(roundId)
+      .first<{ status: string }>();
+    return row?.status === 'closed';
   }
 
   /** The answer for a user who already has a committed entry. */
@@ -366,7 +592,7 @@ export class RoundDO extends DurableObject<Env> implements RoundDORpc {
     leaf: Leaf,
     body: CheckedBody,
   ): Promise<RpcResult<EnterFreeResponse>> {
-    if (BigInt(leaf.stake) !== body.stake || leaf.commitment !== body.commitment) {
+    if (!sameEntry(leaf, body)) {
       return fail(reject('already_entered', 'you already entered Free mode in this round'));
     }
     const signer = receiptSigner(this.env);
@@ -442,6 +668,34 @@ export class RoundDO extends DurableObject<Env> implements RoundDORpc {
     this.counts = { entrantCount: row.n, pool: BigInt(row.pool ?? 0) };
   }
 
+  /** USDC base units are summed as bigints (the column is text). */
+  private recountStakes(): void {
+    let entrantCount = 0;
+    let pool = 0n;
+    for (const r of this.ctx.storage.sql.exec<{ stake: string }>(
+      'SELECT stake FROM stakes_entries',
+    )) {
+      entrantCount += 1;
+      pool += BigInt(r.stake);
+    }
+    this.stakesCounts = { entrantCount, pool };
+  }
+
+  private broadcastCounts(m: Meta): void {
+    const l = m.locked;
+    const modes: Partial<Record<Mode, { entrantCount: number; pool: string }>> = {};
+    if (l.modes.includes('free')) {
+      modes.free = { entrantCount: this.counts.entrantCount, pool: this.counts.pool.toString() };
+    }
+    if (l.modes.includes('stakes')) {
+      modes.stakes = {
+        entrantCount: this.stakesCounts.entrantCount,
+        pool: this.stakesCounts.pool.toString(),
+      };
+    }
+    broadcast(this.env, l.roundId, { type: 'counts', roundId: l.roundId, modes });
+  }
+
   // ---- Alarm chain -------------------------------------------------------------------------
 
   /** Runs every due event in order, then sets the alarm for the next one. One pass at a time. */
@@ -456,28 +710,173 @@ export class RoundDO extends DurableObject<Env> implements RoundDORpc {
     const m = this.meta;
     if (!m) return;
     const t = now(this.env);
+    await this.runVoid(m, t);
     for (const ev of roundEvents(m.locked)) {
       if (m.done.includes(ev.kind)) continue;
       if (ev.at > t || (m.retryAt[ev.kind] ?? 0) > t) break;
       try {
         await this.runEvent(m, ev, t);
-        m.done.push(ev.kind);
+        // A void applied during close has already marked every event done.
+        if (!m.done.includes(ev.kind)) m.done.push(ev.kind);
         delete m.retryAt[ev.kind];
+        delete m.attempts[ev.kind];
         await this.save();
       } catch (err) {
         // Later events wait: settlement must never be enqueued before the round has closed.
-        m.retryAt[ev.kind] = t + EVENT_RETRY_MS;
-        await this.save();
-        raiseAlert(this.env, 'ALERT_DO_ERROR', {
-          roundId: m.locked.roundId,
-          event: ev.kind,
-          error: err instanceof Error ? err.message : String(err),
-        });
+        await this.eventFailed(m, ev.kind, t, err);
         break;
       }
     }
     await this.retryCommit(m, now(this.env));
     await this.schedule(m);
+  }
+
+  /** Backs a failed event off, and alerts at most once per ALERT_THROTTLE_MS for it. */
+  private async eventFailed(m: Meta, kind: RoundEventKind, t: number, err: unknown) {
+    if (err instanceof RetryLater) {
+      m.retryAt[kind] = t + err.afterMs;
+      await this.save();
+      log.info('round_event_waiting', { roundId: m.locked.roundId, step: kind, why: err.message });
+      return;
+    }
+    const attempt = (m.attempts[kind] ?? 0) + 1;
+    m.attempts[kind] = attempt;
+    m.retryAt[kind] = t + eventRetryDelay(attempt);
+    const last = m.alertedAt[kind];
+    const alert = last === undefined || t - last >= ALERT_THROTTLE_MS;
+    if (alert) m.alertedAt[kind] = t;
+    await this.save();
+    const error = err instanceof Error ? err.message : String(err);
+    log.error('round_event_failed', { roundId: m.locked.roundId, step: kind, attempt, error });
+    if (alert) {
+      raiseAlert(this.env, 'ALERT_DO_ERROR', {
+        roundId: m.locked.roundId,
+        step: kind,
+        attempt,
+        error,
+      });
+    }
+  }
+
+  // ---- Void --------------------------------------------------------------------------------
+
+  /** Before close: pushes a requested void; finishes the D1 side of a confirmed one. */
+  private async runVoid(m: Meta, t: number): Promise<void> {
+    const v = m.void;
+    if (!v) return;
+    if (v.state === 'requested' && t < m.locked.closesAt && v.retryAt <= t) {
+      await this.pushVoid(m, t);
+    }
+    if (v.state === 'confirmed' && !v.applied && v.retryAt <= t) {
+      try {
+        await this.applyVoid(m, t);
+      } catch (err) {
+        // Backs off like the close event it stands in for.
+        await this.eventFailed(m, 'close', t, err);
+        v.retryAt = m.retryAt.close ?? t + EVENT_RETRY_MS;
+        await this.save();
+      }
+    }
+  }
+
+  private async pushVoid(m: Meta, t: number): Promise<VoidStep> {
+    const v = m.void as VoidRecord;
+    let step: VoidStep;
+    try {
+      step = await pushVoid(this.env, this.operatorDeps ?? operatorDeps(this.env), m.locked);
+    } catch (err) {
+      step = { status: 'pending', txHash: v.txHash, detail: String(err) };
+    }
+    v.txHash = step.txHash ?? v.txHash;
+    if (step.status === 'confirmed') {
+      v.state = 'confirmed';
+      v.detail = null;
+      log.warn('void_confirmed', { roundId: m.locked.roundId, txHash: v.txHash });
+    } else {
+      v.detail = step.detail;
+      v.retryAt = t + VOID_RETRY_MS;
+      log.info('void_pending', { roundId: m.locked.roundId, detail: step.detail });
+    }
+    await this.save();
+    return step;
+  }
+
+  /**
+   * At close, a void that is still `requested` is decided: confirmed if `voidRound` is mined, else
+   * abandoned once the chain is past closesAt (src/lifecycle/void.ts chainPastClose). Until then
+   * close waits.
+   */
+  private async resolveVoidAtClose(m: Meta, t: number): Promise<void> {
+    const v = m.void as VoidRecord;
+    const step = await this.pushVoid(m, t);
+    if (step.status === 'confirmed') return;
+    const deps = this.operatorDeps ?? operatorDeps(this.env);
+    if (!(await chainPastClose(this.env, deps, m.locked, t))) {
+      throw new RetryLater(VOID_RETRY_MS, 'the void is unresolved until the chain passes closesAt');
+    }
+    v.state = 'abandoned';
+    await this.save();
+    log.warn('void_abandoned', { roundId: m.locked.roundId, detail: v.detail });
+  }
+
+  /** A confirmed void: drain entries, refund and void every mode in D1, end the alarm chain. */
+  private async applyVoid(m: Meta, t: number): Promise<void> {
+    const l = m.locked;
+    const v = m.void as VoidRecord;
+    if (m.status !== 'closed') {
+      m.status = 'closed';
+      await this.save();
+    }
+    while (this.inflight.size > 0) {
+      await Promise.allSettled([...this.inflight.values()]);
+    }
+    await applyVoid(this.env, l, t);
+    v.applied = true;
+    for (const mode of l.modes) {
+      if (!TERMINAL.includes(m.modeStatus[mode] ?? 'pending')) m.modeStatus[mode] = 'voided';
+    }
+    // Nothing is left to run: no close work, no settlement, no rule 8.
+    m.done = roundEvents(l).map((e) => e.kind);
+    m.retryAt = {};
+    await this.save();
+    for (const mode of l.modes) {
+      broadcast(this.env, l.roundId, {
+        type: 'refunded',
+        roundId: l.roundId,
+        mode,
+        refundReason: VOID_REFUND_REASON,
+      });
+    }
+    broadcast(this.env, l.roundId, {
+      type: 'closed',
+      roundId: l.roundId,
+      closesAt: Math.floor(l.closesAt / 1000),
+      beaconRound: l.beaconRound,
+      beaconTime: l.beaconTimeSec,
+    });
+  }
+
+  /**
+   * A later init without a mode the DO has means D1 voided it since (the scheduler leaves voided
+   * modes out). Anything else that differs is a conflict.
+   */
+  private async adoptVoidedModes(m: Meta, locked: LockedRound): Promise<void> {
+    const known = m.locked;
+    const fixed = (r: LockedRound) => JSON.stringify({ ...r, modes: [], chainRoundId: null });
+    const subset = locked.modes.every((x) => known.modes.includes(x));
+    const chainOk = locked.chainRoundId === undefined || locked.chainRoundId === known.chainRoundId;
+    if (fixed(known) !== fixed(locked) || !subset || !chainOk) {
+      throw new Error('conflict: the round is already initialized with a different config');
+    }
+    let changed = false;
+    for (const mode of known.modes) {
+      if (!locked.modes.includes(mode) && m.modeStatus[mode] !== 'voided') {
+        m.modeStatus[mode] = 'voided';
+        changed = true;
+        log.warn('mode_voided_at_init', { roundId: known.roundId, mode });
+      }
+    }
+    if (changed) await this.save();
   }
 
   private async runEvent(m: Meta, ev: RoundEvent, t: number): Promise<void> {
@@ -487,20 +886,26 @@ export class RoundDO extends DurableObject<Env> implements RoundDORpc {
         return this.open(m);
       case 'streak_at_risk':
       case 'closing_soon':
-        // A notification that is due only after close is pointless.
-        if (t < l.closesAt) await enqueueNotifications(this.env, ev.kind, this.hookRound(m));
+        // Pointless once due after close, or while the round is being voided.
+        if (t < l.closesAt && !voidPending(m)) {
+          await enqueueNotifications(this.env, ev.kind, this.hookRound(m));
+        }
         return;
       case 'close':
         return this.close(m, t);
       case 'settle':
         for (const mode of l.modes) {
+          if (m.modeStatus[mode] === 'voided') continue;
           await this.env.QUEUE_SETTLE.send({
             roundId: l.roundId,
             mode,
             idempotencyKey: settleKey(l.roundId, mode),
           });
         }
-        log.info('settle_enqueued', { roundId: l.roundId, modes: l.modes });
+        log.info('settle_enqueued', {
+          roundId: l.roundId,
+          modes: l.modes.filter((x) => m.modeStatus[x] !== 'voided'),
+        });
         return;
       case 'rule8':
         return this.rule8(m);
@@ -517,7 +922,7 @@ export class RoundDO extends DurableObject<Env> implements RoundDORpc {
     m.status = 'open';
     await this.save();
     log.info('round_open', { roundId: l.roundId });
-    await enqueueNotifications(this.env, 'question_live', this.hookRound(m));
+    if (!voidPending(m)) await enqueueNotifications(this.env, 'question_live', this.hookRound(m));
   }
 
   /**
@@ -527,6 +932,12 @@ export class RoundDO extends DurableObject<Env> implements RoundDORpc {
    */
   private async close(m: Meta, t: number): Promise<void> {
     const l = m.locked;
+    if (m.void?.state === 'requested') await this.resolveVoidAtClose(m, t);
+    if (m.void?.state === 'confirmed') {
+      // Normally applied before close; a void confirmed in this last push is applied here.
+      if (!m.void.applied) await this.applyVoid(m, t);
+      return;
+    }
     if (m.status !== 'closed') {
       m.status = 'closed';
       await this.save();
@@ -537,7 +948,7 @@ export class RoundDO extends DurableObject<Env> implements RoundDORpc {
     await this.env.DB.prepare("UPDATE rounds SET status = 'closed' WHERE id = ?1")
       .bind(l.roundId)
       .run();
-    if (l.modes.includes('free') && !m.freeClose) {
+    if (l.modes.includes('free') && m.modeStatus.free !== 'voided' && !m.freeClose) {
       m.freeClose = await this.buildFreeClose(m, t);
       await this.save();
       await this.submitCommit(m, t);
@@ -563,7 +974,7 @@ export class RoundDO extends DurableObject<Env> implements RoundDORpc {
     if (r.inconsistent.length > 0 || !r.contiguous) {
       raiseAlert(this.env, 'ALERT_DO_ERROR', {
         roundId: l.roundId,
-        event: 'reconcile',
+        step: 'reconcile',
         inconsistentSeqs: r.inconsistent,
         contiguous: r.contiguous,
       });
@@ -574,13 +985,7 @@ export class RoundDO extends DurableObject<Env> implements RoundDORpc {
       r.committed.map((e) => ({ ...e, userIdHash: receiptUserIdHash(l.roundId, e.userId) })),
     );
     const deadline = Math.min(Math.floor(l.closesAt / 1000) + 90, l.beaconTimeSec - 30) * 1000;
-    if (built) {
-      await this.env.DB.prepare(
-        "UPDATE round_modes SET commitment_root = ?1 WHERE round_id = ?2 AND mode = 'free' AND commitment_root IS NULL",
-      )
-        .bind(built.root, l.roundId)
-        .run();
-    }
+    if (built) await this.storeRoot(l.roundId, built.root);
     return {
       root: built?.root ?? null,
       entryCount: built?.entryCount ?? 0,
@@ -590,6 +995,32 @@ export class RoundDO extends DurableObject<Env> implements RoundDORpc {
       deadline,
       nextAttemptAt: built ? t : null,
     };
+  }
+
+  /**
+   * Writes the Free root to round_modes once. No row changed means the root is there already (a
+   * retried close: fine if it is the same) or the row is missing or different, which alerts.
+   */
+  private async storeRoot(roundId: string, root: Hex): Promise<void> {
+    const db = this.env.DB;
+    const res = await db
+      .prepare(
+        "UPDATE round_modes SET commitment_root = ?1 WHERE round_id = ?2 AND mode = 'free' AND commitment_root IS NULL",
+      )
+      .bind(root, roundId)
+      .run();
+    if (res.meta.changes > 0) return;
+    const row = await db
+      .prepare("SELECT commitment_root FROM round_modes WHERE round_id = ?1 AND mode = 'free'")
+      .bind(roundId)
+      .first<{ commitment_root: string | null }>();
+    if (row?.commitment_root === root) return;
+    raiseAlert(this.env, 'ALERT_DO_ERROR', {
+      roundId,
+      step: 'commitment_root',
+      stored: row ? row.commitment_root : 'no free round_modes row',
+      built: root,
+    });
   }
 
   /** Hands the root to the AnchorDO; a failed hand-off is retried until the commit deadline. */
@@ -669,6 +1100,9 @@ export class RoundDO extends DurableObject<Env> implements RoundDORpc {
     if (m.freeClose?.anchor === 'retrying' && m.freeClose.nextAttemptAt !== null) {
       times.push(m.freeClose.nextAttemptAt);
     }
+    const v = m.void;
+    if (v?.state === 'requested' && t < m.locked.closesAt) times.push(Math.max(t, v.retryAt));
+    if (v?.state === 'confirmed' && !v.applied) times.push(Math.max(t, v.retryAt));
     if (times.length === 0) {
       await this.ctx.storage.deleteAlarm();
       return;
@@ -702,4 +1136,21 @@ export class RoundDO extends DurableObject<Env> implements RoundDORpc {
   private save(): Promise<void> {
     return this.ctx.storage.put('meta', this.meta);
   }
+}
+
+/** A void is requested and not yet abandoned: entries and notifications stop. */
+function voidPending(m: Meta): boolean {
+  return m.void !== null && m.void.state !== 'abandoned';
+}
+
+/** An identical retry: the same stake and the same commitment as the committed leaf. */
+function sameEntry(leaf: Leaf, body: CheckedBody): boolean {
+  return BigInt(leaf.stake) === body.stake && leaf.commitment === body.commitment;
+}
+
+/** The mode status a result moves the mode to (spec "Round lifecycle" mode rows). */
+function modeStatusOf(mode: Mode, result: ModeResult): ModeStatus {
+  if (result.outcome === 'revealed') return mode === 'stakes' ? 'settle_proposed' : 'settled';
+  if (result.reason === VOID_REFUND_REASON) return 'voided';
+  return mode === 'stakes' && result.provisional ? 'refund_proposed' : 'refunded';
 }

@@ -1,5 +1,5 @@
 // Every Durable Object binding resolves to its class in the Workers runtime and each pinned RPC
-// method answers "not implemented" (plan P2.4: src/do/types.ts).
+// method answers "not implemented" until it is built (plan P2.4: src/do/types.ts).
 import { env } from 'cloudflare:test';
 import { roundKey } from '@flocked/shared';
 import { describe, expect, it } from 'vitest';
@@ -50,15 +50,20 @@ const commit: AnchorCommitItem = {
 describe('RoundDO (binding ROUND)', () => {
   const stub = () => env.ROUND.get(env.ROUND.idFromName(FIXTURE_IDS.round));
 
-  // init, enterFree and getState are implemented (W3-B): test/round-do/.
-  it('pins ingestStakesEntry, onModeResult, requestVoid', async () => {
+  // init, enterFree and getState are implemented (W3-B): test/round-do/. ingestStakesEntry,
+  // onModeResult and requestVoid are implemented (W4-D): test/lifecycle/ and test/round-do/.
+  it('answers ingestStakesEntry, onModeResult and requestVoid with not_found before init', async () => {
     const s = stub();
-    await expectNotImplemented(s.ingestStakesEntry(stakesEvent), 'RoundDO.ingestStakesEntry');
-    await expectNotImplemented(
-      s.onModeResult('free', { outcome: 'refunded', reason: 1, provisional: false }),
-      'RoundDO.onModeResult',
-    );
-    await expectNotImplemented(s.requestVoid(), 'RoundDO.requestVoid');
+    const notFound = async (call: Promise<unknown>) => {
+      const err = await call.then(
+        () => new Error('expected a rejection'),
+        (e: unknown) => e,
+      );
+      expect((err as Error).message).toBe('not_found: the round is not initialized');
+    };
+    await notFound(s.ingestStakesEntry(stakesEvent));
+    await notFound(s.onModeResult('free', { outcome: 'refunded', reason: 1, provisional: false }));
+    await notFound(s.requestVoid());
   });
 
   it('answers fetch (future WebSocket upgrades) with a 501 envelope', async () => {

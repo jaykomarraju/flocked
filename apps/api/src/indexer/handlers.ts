@@ -2,8 +2,10 @@
 // dispatcher (dispatch.ts) calls each registered handler once per event revision, in chain order.
 //
 // Built in (W4-B): ALERT-8 for every role-only event the backend didn't send, and the foreign-entry
-// path for `Entered`. Lifecycle handlers (proposal, veto, refund, finalize; Stakes ingestion) register
-// themselves from their own modules with registerHandler (W4-D, W6-A), imported before the first poll.
+// path for `Entered`. W4-D's lifecycle handlers (src/lifecycle/handlers.ts: Stakes entry counters,
+// Locked/Committed confirmations, the guardian void) are registered on the default registry below;
+// W6-A adds proposal, veto, refund and finalize the same way.
+import { registerLifecycleHandlers } from '../lifecycle/handlers.js';
 import { foreignEntryHandler } from './entered.js';
 import { unsentTxHandler } from './policy.js';
 import { ANY_EVENT, HandlerRegistry } from './registry.js';
@@ -18,8 +20,10 @@ export function registerBuiltinHandlers(registry: HandlerRegistry): HandlerRegis
   return registry;
 }
 
-/** The registry IndexerDO dispatches through. */
-export const handlers: HandlerRegistry = registerBuiltinHandlers(new HandlerRegistry());
+/** The registry IndexerDO dispatches through: the built-in handlers, then the lifecycle ones. */
+export const handlers: HandlerRegistry = registerLifecycleHandlers(
+  registerBuiltinHandlers(new HandlerRegistry()),
+);
 
 /**
  * Registers a handler for `event` (an ABI event name, or ANY_EVENT). `name` identifies the handler in

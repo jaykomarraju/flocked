@@ -1,6 +1,7 @@
 // The local test seam (src/local/seam.ts): closed unless ENVIRONMENT is 'local' and the per-run key
-// is presented; otherwise it creates and locks rounds, pins the game clock for the Worker and its
-// DOs, and refuses a reveal with a signature that is not the round's beacon. The stack smoke test
+// is presented; otherwise it creates and locks rounds (or leaves one for the scheduler), pins the
+// game clock for the Worker and its DOs, runs a cron expression's jobs, and refuses a reveal with a
+// signature that is not the round's beacon. The stack smoke test
 // (e2e/tests/stack-smoke.test.ts) covers the full flow with a real drand network.
 import { exports } from 'cloudflare:workers';
 import { env } from 'cloudflare:test';
@@ -102,8 +103,9 @@ describe('with the key, in local', () => {
     const read = await seam(`/rounds/${body.locked.roundId}`);
     expect(await read.json()).toMatchObject({
       status: 'open',
-      free: { status: 'pending', commitmentRoot: null },
+      free: { status: 'pending', commitmentRoot: null, lockTx: null, commitTx: null },
       entries: [],
+      anchorEvents: [],
     });
 
     const reveal = await seam(`/rounds/${body.locked.roundId}/reveal`, {
@@ -115,5 +117,34 @@ describe('with the key, in local', () => {
   it('refuses a round that closes before it opens, and answers 404 for an unknown round', async () => {
     expect((await seam('/rounds', { opensAt: T, closesAt: T - 1000 })).status).toBe(400);
     await expectNotFound(await seam(`/rounds/${newUlid()}`));
+  });
+
+  it('creates an unlocked daily-shaped round that the scheduler locks on its next tick', async () => {
+    await seam('/clock', { nowMs: T });
+    const opensAt = T + 60_000;
+    const res = await seam('/rounds/scheduled', {
+      opensAt,
+      closesAt: opensAt + 120_000,
+      beaconDelay: 120,
+    });
+    expect(res.status).toBe(201);
+    const { roundId } = await res.json<{ roundId: string }>();
+    const row = await env.DB.prepare(
+      'SELECT kind, status, locked_at, question_id, config_json FROM rounds WHERE id = ?1',
+    )
+      .bind(roundId)
+      .first<{ kind: string; status: string; locked_at: number | null; config_json: string }>();
+    expect(row).toMatchObject({ kind: 'daily', status: 'scheduled', locked_at: null });
+    expect(JSON.parse(row?.config_json as string)).toMatchObject({ beaconDelay: 120 });
+    // No round_modes until the lock.
+    await expectNotFound(await seam(`/rounds/${roundId}`));
+    expect((await seam('/rounds/scheduled', { opensAt, closesAt: opensAt })).status).toBe(400);
+  });
+
+  it("runs a configured cron expression's jobs and refuses any other", async () => {
+    const res = await seam('/cron', { cron: '0 * * * *' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ cron: '0 * * * *', jobs: ['create_rounds_ahead'] });
+    expect((await seam('/cron', { cron: '5 5 5 5 5' })).status).toBe(400);
   });
 });

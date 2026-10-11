@@ -2,7 +2,8 @@
 // anvil (the anvil-backed tests are e2e/tests/anchor-*.test.ts). It keeps nonces, a mempool with
 // fee-bump replacement, blocks with timestamps and receipts, and mirrors the contract rules the server
 // relies on: FlockedAnchor's write-once `lock`/`commit` batches with `Skipped` (reasons 1–4) and its
-// reverting `anchorManifest`, and FlockedEscrow's `createRound` checks and `RoundCreated`.
+// reverting `anchorManifest`, and FlockedEscrow's `createRound` checks and `RoundCreated`, and
+// `voidRound` (refused at or after closesAt, `RoundRefunded` reason 4; W4-D).
 import { flockedAnchorAbi, flockedEscrowAbi } from '@flocked/abi';
 import {
   custom,
@@ -136,6 +137,8 @@ export class FakeChain {
   /** RPC method → failures to inject before it works again. */
   readonly failNext = new Map<string, number>();
   roundCount = 0n;
+  /** FlockedEscrow rounds by ID: their close time (Unix seconds) and whether they are still Open. */
+  readonly escrowRounds = new Map<bigint, { closesAt: bigint; open: boolean }>();
 
   readonly transport = custom(
     {
@@ -321,6 +324,15 @@ export class FakeChain {
     }
     if (to.toLowerCase() === FAKE_ESCROW) {
       const call = decodeFunctionData({ abi: flockedEscrowAbi, data });
+      if (call.functionName === 'voidRound') {
+        const [roundId] = call.args;
+        const rd = this.escrowRounds.get(roundId);
+        if (!rd) throw new Revert('UnknownRound');
+        if (!rd.open) throw new Revert('WrongStatus');
+        if (now >= rd.closesAt) throw new Revert('RoundClosed');
+        if (write) rd.open = false;
+        return [eventLog(flockedEscrowAbi, FAKE_ESCROW, 'RoundRefunded', { roundId, reason: 4 })];
+      }
       if (call.functionName !== 'createRound') {
         if (write) return [];
         return [];
@@ -330,7 +342,10 @@ export class FakeChain {
       const bt = this.beaconTime(cfg.beaconRound);
       if (bt < cfg.closesAt + 60n || bt > cfg.closesAt + 600n) throw new Revert('BeaconOutOfRange');
       const roundId = this.roundCount + 1n;
-      if (write) this.roundCount = roundId;
+      if (write) {
+        this.roundCount = roundId;
+        this.escrowRounds.set(roundId, { closesAt: cfg.closesAt, open: true });
+      }
       return [eventLog(flockedEscrowAbi, FAKE_ESCROW, 'RoundCreated', { roundId, cfg })];
     }
     throw new Revert(`no contract at ${to}`);

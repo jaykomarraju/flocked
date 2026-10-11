@@ -1,6 +1,7 @@
-# Local stack smoke test (e2e/stack/README.md): drand in Docker, anvil, the CREATE2 deploy and
-# `wrangler dev`, then one real Free round end to end. Runs on integration branches and main only,
-# as the stack takes a minute to start and the round another to reach its beacon.
+# Local stack tests (e2e/stack/README.md): drand in Docker, anvil, the CREATE2 deploy, `wrangler dev`
+# and the cron driver, then the stack tests: one real Free round end to end (smoke), the round
+# lifecycle with no manual step, and the anvil-backed anchor and indexer tests. Runs on integration
+# branches and main only, as the stack takes a minute to start and a round another to reach its beacon.
 name: Stack
 
 on:
@@ -35,6 +36,13 @@ jobs:
         working-directory: contracts
       - run: pnpm stack:up
       - run: pnpm --filter @flocked/e2e --fail-if-no-match exec vitest run tests/stack-smoke.test.ts
+      # A daily-shaped round through lock → open → close → commit, moved only by the stack's cron
+      # driver and the DOs' alarms (W4-D; AC-6, first half).
+      - run: pnpm --filter @flocked/e2e --fail-if-no-match exec vitest run tests/lifecycle-open-close.test.ts
+      # These sign with the stack's anchor and operator keys and turn automine off or revert
+      # snapshots, so each runs on its own step (W4-A, W4-B).
+      - run: pnpm --filter @flocked/e2e --fail-if-no-match exec vitest run tests/anchor-tx.test.ts
+      - run: pnpm --filter @flocked/e2e --fail-if-no-match exec vitest run tests/indexer-reorg.test.ts
       - name: Stack status and drand logs
         if: failure()
         run: |

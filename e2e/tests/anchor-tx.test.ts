@@ -6,10 +6,10 @@
 //   * a stuck `lock` (automine off) replaced at the same nonce with higher fees, and only the
 //     replacement mined;
 //   * `createRound`'s receipt carrying the escrow round ID that becomes `chain_round_id`.
-// It signs with the stack's ANCHOR_KEY and OPERATOR_KEY. Nothing else in the stack sends with them
-// (wrangler dev runs no crons; a seam round has no lock leaf, so its commit never leaves the
-// AnchorDO), but the replacement test turns anvil's automine off for a moment, so run this file on
-// its own (`--no-file-parallelism`) when the suite grows.
+// It signs with the stack's ANCHOR_KEY and OPERATOR_KEY, which the AnchorDO also uses once the
+// stack's cron driver locks a round (W4-D), and the replacement test turns anvil's automine off for
+// a moment, so it runs with no other round about to lock or close (the e2e config runs files one at
+// a time; the Stack job gives this file its own step).
 //
 //   pnpm stack:up && pnpm --filter @flocked/e2e exec vitest run tests/anchor-tx.test.ts
 import { flockedAnchorAbi, flockedEscrowAbi } from '@flocked/abi';

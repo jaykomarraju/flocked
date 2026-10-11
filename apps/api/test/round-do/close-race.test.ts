@@ -7,6 +7,7 @@ import { MODE_CODES, ulidToBytes, ulidToHex, type CreateEntryResponse } from '@f
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { Hex } from 'viem';
 import { recoverReceiptSigner } from '../../src/crypto/receipt.js';
+import type { RoundDO } from '../../src/do/round-do.js';
 import type { RpcResult } from '../../src/do/types.js';
 import {
   alarmAt,
@@ -29,6 +30,14 @@ beforeAll(() => {
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
+/** Waits for a condition that the test itself guarantees (a held entry, a started close). */
+async function until(cond: () => boolean | Promise<boolean>): Promise<void> {
+  for (let k = 0; !(await cond()); k++) {
+    if (k > 10_000) throw new Error('condition never held');
+    await tick();
+  }
+}
+
 /** Runs the close (the clock is already at closesAt). */
 async function closeRound(r: TestRound): Promise<void> {
   await alarmAt(r.stub, r.locked.closesAt);
@@ -50,8 +59,20 @@ describe('DO-3: close-boundary race', () => {
     const cts = await Promise.all(users.map((_, i) => sealedPick(r.locked, (i % 2) as 0 | 1)));
     const stakes = users.map((_, i) => String(10 + (i % 5) * 5));
 
-    // Wave 1 is admitted before closesAt; once some of it is in flight, the clock reaches closesAt
-    // and the close alarm runs while those entries are still committing. Wave 2 arrives after.
+    // Wave 1 is admitted before closesAt and held just before its D1 batch (a test hook), so the
+    // close alarm always starts while those entries are still in flight; they are released once
+    // close is draining. Wave 2 arrives after the clock reaches closesAt.
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let held = 0;
+    await runInDurableObject(r.stub, (instance: RoundDO) => {
+      instance.beforeEntryBatch = async () => {
+        held += 1;
+        await gate;
+      };
+    });
     const settled = new Set<number>();
     const call = (i: number) =>
       r.stub
@@ -65,17 +86,21 @@ describe('DO-3: close-boundary race', () => {
           return res;
         });
     const wave1 = Array.from({ length: N / 2 }, (_, i) => call(i));
-    let inflightAtClose = 0;
-    for (let k = 0; k < 50 && inflightAtClose === 0; k++) {
-      await tick();
-      inflightAtClose = await runInDurableObject(
-        r.stub,
-        (instance) => (instance as unknown as { inflight: Map<string, unknown> }).inflight.size,
-      );
-    }
+    await until(() => held > 0);
+    const inflightAtClose = await runInDurableObject(
+      r.stub,
+      (instance) => (instance as unknown as { inflight: Map<string, unknown> }).inflight.size,
+    );
     setClock(closesAt);
     const closing = closeRound(r);
     const wave2 = Array.from({ length: N / 2 }, (_, i) => call(N / 2 + i));
+    // Close has stopped entries and is waiting for the held ones.
+    await until(async () => (await readMeta(r.stub))?.status === 'closed');
+    const wave1Unanswered = Array.from({ length: N / 2 }, (_, i) => i).filter(
+      (i) => !settled.has(i),
+    );
+    expect(wave1Unanswered.length).toBeGreaterThan(0);
+    release();
     const results = await Promise.all([...wave1, ...wave2]);
     await closing;
     expect(inflightAtClose).toBeGreaterThan(0);

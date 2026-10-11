@@ -31,6 +31,7 @@ import {
 import { privateKeyToAccount } from 'viem/accounts';
 import { chainIdOf, deploymentOf, publicClient } from '../chain/client.js';
 import { TxSender, type OnTxSent, type SentTx } from '../chain/tx.js';
+import { sentTxRecorder } from '../lifecycle/sent.js';
 import type { Env } from '../env.js';
 import { raiseAlert } from '../lib/alert.js';
 import { now } from '../lib/clock.js';
@@ -172,7 +173,7 @@ export class AnchorDO extends DurableObject<Env> implements AnchorDORpc {
   transportOverride: Transport | undefined;
   /** Tests change the stuck threshold (default 12 s, src/chain/tx.ts). */
   stuckAfterMs: number | undefined;
-  /** Called before every broadcast; W4-D wires it to the indexer's sent-transaction record. */
+  /** Called before every broadcast: the indexer's sent-transaction record (tests may replace it). */
   onTxSent: OnTxSent | undefined;
   /** Tests run every alarm by hand (`runDurableObjectAlarm`): alarms are set an hour later. */
   manualAlarms = false;
@@ -183,6 +184,7 @@ export class AnchorDO extends DurableObject<Env> implements AnchorDORpc {
     super(ctx, env);
     this.sql = ctx.storage.sql;
     this.sql.exec(SCHEMA);
+    this.onTxSent = sentTxRecorder(env);
   }
 
   // ---- RPC ----------------------------------------------------------------------------------------
