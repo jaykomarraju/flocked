@@ -339,7 +339,15 @@ export class SettlementDO extends DurableObject<Env> implements SettlementDORpc 
     });
     if (job.phase === 'reducing') return this.wake(0);
     await this.sendMissing(job, round.kind === 'room');
-    return this.wake(DECRYPT_WATCH_MS);
+    return this.wakeWhileDecrypting(job);
+  }
+
+  /**
+   * The watchdog alarm, unless the last chunkDone arrived while this step awaited I/O and moved the
+   * job on: then the reduce runs now.
+   */
+  private wakeWhileDecrypting(job: Job): Promise<void> {
+    return this.wake(job.phase === 'decrypting' ? DECRYPT_WATCH_MS : 0);
   }
 
   /** Sends a decrypt message for every chunk without a result. */
@@ -391,7 +399,7 @@ export class SettlementDO extends DurableObject<Env> implements SettlementDORpc 
       }
       await this.save(job);
     }
-    return this.wake(DECRYPT_WATCH_MS);
+    return this.wakeWhileDecrypting(job);
   }
 
   private async reduceAndApply(job: Job): Promise<void> {
