@@ -3,8 +3,11 @@
 // `voidRound` must be mined in a block stamped before closesAt (FlockedEscrow refuses it after), and
 // then every mode is voided with refund reason 4 and every Free stake comes back. A void that misses
 // close is abandoned and every mode follows the normal close path.
-import { env } from 'cloudflare:test';
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { env, runInDurableObject } from 'cloudflare:test';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { VOID_REFUSED_ALERT_AFTER } from '../../src/do/round-do.js';
+import { recordSentTx } from '../../src/indexer/sent.js';
+import { stakesVoidHandler } from '../../src/lifecycle/handlers.js';
 import type { RpcResult, EnterFreeResponse } from '../../src/do/types.js';
 import { VOID_RESOLVE_GRACE_MS } from '../../src/lifecycle/void.js';
 import { captureAlerts } from '../indexer/helpers.js';
@@ -22,6 +25,8 @@ import {
   type TestRound,
 } from '../round-do/helpers.js';
 import {
+  chainEvent,
+  commitStatements,
   fakeChainAt,
   modeRow,
   recordQueues,
@@ -265,5 +270,193 @@ describe('the void and Free entries in flight', () => {
       .bind(r.locked.roundId)
       .all<{ n: number }>();
     expect(ledger[0]?.n).toBe(3);
+  });
+});
+
+describe('W4-F1: a void is abandoned at close only on proof (V1)', () => {
+  it('a push that throws at close is never proof: close waits, even with the head past closesAt', async () => {
+    queues = recordQueues();
+    const closesAt = Date.UTC(2026, 9, 10, 1, 0, 0);
+    const fake = fakeChainAt(closesAt - 10_000);
+    const r = await stakesRound(fake, { opensAt: closesAt - 24 * 3_600_000 });
+    setClock(closesAt - 10_000);
+    await r.stub.init(r.locked);
+    fake.automine = false;
+    await r.stub.requestVoid();
+    await alarmAt(r.stub, closesAt - 9_000);
+    expect(fake.pool.size).toBe(1);
+    const voidTx = fake.sent[0]!;
+
+    // At close the head is stamped past closesAt, but the operator's RPC fails mid-push.
+    fake.time = Math.floor(closesAt / 1000) + 1;
+    fake.failNext.set('eth_getTransactionCount', 100);
+    await alarmAt(r.stub, closesAt);
+    expect(await voidRecord(r.stub)).toMatchObject({ state: 'requested' });
+    expect((await readMeta(r.stub))?.done).not.toContain('close');
+
+    // The RPC is back and answers definitely (unmined, and it can only revert now): abandoned, and
+    // its voidRound is cancelled at its nonce (T4).
+    fake.failNext.delete('eth_getTransactionCount');
+    await alarmAt(r.stub, closesAt + 3_000);
+    expect(await voidRecord(r.stub)).toMatchObject({ state: 'abandoned' });
+    expect((await readMeta(r.stub))?.done).toContain('close');
+    const cancel = fake.sent[fake.sent.length - 1]!;
+    expect(cancel).toMatchObject({ nonce: voidTx.nonce, to: voidTx.from, data: '0x' });
+  });
+
+  it('off the local stack there is no blind grace: a block stamped before closesAt that appears late still confirms the void', async () => {
+    queues = recordQueues();
+    // Wall time: closesAt is a minute or two ago, far past the old 20 s grace.
+    const closesAt = (Math.floor(Date.now() / 60_000) - 1) * 60_000;
+    const fake = fakeChainAt(closesAt - 10_000);
+    const r = await stakesRound(fake, { opensAt: closesAt - 24 * 3_600_000 });
+    setClock(closesAt - 10_000);
+    await r.stub.init(r.locked);
+    fake.automine = false;
+    await r.stub.requestVoid();
+    await alarmAt(r.stub, closesAt - 9_000);
+    expect(fake.pool.size).toBe(1);
+
+    const runAlarms = () =>
+      runInDurableObject(r.stub, async (i) => {
+        await i.alarm();
+        await i.alarm();
+      });
+    Object.assign(env, { ENVIRONMENT: 'staging' }); // the game clock is wall time now
+    try {
+      // The sequencer's head is still stamped before closesAt: close waits.
+      fake.time = Math.floor(closesAt / 1000) - 5;
+      await runAlarms();
+      expect(await voidRecord(r.stub)).toMatchObject({ state: 'requested' });
+
+      // Then it publishes a block stamped before closesAt, with our voidRound in it.
+      fake.time = Math.floor(closesAt / 1000) - 4;
+      fake.mine();
+      await vi.waitFor(
+        async () => {
+          await runAlarms();
+          expect(await voidRecord(r.stub)).toMatchObject({ state: 'confirmed', applied: true });
+        },
+        { timeout: 10_000, interval: 500 },
+      );
+    } finally {
+      Object.assign(env, { ENVIRONMENT: 'local' });
+    }
+    for (const mode of ['free', 'stakes'] as const) {
+      expect(await modeRow(r.locked.roundId, mode)).toMatchObject({
+        status: 'voided',
+        refund_reason: 4,
+      });
+    }
+  });
+
+  it('our own voidRound landing after its void was abandoned, with Free not voided, alerts', async () => {
+    queues = recordQueues();
+    const captured = captureAlerts();
+    const closesAt = Date.UTC(2026, 9, 11, 1, 0, 0);
+    const fake = fakeChainAt(closesAt - 10_000);
+    const r = await stakesRound(fake, { opensAt: closesAt - 24 * 3_600_000 });
+    setClock(closesAt - 10_000);
+    await r.stub.init(r.locked);
+    fake.escrowRounds.get(BigInt(r.chainRoundId))!.open = false; // every push is refused
+    await r.stub.requestVoid();
+    await alarmAt(r.stub, closesAt - 9_000);
+    fake.time = Math.floor(closesAt / 1000);
+    await alarmAt(r.stub, closesAt);
+    expect(await voidRecord(r.stub)).toMatchObject({ state: 'abandoned' });
+
+    // A voidRound of ours (the indexer finds it in sent_txs) is mirrored anyway.
+    const evt = chainEvent('escrow', 'RoundRefunded', { roundId: r.chainRoundId, reason: '4' });
+    await recordSentTx(env, {
+      chainId: evt.chainId,
+      txHash: evt.txHash,
+      kind: 'voidRound',
+      roundKey: null,
+    });
+    await commitStatements(await stakesVoidHandler(evt, env, { rpc: null as never }));
+    captured.restore();
+    expect(
+      captured.alerts.filter((a) => a.code === 'ALERT_DO_ERROR' && a.roundId === r.locked.roundId),
+    ).toMatchObject([{ step: 'void_landed_after_abandon', txHash: evt.txHash }]);
+    // Stakes is voided as for a guardian void; Free goes on.
+    expect((await modeRow(r.locked.roundId, 'stakes'))?.status).toBe('voided');
+    expect((await modeRow(r.locked.roundId, 'free'))?.status).toBe('pending');
+    expect((await r.stub.getState()).modes.stakes?.status).toBe('voided');
+  });
+});
+
+describe('W4-F1: a void that can never confirm alerts (V2)', () => {
+  it('a voidRound that reverts before close alerts once', async () => {
+    queues = recordQueues();
+    const captured = captureAlerts();
+    const t0 = Date.UTC(2026, 9, 8, 12, 0, 0);
+    const fake = fakeChainAt(t0);
+    const r = await stakesRound(fake);
+    setClock(t0);
+    await r.stub.init(r.locked);
+    fake.automine = false;
+    await r.stub.requestVoid();
+    await alarmAt(r.stub, t0 + 1_000);
+    expect(fake.pool.size).toBe(1);
+    // The escrow round is no longer Open when it is mined (say, a guardian void not indexed yet).
+    fake.escrowRounds.get(BigInt(r.chainRoundId))!.open = false;
+    fake.mine();
+    await alarmAt(r.stub, t0 + 4_000);
+    await alarmAt(r.stub, t0 + 8_000);
+    captured.restore();
+    const mine = captured.alerts.filter((a) => a.roundId === r.locked.roundId);
+    expect(mine).toMatchObject([
+      { code: 'ALERT_DO_ERROR', step: 'void_cannot_confirm', outcome: 'reverted' },
+    ]);
+    expect(await voidRecord(r.stub)).toMatchObject({ state: 'requested' });
+  });
+
+  it(`a voidRound refused ${VOID_REFUSED_ALERT_AFTER} times in a row alerts once`, async () => {
+    queues = recordQueues();
+    const captured = captureAlerts();
+    const t0 = Date.UTC(2026, 9, 8, 12, 0, 0);
+    const fake = fakeChainAt(t0);
+    const r = await stakesRound(fake);
+    setClock(t0);
+    await r.stub.init(r.locked);
+    fake.escrowRounds.get(BigInt(r.chainRoundId))!.open = false; // gas estimation reverts
+    await r.stub.requestVoid();
+    const alertsNow = () =>
+      captured.alerts.filter(
+        (a) => a.roundId === r.locked.roundId && a.step === 'void_cannot_confirm',
+      );
+    for (let i = 0; i < VOID_REFUSED_ALERT_AFTER - 1; i++) await alarmAt(r.stub, t0 + i * 3_000);
+    expect(alertsNow()).toEqual([]);
+    await alarmAt(r.stub, t0 + (VOID_REFUSED_ALERT_AFTER - 1) * 3_000);
+    await alarmAt(r.stub, t0 + VOID_REFUSED_ALERT_AFTER * 3_000);
+    captured.restore();
+    expect(alertsNow()).toMatchObject([{ code: 'ALERT_DO_ERROR', outcome: 'refused' }]);
+    expect(fake.sent).toHaveLength(0);
+  });
+});
+
+describe('W4-F1: permanent handler conditions alert and return (V3)', () => {
+  it('a guardian void the RoundDO has no Stakes mode for alerts instead of wedging dispatch', async () => {
+    queues = recordQueues();
+    const captured = captureAlerts();
+    const t0 = Date.UTC(2026, 9, 8, 12, 0, 0);
+    const fake = fakeChainAt(t0);
+    const r = await stakesRound(fake, { modes: ['free'] });
+    setClock(t0);
+    await r.stub.init(r.locked);
+    // D1 knows a Stakes mode the RoundDO was never given (a permanent mismatch).
+    await env.DB.prepare(
+      "INSERT INTO round_modes (round_id, mode, status, chain_round_id) VALUES (?1, 'stakes', 'pending', ?2)",
+    )
+      .bind(r.locked.roundId, r.chainRoundId)
+      .run();
+    const evt = chainEvent('escrow', 'RoundRefunded', { roundId: r.chainRoundId, reason: '4' });
+    const stmts = await stakesVoidHandler(evt, env, { rpc: null as never });
+    await commitStatements(stmts);
+    captured.restore();
+    expect(
+      captured.alerts.filter((a) => a.roundId === r.locked.roundId && a.code === 'ALERT_DO_ERROR'),
+    ).toMatchObject([{ step: 'stakes_void_mode_result' }]);
+    expect((await modeRow(r.locked.roundId, 'stakes'))?.status).toBe('voided');
   });
 });

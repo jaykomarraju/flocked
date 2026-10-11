@@ -105,9 +105,9 @@ async function chainNow(): Promise<number> {
   return Math.max(head, Math.floor(Date.now() / 1000));
 }
 
-async function minedReceipt(sender: TxSender, tx: SentTx) {
+async function minedReceipt(sender: TxSender, tx: SentTx, label: string) {
   for (let i = 0; i < 80; i++) {
-    const c = await sender.check(tx);
+    const c = await sender.check(tx, label);
     if (c.status === 'mined') return c;
     await sleep(250);
   }
@@ -117,7 +117,7 @@ async function minedReceipt(sender: TxSender, tx: SentTx) {
 async function send(sender: TxSender, to: Hex, data: Hex, gas: bigint, label: string) {
   const tx = await sender.sign({ to, data, gas }, { nonce: await sender.nextNonce() });
   await sender.broadcast(tx, label);
-  return { tx, mined: await minedReceipt(sender, tx) };
+  return { tx, mined: await minedReceipt(sender, tx, label) };
 }
 
 describe.sequential('FlockedAnchor and FlockedEscrow transactions on anvil', () => {
@@ -184,14 +184,18 @@ describe.sequential('FlockedAnchor and FlockedEscrow transactions on anvil', () 
         { nonce: await anchorer.nextNonce() },
       );
       await anchorer.broadcast(v1, 'anchor.lock');
-      expect((await anchorer.check(v1)).status).toBe('pending');
+      expect((await anchorer.check(v1, 'anchor.lock')).status).toBe('pending');
 
       skewMs = 13_000; // past the 12 s stuck threshold
-      expect((await anchorer.check(v1)).status).toBe('stuck');
+      const stuck = await anchorer.check(v1, 'anchor.lock');
+      expect(stuck.status).toBe('stuck');
+      if (stuck.status !== 'stuck') return;
+      // anvil holds v1, so the replacement bumps from v1's own fees.
+      expect(stuck.bumpFrom?.maxFeePerGas).toBe(BigInt(v1.maxFeePerGas));
       // The AnchorDO rebuilds the batch when it replaces: here it gains an item.
       const v2 = await anchorer.sign(
         { to: anchor, data: lockData([first, second]), gas: gasFor(75_000n, 2) },
-        { replace: v1 },
+        { replace: v1, bumpFrom: stuck.bumpFrom },
       );
       await anchorer.broadcast(v2, 'anchor.lock');
       expect(v2.nonce).toBe(v1.nonce);
@@ -201,7 +205,7 @@ describe.sequential('FlockedAnchor and FlockedEscrow transactions on anvil', () 
       expect(events.slice(-2).map((e) => e.replaces)).toEqual([[], [v1.hashes[0]]]);
 
       await anvil.request({ method: 'evm_mine' as never, params: [] as never });
-      const c = await anchorer.check(v2);
+      const c = await anchorer.check(v2, 'anchor.lock');
       expect(c.status).toBe('mined');
       if (c.status !== 'mined') return;
       expect(c.hash).toBe(v2.hashes[1]);

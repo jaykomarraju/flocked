@@ -113,6 +113,9 @@ describe('the guardian void: Stakes voided, Free continues', () => {
     const r = await stakesRound(fake);
     setClock(T0);
     await r.stub.init(r.locked);
+    // The admin void the RoundDO is pushing (its voidRound sits unmined on the fake chain).
+    fake.automine = false;
+    expect((await r.stub.requestVoid()).accepted).toBe(true);
     const evt = chainEvent('escrow', 'RoundRefunded', { roundId: r.chainRoundId, reason: '4' });
     await recordSentTx(env, {
       chainId: evt.chainId,
@@ -122,8 +125,10 @@ describe('the guardian void: Stakes voided, Free continues', () => {
     });
     await commitStatements(await stakesVoidHandler(evt, env, ctx));
     expect((await modeRow(r.locked.roundId, 'stakes'))?.status).toBe('voided');
-    // The RoundDO applies an admin void to every mode itself; it is not told here.
-    expect((await r.stub.getState()).modes.stakes?.status).toBe('pending');
+    // The RoundDO applies an admin void to every mode itself (its own alarm may already have, now
+    // that D1 has Stakes voided); the handler doesn't tell it a mode result.
+    const meta = (await readMeta(r.stub)) as { results?: Record<string, unknown> } | undefined;
+    expect(meta?.results?.stakes).toBeUndefined();
   });
 
   it('other refund reasons and unknown chain rounds are not voids', async () => {
