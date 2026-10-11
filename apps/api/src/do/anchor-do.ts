@@ -568,7 +568,9 @@ export class AnchorDO extends DurableObject<Env> implements AnchorDORpc {
         ),
       ),
     ]);
-    const chainSec = Number(block.timestamp);
+    // The next block's time: the head's, or the game clock when the head is older (anvil mines no
+    // empty blocks, so its head can be minutes behind). A commit sent too early is retried.
+    const chainSec = Math.max(Number(block.timestamp), Math.floor(now(this.env) / 1000));
     const out: ItemRow[] = [];
     rows.forEach((r, i) => {
       const a = states[i] as OnchainAnchor;
@@ -582,7 +584,9 @@ export class AnchorDO extends DurableObject<Env> implements AnchorDORpc {
         const m = JSON.parse(r.item_json) as AnchorCommitItem;
         if (a.committedAt !== 0n) return this.settleExisting(r, a.committedAt, commitMatches(m, a));
         if (a.lockedAt === 0n) return this.fail(key, kind, 'not_locked');
-        if (chainSec >= commitDeadlineSec(m)) return this.fail(key, kind, 'outside_window');
+        // Past its deadline only a version already sent is still tracked (expire() fails the rest);
+        // at beacon time the contract refuses it.
+        if (chainSec >= m.beaconTimeSec) return this.fail(key, kind, 'outside_window');
         if (chainSec < m.closesAtSec) return; // the chain's clock hasn't reached close yet
       } else {
         const m = JSON.parse(r.item_json) as AnchorManifestItem;
@@ -661,8 +665,13 @@ export class AnchorDO extends DurableObject<Env> implements AnchorDORpc {
       } else if (skipped.has(key)) {
         const reason = skipped.get(key) as number;
         log.warn('anchor_item_skipped', { roundId: r.round_id, kind: p.kind, reason });
-        // Already written by someone else: the next build settles it against the onchain state.
-        if (reason === 1) this.backToQueue(key, p.kind);
+        // Already written by someone else: the next build settles it against the onchain state. A
+        // commit mined before close (the chain's clock behind ours) is simply early: retry it.
+        const early =
+          p.kind === 'commit' &&
+          reason === 3 &&
+          blockSec < (JSON.parse(r.item_json) as AnchorCommitItem).closesAtSec;
+        if (reason === 1 || early) this.backToQueue(key, p.kind);
         else this.fail(key, p.kind, `skipped:${SKIP_REASONS[reason] ?? reason}`, 'skipped');
       } else {
         this.backToQueue(key, p.kind);

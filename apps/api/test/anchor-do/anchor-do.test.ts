@@ -201,6 +201,23 @@ describe('commit deadlines (PIPE-2, ALERT-2)', () => {
     expect(await lockTx(s.commit.txHash!)).toEqual([{ lock_tx: null, commit_tx: s.commit.txHash }]);
   });
 
+  it('a commit mined before close on the chain’s clock (Skipped 3) is retried, not dropped', async () => {
+    const h = await harness();
+    const l = lockItem(await insertRound(closeSec), closeSec);
+    lockOnchain(h.fake, l);
+    h.at((closeSec + 1) * 1000);
+    h.fake.time = closeSec - 2; // the chain is behind the game clock
+    await h.stub.submitCommit(commitItem(l));
+    await h.run(); // sent and mined at closeSec − 2: skipped as outside its window
+    await h.run(); // early, so back in the queue and sent again (now at closeSec)
+    await h.run();
+    expect(h.fake.sent).toHaveLength(2);
+    expect((await h.stub.status(l.roundKey)).commit).toMatchObject({
+      state: 'confirmed',
+      txHash: h.fake.sent[1]!.hash,
+    });
+  });
+
   it('a commit for a key that was never locked fails before any transaction (rule 7 follows)', async () => {
     const h = await harness();
     const alerts = alertSpy();
