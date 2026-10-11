@@ -102,6 +102,14 @@ export async function createAccount(
       now,
     });
     const statements = [
+      // An unverified row for this identity (offered for linking, never proven; findAccount
+      // ignores it) must not block the sign-up that proves control of it: release it first, in
+      // the same transaction (W3-Z carry-over). A verified row still wins through the unique index.
+      db
+        .prepare(
+          'DELETE FROM identities WHERE provider = ?1 AND external_id = ?2 AND verified_at IS NULL',
+        )
+        .bind(provider, externalId),
       db
         .prepare('INSERT INTO users (id, ref_code, created_at) VALUES (?1, ?2, ?3)')
         .bind(userId, generateRefCode(), now),

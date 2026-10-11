@@ -45,8 +45,9 @@ describe('GET /me', () => {
       flags: { needsHandle: false },
       tos: { currentVersion: TOS, acceptedVersion: '2026-10-01' },
       verification: { personVerified: false, verifiedAt: null, country: null },
-      // Stakes eligibility is `not_verified` until Coinbase verification lands (W5-B).
-      stakes: { eligible: false, reasons: ['not_verified'] },
+      // Unverified, and with W5-B's defaults (no `geo.stakes.allow`, no request location, the
+      // `mode.stakes.enabled` kill switch off) Stakes is unavailable everywhere.
+      stakes: { eligible: false, reasons: ['not_verified', 'geo_blocked', 'stakes_disabled'] },
     });
   });
 
@@ -58,7 +59,13 @@ describe('GET /me', () => {
     expect(body?.user.handle).toBeNull();
     expect(body?.flags).toEqual({ needsHandle: true });
     expect(body?.balances).toEqual({ global: '0', rooms: [] });
-    expect(body?.stakes.reasons).toEqual(['not_verified', 'age_unattested', 'tos_not_accepted']);
+    expect(body?.stakes.reasons).toEqual([
+      'not_verified',
+      'geo_blocked',
+      'age_unattested',
+      'tos_not_accepted',
+      'stakes_disabled',
+    ]);
   });
 
   it('reports a self-exclusion and a suspension', async () => {
@@ -218,7 +225,7 @@ describe('POST /me/tos', () => {
       ageAttestedAt: Number(fixed.FLOCKED_TEST_CLOCK),
     });
     const { body: view } = await me(s.headers, fixed);
-    expect(view?.stakes.reasons).toEqual(['not_verified']);
+    expect(view?.stakes.reasons).toEqual(['not_verified', 'geo_blocked', 'stakes_disabled']);
   });
 
   it('409 for a stale version; 400 without the age attestation', async () => {

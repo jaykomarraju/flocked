@@ -206,6 +206,16 @@ const SPEC_COLUMNS: Record<string, readonly string[]> = {
   daily_grant_skips: ['user_id', 'round_id', 'balance', 'skipped_at'],
   // 0005_scheduler (W4-A): at-most-once operator transactions; not yet a row in the spec's data model.
   operator_txs: ['purpose', 'status', 'tx_json', 'tx_hash', 'created_at', 'updated_at'],
+  // 0009_personhood (W5-B): admin flags and config, and deleted people's cap state; neither is a
+  // row in the spec's data model yet (W5-B spec issue).
+  config: ['key', 'value_json', 'updated_at', 'updated_by'],
+  person_tombstones: [
+    'person_id',
+    'daily_stake_cap',
+    'pending_cap',
+    'pending_cap_effective_at',
+    'created_at',
+  ],
 };
 
 /** Primary keys the spec names ("PK (...)", or "(PK)" on a column). */
@@ -220,6 +230,8 @@ const SPEC_PRIMARY_KEYS: Record<string, readonly string[]> = {
   settlements: ['round_id', 'mode', 'proposal_seq'],
   point_balances: ['user_id', 'scope'],
   share_cards: ['share_id'],
+  config: ['key'],
+  person_tombstones: ['person_id'],
 };
 
 interface KeySpec {
@@ -521,6 +533,17 @@ describe('constraints reject bad rows', () => {
         "INSERT INTO points_ledger (id, user_id, scope, delta, reason, ref_id, created_at) VALUES ('l3', 'u', 'global', 5, 'bonus', 'r', 0)",
       ),
     ).toContain('CHECK constraint failed');
+  });
+
+  it('config: value_json is JSON; person_tombstones: a pending cap needs its effective time', async () => {
+    expect(
+      await rejects("INSERT INTO config (key, value_json, updated_at) VALUES ('k', 'not json', 0)"),
+    ).toContain('CHECK constraint failed');
+    expect(
+      await rejects(
+        "INSERT INTO person_tombstones (person_id, pending_cap, created_at) VALUES ('0x01', 5, 0)",
+      ),
+    ).toContain('person_tombstones_pending_cap_pair');
   });
 
   it('rounds: room rounds need room_id, and locked rounds are complete', async () => {
