@@ -95,8 +95,11 @@ const CANCEL_GAS = 21_000n;
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const lastHash = (tx: SentTx) => tx.hashes[tx.hashes.length - 1] as Hex;
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err));
+/** `operator_txs.tx_json`: the SentTx, marked once its purpose is abandoned (T4). */
+type StoredTx = SentTx & { abandoned?: true };
 /** A 0-value send to the operator itself: the version that cancels an abandoned purpose (T4). */
 const isCancel = (tx: SentTx) => tx.to.toLowerCase() === tx.from.toLowerCase();
+const isAbandoned = (tx: StoredTx) => tx.abandoned === true || isCancel(tx);
 /** `createRound:<id>` → `operator.createRound`, the label its versions are recorded under. */
 const labelOf = (purpose: string) => `operator.${purpose.slice(0, purpose.indexOf(':'))}`;
 
@@ -213,9 +216,9 @@ async function runOperatorTx(
     if (claimed.meta.changes === 0) return runOperatorTx(env, deps, purpose, label, data);
     await broadcastQuietly(op, tx, label, purpose);
   } else {
-    tx = JSON.parse(row.tx_json) as SentTx;
+    tx = JSON.parse(row.tx_json) as StoredTx;
     // Abandoned: cancelOperatorTx owns it now, and nothing may re-sign the call.
-    if (isCancel(tx)) return { status: 'cancelled', txHash: lastHash(tx) };
+    if (isAbandoned(tx)) return { status: 'cancelled', txHash: lastHash(tx) };
   }
 
   const deadline = t() + (deps.waitMs ?? 20_000);
@@ -267,8 +270,9 @@ async function runOperatorTx(
 }
 
 /**
- * T4: one step of cancelling `purpose`'s pending transaction. The first step replaces it at once with
- * a 0-value send to the operator itself (fees bumped from the version a node holds); later steps poll
+ * T4: one step of cancelling `purpose`'s pending transaction. The first step marks the purpose
+ * abandoned and replaces its transaction at once with a 0-value send to the operator itself (fees
+ * bumped from the version a node holds; at the fee cap it waits for a later step); later steps poll
  * that cancellation, replacing it when it is stuck. Finished: `cancelled` once the cancellation is
  * mined or the nonce went to another transaction, or `mined` / `reverted` if the abandoned call
  * landed first. Null when the purpose never sent anything.
@@ -286,7 +290,13 @@ export async function cancelOperatorTx(
   if (!row) return null;
   if (row.status !== 'pending') return finalResult(op, row);
   const label = labelOf(purpose);
-  const tx = JSON.parse(row.tx_json) as SentTx;
+  let tx = JSON.parse(row.tx_json) as StoredTx;
+  if (!isAbandoned(tx)) {
+    // Marked first, so the sweep keeps at it even when no replacement can go out yet.
+    const marked: StoredTx = { ...tx, abandoned: true };
+    if (!(await swapTx(db, purpose, tx, marked, t()))) return cancelOperatorTx(env, deps, purpose);
+    tx = marked;
+  }
   const first = !isCancel(tx);
   const c = await op.sender.check(tx, label, first ? { replaceNow: true } : {});
   if (c.status === 'mined') {
@@ -326,7 +336,10 @@ export async function driveCancellations(
   deps: OperatorDeps,
 ): Promise<Record<string, string>> {
   const { results } = await env.DB.prepare(
-    "SELECT purpose FROM operator_txs WHERE status = 'pending' AND lower(json_extract(tx_json, '$.to')) = lower(json_extract(tx_json, '$.from')) ORDER BY created_at",
+    `SELECT purpose FROM operator_txs WHERE status = 'pending'
+       AND (json_extract(tx_json, '$.abandoned') = 1
+            OR lower(json_extract(tx_json, '$.to')) = lower(json_extract(tx_json, '$.from')))
+     ORDER BY created_at`,
   ).all<{ purpose: string }>();
   const out: Record<string, string> = {};
   for (const { purpose } of results) {

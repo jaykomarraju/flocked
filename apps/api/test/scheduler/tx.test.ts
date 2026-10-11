@@ -225,6 +225,33 @@ describe('T4: abandoned operator transactions are cancelled', () => {
     expect(fake.sent[2]!.nonce).toBe(v1.nonce + 1);
   });
 
+  it('a cancellation that cannot replace yet (fees at the cap) is kept up by the sweep', async () => {
+    const t = Date.UTC(2027, 6, 8, 12, 0, 0);
+    const { fake, deps } = await chainHarness(t);
+    setClock(t);
+    fake.automine = false;
+    Object.assign(env, { TX_MAX_FEE_GWEI: '1.25' }); // no room to outbid the held version by 10 %
+    const roundId = newUlid();
+    try {
+      await createRound(env, deps.operator, { roundId, cfg: cfg(t) });
+      expect((await cancelCreateRound(env, deps.operator, roundId))?.status).toBe('pending');
+      expect(fake.sent).toHaveLength(1);
+      expect(await driveCancellations(env, deps.operator)).toEqual({
+        [`createRound:${roundId}`]: 'pending',
+      });
+    } finally {
+      delete (env as { TX_MAX_FEE_GWEI?: string }).TX_MAX_FEE_GWEI;
+    }
+    // Abandoned all the same: nothing re-signs the call meanwhile.
+    expect(await createRound(env, deps.operator, { roundId, cfg: cfg(t) })).toMatchObject({
+      status: 'cancelled',
+    });
+    // Room again (the cap went up): the next sweep sends the cancellation.
+    await driveCancellations(env, deps.operator);
+    expect(fake.sent).toHaveLength(2);
+    expect(fake.sent[1]).toMatchObject({ nonce: fake.sent[0]!.nonce, data: '0x' });
+  });
+
   it('the tick cancels a createRound still pending at opensAt, so it cannot land late', async () => {
     const slot = dailySlot('2027-07-07');
     const id = (await insertDailyRound(env.DB, slot)) as string;
@@ -259,7 +286,7 @@ describe('T4: abandoned operator transactions are cancelled', () => {
 
     fake.mine();
     const report = await schedulerTick(env, deps);
-    expect(report.cancellations).toEqual({ [`createRound:${id}`]: 'cancelled' });
+    expect(report.cancellations[`createRound:${id}`]).toBe('cancelled');
     expect(fake.roundCount).toBe(0n);
   });
 });
