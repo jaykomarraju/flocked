@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.28;
+pragma solidity 0.8.30;
 
 /// @title StakesMath
 /// @notice The Stakes closed form (Product_Spec.md, "Settlement and payout math"). Every entry has the same stake s,
@@ -40,6 +40,10 @@ library StakesMath {
 
     /// @notice The refund reason for a tally, or 0 if it settles.
     /// @dev Reasons in spec order: 1 too few valid entries, 2 one-sided, 3 headcount tie.
+    /// @param minEntrants Minimum valid entries for a settlement.
+    /// @param n0 Valid entries on option 0.
+    /// @param n1 Valid entries on option 1.
+    /// @return The reason, or 0.
     function refundReason(uint256 minEntrants, uint256 n0, uint256 n1) internal pure returns (uint8) {
         if (n0 + n1 < minEntrants) return REASON_TOO_FEW;
         if (n0 == 0 || n1 == 0) return REASON_ONE_SIDED;
@@ -56,6 +60,7 @@ library StakesMath {
     /// @param n0 Valid entries on option 0.
     /// @param n1 Valid entries on option 1.
     /// @param nVoid VOID entries.
+    /// @return o The outcome: a refund (status 3, reason) or a settlement (status 2, winner and every amount).
     function compute(
         uint256 stake,
         uint256 feeBps,

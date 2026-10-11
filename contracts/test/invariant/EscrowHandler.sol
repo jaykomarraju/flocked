@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {Test} from "forge-std/Test.sol";
+import {Test, Vm} from "forge-std/Test.sol";
 
 import {FlockedEscrow} from "../../src/FlockedEscrow.sol";
 import {IFlockedEscrow} from "../../src/interfaces/IFlockedEscrow.sol";
@@ -12,7 +12,9 @@ import {TestMerkle} from "../utils/TestMerkle.sol";
 /// @notice Drives the escrow through every lifecycle path. Each action checks its own preconditions and only makes
 ///         calls that must succeed (the suite runs with `fail_on_revert`), so an unexpected revert is a failure.
 ///         Proposals use arbitrary tallies (any split of the entrants) and optionally an over-generous payout tree
-///         that gives every entrant every kind of leaf, so the per-kind claim caps are what keep the round solvent.
+///         that gives every entrant every kind of leaf (and a non-entrant every kind too), so the per-kind claim
+///         caps and the entrant check are what keep the round solvent. Every escrow event is tallied into per-round
+///         ghost totals (paid out, fees credited, claims per account) that the invariants reconcile with the state.
 contract EscrowHandler is Test {
     FlockedEscrow public immutable escrow;
     MockUSDC public immutable usdc;
@@ -22,12 +24,14 @@ contract EscrowHandler is Test {
     address internal immutable pauser;
     address internal immutable treasury;
 
-    uint256 public constant MAX_ROUNDS = 6;
+    uint256 public constant MAX_ROUNDS = 8;
     uint256 public constant N_ACTORS = 16;
 
     address[] public actors;
     address[] public creators;
     address[] public guardianCandidates;
+    /// @notice Never enters a round, but over-generous trees give it leaves.
+    address public immutable stranger;
 
     /// @notice Who the handler expects to hold GUARDIAN_ROLE.
     address public expectedGuardian;
@@ -43,6 +47,24 @@ contract EscrowHandler is Test {
     mapping(uint256 => IFlockedEscrow.Status) public lastStatus;
     bool public badTransition;
     bool public overClaimed;
+
+    // Ghost totals from the escrow's events.
+    /// @notice USDC paid to entrants per round (`Claimed` plus `RefundClaimed` amounts).
+    mapping(uint256 => uint256) public paid;
+    /// @notice Fees credited per round at finalize (`Credited` amounts, attributed to the next `RoundFinalized`).
+    mapping(uint256 => uint256) public creditedFor;
+    /// @notice `Claimed` plus `RefundClaimed` events per round and account.
+    mapping(uint256 => mapping(address => uint256)) public claimEvents;
+    /// @notice `Claimed` events per round and kind (0-2), and `RefundClaimed` events per round (index 3).
+    mapping(uint256 => uint256[4]) internal _claimsByKind;
+    /// @notice `Entered` events per round.
+    mapping(uint256 => uint256) public enteredEvents;
+    /// @notice Every `Credited` amount, and every `Withdrawn` amount.
+    uint256 public creditedTotal;
+    uint256 public withdrawnTotal;
+    uint256 internal _pendingCredit;
+    /// @notice Set if a claim that must revert (wrong status, non-entrant, second claim) succeeded.
+    bool public exclusivityBroken;
 
     mapping(bytes32 => uint256) public calls;
 
@@ -74,22 +96,63 @@ contract EscrowHandler is Test {
             guardianCandidates.push(makeAddr(string.concat("guardian", vm.toString(i))));
         }
         guardianCandidates.push(operator_); // an address that already holds another role
+        stranger = makeAddr("stranger");
     }
 
     modifier record(bytes32 name) {
         calls[name]++;
+        vm.recordLogs();
         _;
+        _tallyLogs(vm.getRecordedLogs());
         _recordStatuses();
+    }
+
+    function claimsByKind(uint256 id, uint256 kind) external view returns (uint256) {
+        return _claimsByKind[id][kind];
     }
 
     // ---------------------------------------------------------------- actions
 
     function createRound(uint256 seed) external record("createRound") {
         if (escrow.roundCount() >= MAX_ROUNDS) return;
-        seed = uint256(keccak256(abi.encode(seed))); // fuzz seeds are often 0, small or all ones
+        _createRound(uint256(keccak256(abi.encode(seed))), 2 days); // fuzz seeds are often 0, small or all ones
+    }
+
+    /// @dev One round from create to a settle-shaped proposal, with random parameters, tally and tree. Without it
+    ///      random interleavings settle almost nothing (one run in 257 measured in W4-C): pauses, far warps by other
+    ///      actions and vetoes end most rounds first. It stops early at random, leaving the round Open (to the other
+    ///      actions) or SettleProposed (to `veto`, `finalize` and the claims).
+    function settleScenario(uint256 seed, bool generousTree) external record("settleScenario") {
+        if (escrow.roundCount() >= MAX_ROUNDS) return;
+        seed = uint256(keccak256(abi.encode(seed, "scenario")));
+        uint256 id = _createRound(seed, 1 hours);
+        _recordStatuses(); // each step is a transition the state machine must allow
+        IFlockedEscrow.Round memory rd = escrow.getRound(id);
+        if (escrow.paused()) {
+            vm.prank(admin);
+            escrow.unpause();
+        }
+        vm.warp(rd.cfg.opensAt);
+        uint256 count = 3 + (seed >> 120) % 10;
+        uint256 len = bound(seed >> 136, 64, 2048);
+        for (uint256 k; k < count; k++) {
+            _enterOne(id, rd.cfg.stake, actors[(seed + k) % N_ACTORS], len);
+        }
+        if ((seed >> 160) % 5 == 0) return; // leave it Open
+        vm.warp(escrow.beaconTime(rd.cfg.beaconRound));
+        // `_split` shapes three tallies in four to settle; force the shaped branch here.
+        _propose(id, (seed >> 168) | 1, generousTree);
+        _recordStatuses();
+        if ((seed >> 176) % 2 == 0) return; // leave the proposal to the challenge window
+        rd = escrow.getRound(id);
+        vm.warp(rd.claimsOpenAt);
+        escrow.finalize(id);
+    }
+
+    function _createRound(uint256 seed, uint256 maxDuration) internal returns (uint256) {
         IFlockedEscrow.RoundConfig memory cfg;
         cfg.opensAt = uint64(block.timestamp + 1);
-        cfg.closesAt = cfg.opensAt + uint64(bound(seed, 1 minutes, 2 days));
+        cfg.closesAt = cfg.opensAt + uint64(bound(seed, 1 minutes, maxDuration));
         uint256 t = uint256(cfg.closesAt) + 60 + (seed >> 8) % 538; // beacon time <= t + PERIOD - 1
         cfg.beaconRound = uint64((t - escrow.GENESIS() + escrow.PERIOD() - 1) / escrow.PERIOD() + 1);
         cfg.stake = uint128(bound(seed >> 16, 1e6, 100e6));
@@ -100,7 +163,7 @@ contract EscrowHandler is Test {
         cfg.creator = creators[(seed >> 112) % creators.length];
         cfg.questionHash = keccak256(abi.encode(seed));
         vm.prank(operator);
-        escrow.createRound(cfg);
+        return escrow.createRound(cfg);
     }
 
     /// @dev Enters one to four actors (starting at `actorSeed`) into the round.
@@ -138,9 +201,12 @@ contract EscrowHandler is Test {
         uint256 bt = escrow.beaconTime(rd.cfg.beaconRound);
         if (block.timestamp < bt) vm.warp(bt);
         if (block.timestamp >= uint256(rd.cfg.closesAt) + escrow.REFUND_TIMEOUT()) return;
+        _propose(id, uint256(keccak256(abi.encode(split))), generousTree);
+    }
 
-        // Any split of the entrants is a tally the operator could post.
-        split = uint256(keccak256(abi.encode(split)));
+    /// @dev Posts a tally from `split` (any split of the entrants is a tally the operator could post).
+    function _propose(uint256 id, uint256 split, bool generousTree) internal {
+        IFlockedEscrow.Round memory rd = escrow.getRound(id);
         (uint256 n0, uint256 n1, uint256 nVoid) = _split(rd.entryCount, split);
         StakesMath.Outcome memory o = StakesMath.compute(
             rd.cfg.stake, rd.cfg.feeBps, rd.cfg.creatorBps, rd.cfg.capMultiple, rd.cfg.minEntrants, n0, n1, nVoid
@@ -208,6 +274,7 @@ contract EscrowHandler is Test {
         IFlockedEscrow.Round memory rd = escrow.getRound(id);
         address a = _leafAccounts[id][idx];
         uint8 kind = _leafKinds[id][idx];
+        if (!escrow.hasEntered(id, a)) return _expectNotEntrant(id, idx, a, kind);
         if (escrow.hasClaimed(id, a)) return _expectCapped(id, idx, a, kind);
 
         (uint256 nM, uint256 nL) = rd.winner == 0 ? (rd.n0, rd.n1) : (rd.n1, rd.n0);
@@ -235,6 +302,7 @@ contract EscrowHandler is Test {
     ///      fails on the missing check rather than on an empty balance, then restored.
     function _expectCapped(uint256 id, uint256 idx, address a, uint8 kind) internal {
         calls["probe"]++;
+        _beginProbe();
         bytes32[] memory proof = TestMerkle.proof(_leaves[id], idx);
         uint256 bal = usdc.balanceOf(address(escrow));
         deal(address(usdc), address(escrow), bal + 2_000e6);
@@ -244,6 +312,70 @@ contract EscrowHandler is Test {
         } catch {
             deal(address(usdc), address(escrow), bal);
         }
+        _endProbe();
+    }
+
+    /// @dev A leaf for an address that never entered must not pay, even with a valid proof.
+    function _expectNotEntrant(uint256 id, uint256 idx, address a, uint8 kind) internal {
+        calls["probeStranger"]++;
+        _beginProbe();
+        bytes32[] memory proof = TestMerkle.proof(_leaves[id], idx);
+        vm.prank(a);
+        vm.expectRevert(IFlockedEscrow.NotEntrant.selector);
+        escrow.claim(id, IFlockedEscrow.Kind(kind), proof);
+        _endProbe();
+    }
+
+    /// @dev Claim exclusivity: on any round, tries a claim path that must revert for the chosen account (an entrant,
+    ///      someone who already claimed, or the stranger) and flags it if it pays. The escrow is topped up first, so a
+    ///      probe fails on the missing check rather than on an empty balance.
+    function probeExclusivity(uint256 roundSeed, uint256 actorSeed, uint8 kindSeed) external record("probe") {
+        (bool ok, uint256 id) = _pickRound(roundSeed);
+        if (!ok) return;
+        IFlockedEscrow.Round memory rd = escrow.getRound(id);
+        IFlockedEscrow.Status st = rd.status;
+        // claim and claimRefund finalize a due proposal first, so probe against the status they will see.
+        if (_proposed(st) && block.timestamp >= rd.claimsOpenAt) {
+            st = st == IFlockedEscrow.Status.SettleProposed
+                ? IFlockedEscrow.Status.Settled
+                : IFlockedEscrow.Status.Refunded;
+        }
+        address[] storage es = _entrants[id];
+        address a = es.length == 0 || actorSeed % 4 == 0 ? stranger : es[(actorSeed >> 8) % es.length];
+        IFlockedEscrow.Kind kind = IFlockedEscrow.Kind(kindSeed % 3);
+        bytes32[] memory proof = new bytes32[](0);
+
+        _beginProbe();
+        uint256 bal = usdc.balanceOf(address(escrow));
+        deal(address(usdc), address(escrow), bal + 2_000e6);
+        vm.startPrank(a);
+        if (st == IFlockedEscrow.Status.Settled) {
+            // No refunds from a settled round, for anyone.
+            try escrow.claimRefund(id) {
+                exclusivityBroken = true;
+            } catch {}
+        } else if (st == IFlockedEscrow.Status.Refunded) {
+            // No payouts from a refunded round; refunds only for entrants, once.
+            try escrow.claim(id, kind, proof) {
+                exclusivityBroken = true;
+            } catch {}
+            if (a == stranger || escrow.hasClaimed(id, a)) {
+                try escrow.claimRefund(id) {
+                    exclusivityBroken = true;
+                } catch {}
+            }
+        } else {
+            // Nothing is claimable before an outcome is final.
+            try escrow.claim(id, kind, proof) {
+                exclusivityBroken = true;
+            } catch {}
+            try escrow.claimRefund(id) {
+                exclusivityBroken = true;
+            } catch {}
+        }
+        vm.stopPrank();
+        deal(address(usdc), address(escrow), bal);
+        _endProbe();
     }
 
     function claimRefund(uint256 roundSeed, uint256 actorSeed) external record("claimRefund") {
@@ -413,6 +545,11 @@ contract EscrowHandler is Test {
     {
         _clearTree(id);
         address[] storage es = _entrants[id];
+        if (mode == 3) {
+            for (uint8 k; k < 3; k++) {
+                _pushLeaf(id, stranger, k);
+            }
+        }
         for (uint256 i; i < es.length; i++) {
             if (mode < 4) {
                 for (uint8 k; k < 3; k++) {
@@ -442,6 +579,51 @@ contract EscrowHandler is Test {
 
     function _proposed(IFlockedEscrow.Status s) internal pure returns (bool) {
         return s == IFlockedEscrow.Status.SettleProposed || s == IFlockedEscrow.Status.RefundProposed;
+    }
+
+    /// @dev Foundry records logs from reverted calls too, and a reverting claim may have finalized (and credited) first.
+    ///      So a probe tallies the real logs so far, and drops whatever the probe emitted.
+    function _beginProbe() internal {
+        _tallyLogs(vm.getRecordedLogs());
+    }
+
+    /// @dev `getRecordedLogs` is declared view but drains the buffer, so this discards the probe's logs.
+    function _endProbe() internal view {
+        vm.getRecordedLogs();
+    }
+
+    /// @dev Tallies the escrow's events into the ghost totals.
+    function _tallyLogs(Vm.Log[] memory logs) internal {
+        for (uint256 i; i < logs.length; i++) {
+            Vm.Log memory l = logs[i];
+            if (l.emitter != address(escrow)) continue;
+            bytes32 t = l.topics[0];
+            if (t == IFlockedEscrow.Claimed.selector) {
+                uint256 id = uint256(l.topics[1]);
+                (uint8 kind, uint256 amount) = abi.decode(l.data, (uint8, uint256));
+                paid[id] += amount;
+                claimEvents[id][address(uint160(uint256(l.topics[2])))]++;
+                _claimsByKind[id][kind]++;
+            } else if (t == IFlockedEscrow.RefundClaimed.selector) {
+                uint256 id = uint256(l.topics[1]);
+                paid[id] += abi.decode(l.data, (uint256));
+                claimEvents[id][address(uint160(uint256(l.topics[2])))]++;
+                _claimsByKind[id][3]++;
+            } else if (t == IFlockedEscrow.Entered.selector) {
+                enteredEvents[uint256(l.topics[1])]++;
+            } else if (t == IFlockedEscrow.Credited.selector) {
+                uint256 amount = abi.decode(l.data, (uint256));
+                _pendingCredit += amount;
+                creditedTotal += amount;
+            } else if (t == IFlockedEscrow.RoundFinalized.selector) {
+                // _finalize credits the treasury and the creator just before it emits RoundFinalized.
+                creditedFor[uint256(l.topics[1])] += _pendingCredit;
+                _pendingCredit = 0;
+            } else if (t == IFlockedEscrow.Withdrawn.selector) {
+                withdrawnTotal += abi.decode(l.data, (uint256));
+            }
+        }
+        assertEq(_pendingCredit, 0, "Credited without RoundFinalized");
     }
 
     /// @dev Records status history and flags any transition outside the spec's state machine.

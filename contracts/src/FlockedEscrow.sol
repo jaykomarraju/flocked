@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.28;
+pragma solidity 0.8.30;
 
 import {AccessControl, IAccessControl} from "@openzeppelin-contracts/access/AccessControl.sol";
 import {AccessControlEnumerable} from "@openzeppelin-contracts/access/extensions/AccessControlEnumerable.sol";
@@ -26,36 +26,60 @@ contract FlockedEscrow is IFlockedEscrow, AccessControlEnumerable, Pausable, Ree
     // Roles and constants
     // ---------------------------------------------------------------------------------------------
 
+    /// @notice The backend key: `createRound`, `propose`, `voidRound` before close. Granted only through the timelock.
     bytes32 public constant OPERATOR_ROLE = keccak256("OPERATOR_ROLE");
+    /// @notice The guardian multisig: `veto`, `voidRound` before close, `transferGuardian`. Exactly one holder.
     bytes32 public constant GUARDIAN_ROLE = keccak256("GUARDIAN_ROLE");
+    /// @notice May `pause` entries, but not unpause.
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
 
+    /// @notice EIP-712 type hash of `EntryTicket`.
     bytes32 public constant ENTRY_TICKET_TYPEHASH =
         keccak256("EntryTicket(uint256 roundId,address wallet,bytes32 personTag,uint64 expiry)");
 
+    /// @notice Minimum gap from `closesAt` to the beacon time of the round's `beaconRound`.
     uint256 public constant MIN_BEACON_DELAY = 60 seconds;
+    /// @notice Maximum gap from `closesAt` to the beacon time of the round's `beaconRound`.
     uint256 public constant MAX_BEACON_DELAY = 10 minutes;
+    /// @notice Longest a round may stay open (`closesAt - opensAt`).
     uint256 public constant MAX_ROUND_DURATION = 3 days;
+    /// @notice Time from a proposal to `claimsOpenAt`, during which the guardian can veto.
     uint256 public constant CHALLENGE_WINDOW = 2 hours;
+    /// @notice Time after `closesAt` after which an Open round can no longer be proposed and anyone can refund it.
     uint256 public constant REFUND_TIMEOUT = 72 hours;
 
-    uint256 public constant MIN_STAKE = 1e6; // 1 USDC
-    uint256 public constant MAX_STAKE = 100e6; // 100 USDC
+    /// @notice Launch ceiling: smallest stake (1 USDC).
+    uint256 public constant MIN_STAKE = 1e6;
+    /// @notice Launch ceiling: largest stake (100 USDC).
+    uint256 public constant MAX_STAKE = 100e6;
+    /// @notice Launch ceiling: largest treasury fee on the loss pool, in basis points.
     uint256 public constant MAX_FEE_BPS = 500;
+    /// @notice Launch ceiling: largest creator fee on the loss pool, in basis points.
     uint256 public constant MAX_CREATOR_BPS = 100;
+    /// @notice Launch ceiling: smallest winnings cap, as a multiple of the stake.
     uint256 public constant MIN_CAP_MULTIPLE = 1;
+    /// @notice Launch ceiling: largest winnings cap, as a multiple of the stake.
     uint256 public constant MAX_CAP_MULTIPLE = 10;
 
+    /// @notice Shortest accepted entry ciphertext, in bytes.
     uint256 public constant MIN_CIPHERTEXT = 64;
+    /// @notice Longest accepted entry ciphertext, in bytes.
     uint256 public constant MAX_CIPHERTEXT = 2048;
 
+    /// @notice Delay on ticket signer, treasury, operator grant and rescue changes.
     uint256 public constant ADMIN_TIMELOCK = 72 hours;
+    /// @notice Delay on the admin's replacement of the guardian.
     uint256 public constant GUARDIAN_TIMELOCK = 7 days;
 
+    /// @notice Timelock action tag: a new ticket signer, `abi.encode(address)`.
     bytes32 public constant ACTION_TICKET_SIGNER = keccak256("TICKET_SIGNER");
+    /// @notice Timelock action tag: a new treasury, `abi.encode(address)`.
     bytes32 public constant ACTION_TREASURY = keccak256("TREASURY");
+    /// @notice Timelock action tag: an OPERATOR_ROLE grant, `abi.encode(address)`.
     bytes32 public constant ACTION_OPERATOR_GRANT = keccak256("OPERATOR_GRANT");
+    /// @notice Timelock action tag: a guardian replacement, `abi.encode(address)`.
     bytes32 public constant ACTION_GUARDIAN = keccak256("GUARDIAN_REPLACEMENT");
+    /// @notice Timelock action tag: a rescue, `abi.encode(address token, address to, uint256 amount)`.
     bytes32 public constant ACTION_RESCUE = keccak256("RESCUE");
 
     uint8 internal constant REASON_VOIDED = 4;
@@ -128,7 +152,6 @@ contract FlockedEscrow is IFlockedEscrow, AccessControlEnumerable, Pausable, Ree
         GENESIS = drandGenesis;
         PERIOD = drandPeriod;
 
-        _setRoleAdmin(GUARDIAN_ROLE, GUARDIAN_ROLE);
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(GUARDIAN_ROLE, guardian_);
         _grantRole(OPERATOR_ROLE, operator);
@@ -198,7 +221,10 @@ contract FlockedEscrow is IFlockedEscrow, AccessControlEnumerable, Pausable, Ree
         bytes32 r,
         bytes32 s
     ) external nonReentrant whenNotPaused {
-        // A front-run permit must not block the entry; the pull below still needs the allowance.
+        // A front-run permit must not block the entry; the pull below still needs the allowance. The permit is a call
+        // to the immutable USDC under this function's reentrancy guard, and `_enter` reads every value it checks
+        // after it (static-analysis.md, S-1).
+        // slither-disable-next-line reentrancy-no-eth,reentrancy-benign
         try IERC20Permit(address(usdc))
             .permit(msg.sender, address(this), _rounds[roundId].cfg.stake, deadline, v, r, s) {}
             catch {}
@@ -442,7 +468,6 @@ contract FlockedEscrow is IFlockedEscrow, AccessControlEnumerable, Pausable, Ree
     function transferGuardian(address newGuardian) external onlyRole(GUARDIAN_ROLE) {
         if (newGuardian == address(0)) revert ZeroAddress();
         _setGuardian(newGuardian);
-        emit GuardianTransferred(msg.sender, newGuardian);
     }
 
     /// @inheritdoc IFlockedEscrow
@@ -519,8 +544,9 @@ contract FlockedEscrow is IFlockedEscrow, AccessControlEnumerable, Pausable, Ree
     /// @inheritdoc IFlockedEscrow
     function executeGuardianReplacement(address newGuardian) external onlyRole(DEFAULT_ADMIN_ROLE) {
         _consume(ACTION_GUARDIAN, abi.encode(newGuardian));
+        address previous = guardian();
         _setGuardian(newGuardian);
-        emit GuardianReplaced(newGuardian);
+        emit GuardianReplaced(previous, newGuardian);
     }
 
     /// @inheritdoc IFlockedEscrow
@@ -537,8 +563,8 @@ contract FlockedEscrow is IFlockedEscrow, AccessControlEnumerable, Pausable, Ree
     /// @inheritdoc IFlockedEscrow
     function executeRescue(address token, address to, uint256 amount)
         external
-        onlyRole(DEFAULT_ADMIN_ROLE)
         nonReentrant
+        onlyRole(DEFAULT_ADMIN_ROLE)
     {
         _consume(ACTION_RESCUE, abi.encode(token, to, amount));
         if (token == address(usdc)) {
@@ -588,6 +614,8 @@ contract FlockedEscrow is IFlockedEscrow, AccessControlEnumerable, Pausable, Ree
         if (block.timestamp > ticket.expiry) revert TicketExpired();
         if (ticket.personTag == bytes32(0)) revert ZeroPersonTag();
         digest = ticketDigest(ticket);
+        // The third value only describes the error, which `err` already rejects (static-analysis.md, S-2).
+        // slither-disable-next-line unused-return
         (address recovered, ECDSA.RecoverError err,) = ECDSA.tryRecoverCalldata(digest, ticketSig);
         if (err != ECDSA.RecoverError.NoError || recovered != signer) revert InvalidTicketSignature();
     }
@@ -656,10 +684,14 @@ contract FlockedEscrow is IFlockedEscrow, AccessControlEnumerable, Pausable, Ree
         if (rd.status != expected) revert WrongStatus(roundId, rd.status);
     }
 
-    /// @dev Moves GUARDIAN_ROLE from its one holder to `newGuardian`: constant cost, whatever happened before.
+    /// @dev Moves GUARDIAN_ROLE from its one holder to `newGuardian`: constant cost, whatever happened before. Every
+    ///      move, by the guardian or by the admin's replacement, emits `GuardianTransferred`. The bools `_revokeRole`
+    ///      and `_grantRole` return are always true here (the holder has the role; after the revoke nobody does).
     function _setGuardian(address newGuardian) internal {
-        _revokeRole(GUARDIAN_ROLE, guardian());
+        address previous = guardian();
+        _revokeRole(GUARDIAN_ROLE, previous);
         _grantRole(GUARDIAN_ROLE, newGuardian);
+        emit GuardianTransferred(previous, newGuardian);
     }
 
     function _schedule(bytes32 action, bytes memory data, uint256 delay) internal {

@@ -39,7 +39,9 @@ contract EscrowRevertsTest is EscrowBase {
         assertEq(escrow.getRoleMemberCount(escrow.GUARDIAN_ROLE()), 1);
         assertTrue(escrow.hasRole(escrow.OPERATOR_ROLE(), operator));
         assertTrue(escrow.hasRole(escrow.PAUSER_ROLE(), pauser));
-        assertEq(escrow.getRoleAdmin(escrow.GUARDIAN_ROLE()), escrow.GUARDIAN_ROLE());
+        // GUARDIAN_ROLE keeps the default admin role as its admin, which gives the admin nothing: grantRole, revokeRole
+        // and renounceRole revert for it whoever calls them (Escrow.Roles.t.sol).
+        assertEq(escrow.getRoleAdmin(escrow.GUARDIAN_ROLE()), escrow.DEFAULT_ADMIN_ROLE());
         assertEq(escrow.getRoleAdmin(escrow.OPERATOR_ROLE()), escrow.DEFAULT_ADMIN_ROLE());
         assertEq(escrow.ticketSigner(), signer);
         assertEq(escrow.treasury(), treasury);

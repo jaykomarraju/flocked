@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.28;
+pragma solidity 0.8.30;
 
 import {AccessControl} from "@openzeppelin-contracts/access/AccessControl.sol";
 import {ECDSA} from "@openzeppelin-contracts/utils/cryptography/ECDSA.sol";
@@ -17,25 +17,35 @@ contract FlockedAnchor is IFlockedAnchor, AccessControl, EIP712 {
     // Roles and constants
     // ---------------------------------------------------------------------------------------------
 
+    /// @notice The AnchorDO's key: `lock`, `commit`, `anchorManifest`. Granted only through the timelock.
     bytes32 public constant ANCHOR_ROLE = keccak256("ANCHOR_ROLE");
 
+    /// @notice EIP-712 type hash of `Receipt`.
     bytes32 public constant RECEIPT_TYPEHASH = keccak256(
         "Receipt(bytes16 roundId,uint8 mode,bytes32 userIdHash,uint64 stake,bytes32 commitment,uint32 seq,uint64 closesAt,uint64 beaconRound)"
     );
 
-    /// @notice Same beacon-delay bounds as `FlockedEscrow.createRound`.
+    /// @notice Minimum gap from `closesAt` to the beacon time, as in `FlockedEscrow.createRound`.
     uint256 public constant MIN_BEACON_DELAY = 60 seconds;
+    /// @notice Maximum gap from `closesAt` to the beacon time, as in `FlockedEscrow.createRound`.
     uint256 public constant MAX_BEACON_DELAY = 10 minutes;
 
+    /// @notice Delay on receipt signer changes and ANCHOR_ROLE grants.
     uint256 public constant ADMIN_TIMELOCK = 72 hours;
 
+    /// @notice Timelock action tag: a new receipt signer, `abi.encode(address)`.
     bytes32 public constant ACTION_RECEIPT_SIGNER = keccak256("RECEIPT_SIGNER");
+    /// @notice Timelock action tag: an ANCHOR_ROLE grant, `abi.encode(address)`.
     bytes32 public constant ACTION_ANCHOR_GRANT = keccak256("ANCHOR_GRANT");
 
-    /// @notice `Skipped` reasons.
+    /// @notice `Skipped` reason 1: that kind is already written for the key.
     uint8 public constant SKIP_ALREADY_WRITTEN = 1;
+    /// @notice `Skipped` reason 2: a commitment for a key that is not locked.
     uint8 public constant SKIP_NOT_LOCKED = 2;
+    /// @notice `Skipped` reason 3: outside the time window (`lock` at or after close; `commit` outside
+    ///         `[closesAt, beaconTime)`).
     uint8 public constant SKIP_OUTSIDE_WINDOW = 3;
+    /// @notice `Skipped` reason 4: a lock's beacon round is zero or outside the beacon-delay bounds.
     uint8 public constant SKIP_BEACON_BOUNDS = 4;
 
     /// @notice drand chain genesis time (quicknet: 1692803367).
@@ -113,7 +123,12 @@ contract FlockedAnchor is IFlockedAnchor, AccessControl, EIP712 {
         }
     }
 
-    /// @inheritdoc IFlockedAnchor
+    /// @notice Anchors a locked round key's settlement manifest hash, once, at or after its beacon time. ANCHOR_ROLE.
+    /// @dev Needs a lock but not a commitment (a Free mode refunded for a missing commitment still gets its
+    ///      manifest). Not a batch, so it reverts instead of skipping: `ZeroManifestHash`, `ManifestAlreadyAnchored`,
+    ///      `NotLocked`, `BeaconNotReached`. The parameter is `key` here because `roundKey` names a function.
+    /// @param key `roundKey(roundId, mode)`.
+    /// @param manifestHash keccak256 of the verification bundle manifest (non-zero).
     function anchorManifest(bytes32 key, bytes32 manifestHash) external onlyRole(ANCHOR_ROLE) {
         if (manifestHash == bytes32(0)) revert ZeroManifestHash();
         RoundAnchor storage a = _anchors[key];
@@ -170,6 +185,8 @@ contract FlockedAnchor is IFlockedAnchor, AccessControl, EIP712 {
     function verifyReceipt(Receipt calldata receipt, bytes calldata signature) external view returns (bool) {
         address signer = receiptSigner;
         if (signer == address(0)) return false;
+        // The third value only describes the error, which `err` already rejects (static-analysis.md, S-2).
+        // slither-disable-next-line unused-return
         (address recovered, ECDSA.RecoverError err,) = ECDSA.tryRecoverCalldata(receiptDigest(receipt), signature);
         return err == ECDSA.RecoverError.NoError && recovered == signer;
     }

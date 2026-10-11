@@ -43,10 +43,30 @@ interface IFlockedEscrow {
         uint64 expiry;
     }
 
+    /// @notice A round was created with a frozen config.
+    /// @param roundId The new round's ID.
+    /// @param cfg The round's config.
     event RoundCreated(uint256 indexed roundId, RoundConfig cfg);
+
+    /// @notice An entry was accepted and its stake pulled.
+    /// @param roundId The round.
+    /// @param player The entering wallet (`msg.sender`, equal to `ticket.wallet`).
+    /// @param personTag The ticket's per-round person tag.
+    /// @param ticketHash The ticket's EIP-712 digest (`ticketDigest`), matched against the ticket signer's records.
+    /// @param ciphertext The tlock ciphertext of the pick, in full.
     event Entered(
         uint256 indexed roundId, address indexed player, bytes32 indexed personTag, bytes32 ticketHash, bytes ciphertext
     );
+
+    /// @notice The operator proposed an outcome; it is final at `claimsOpenAt` unless vetoed first.
+    /// @param roundId The round.
+    /// @param status SettleProposed or RefundProposed.
+    /// @param n0 Valid entries on option 0.
+    /// @param n1 Valid entries on option 1.
+    /// @param nVoid VOID entries.
+    /// @param payoutRoot The payout tree's root (zero for a refund proposal).
+    /// @param bundleHash keccak256 of the verification bundle manifest.
+    /// @param claimsOpenAt `block.timestamp + CHALLENGE_WINDOW`: the end of the challenge window.
     event OutcomeProposed(
         uint256 indexed roundId,
         Status status,
@@ -57,10 +77,34 @@ interface IFlockedEscrow {
         bytes32 bundleHash,
         uint64 claimsOpenAt
     );
+
+    /// @notice The guardian vetoed a proposal. A vetoed settlement is followed by `RoundRefunded(roundId, 5)`; a
+    ///         vetoed refund proposal returns the round to Open.
+    /// @param roundId The round.
+    /// @param evidenceHash Hash of the guardian's evidence.
     event ProposalVetoed(uint256 indexed roundId, bytes32 evidenceHash);
+
+    /// @notice A proposal became final (Settled, or Refunded for a refund proposal).
+    /// @param roundId The round.
+    /// @param status The terminal status.
     event RoundFinalized(uint256 indexed roundId, Status status);
+
+    /// @notice A round moved into Refunded; emitted on every route into Refunded.
+    /// @param roundId The round.
+    /// @param reason 1 too few, 2 one-sided, 3 tie, 4 voided, 5 vetoed, 6 timeout.
     event RoundRefunded(uint256 indexed roundId, uint8 reason);
+
+    /// @notice A payout was claimed from a Settled round.
+    /// @param roundId The round.
+    /// @param player The claiming entrant.
+    /// @param kind The leaf kind claimed.
+    /// @param amount The amount paid (s + w, r or s).
     event Claimed(uint256 indexed roundId, address indexed player, Kind kind, uint256 amount);
+
+    /// @notice A stake was claimed back from a Refunded round.
+    /// @param roundId The round.
+    /// @param player The claiming entrant.
+    /// @param amount The stake paid back.
     event RefundClaimed(uint256 indexed roundId, address indexed player, uint256 amount);
 
     /// @notice Creates a round with the next ID from the counter. OPERATOR_ROLE.
@@ -197,15 +241,61 @@ interface IFlockedEscrow {
         bytes32 bundleHash;
     }
 
+    /// @notice A fee balance was credited at finalize (fee plus dust to the treasury, the creator fee to the creator).
+    /// @param account The credited account.
+    /// @param amount The amount added to `withdrawable(account)`.
     event Credited(address indexed account, uint256 amount);
+
+    /// @notice A credited balance was paid out.
+    /// @param account The account paid (always `msg.sender`).
+    /// @param amount The amount paid.
     event Withdrawn(address indexed account, uint256 amount);
+
+    /// @notice A timelocked change was scheduled.
+    /// @param id The operation ID, `operationId(action, data)`.
+    /// @param action The action tag.
+    /// @param data The ABI-encoded parameters.
+    /// @param readyAt The earliest time it can execute.
     event TimelockScheduled(bytes32 indexed id, bytes32 indexed action, bytes data, uint256 readyAt);
+
+    /// @notice A timelocked change was executed (its effect follows in the same transaction).
+    /// @param id The operation ID.
+    /// @param action The action tag.
+    /// @param data The ABI-encoded parameters.
     event TimelockExecuted(bytes32 indexed id, bytes32 indexed action, bytes data);
+
+    /// @notice A scheduled change was cancelled.
+    /// @param id The operation ID.
+    /// @param action The action tag.
+    /// @param data The ABI-encoded parameters.
     event TimelockCancelled(bytes32 indexed id, bytes32 indexed action, bytes data);
+
+    /// @notice The ticket signer changed (at deployment, through the timelock, or disabled to zero).
+    /// @param previous The old signer.
+    /// @param current The new signer; zero means entries are disabled.
     event TicketSignerSet(address indexed previous, address indexed current);
+
+    /// @notice The treasury changed (at deployment or through the timelock).
+    /// @param previous The old treasury.
+    /// @param current The new treasury.
     event TreasurySet(address indexed previous, address indexed current);
-    event GuardianReplaced(address indexed newGuardian);
+
+    /// @notice The admin replaced the guardian through the 7-day timelock. `GuardianTransferred` with the same
+    ///         addresses is emitted just before it.
+    /// @param previous The holder the replacement removed (whoever held the role at execution).
+    /// @param newGuardian The new guardian.
+    event GuardianReplaced(address indexed previous, address indexed newGuardian);
+
+    /// @notice GUARDIAN_ROLE moved to a new holder. Emitted on every move: `transferGuardian` and the admin's
+    ///         replacement.
+    /// @param previous The old holder.
+    /// @param current The new holder.
     event GuardianTransferred(address indexed previous, address indexed current);
+
+    /// @notice Tokens sent by other means were rescued through the timelock.
+    /// @param token The token.
+    /// @param to The recipient.
+    /// @param amount The amount.
     event Rescued(address indexed token, address indexed to, uint256 amount);
 
     error ZeroAddress();
