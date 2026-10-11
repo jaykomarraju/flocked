@@ -173,6 +173,8 @@ const SPEC_COLUMNS: Record<string, readonly string[]> = {
   audit_log: ['id', 'actor', 'actor_user_id', 'action', 'target', 'data_json', 'created_at'],
   // 0003_round_do (W3-B): the final skip of a daily grant; not yet a row in the spec's data model.
   daily_grant_skips: ['user_id', 'round_id', 'balance', 'skipped_at'],
+  // 0005_scheduler (W4-A): at-most-once operator transactions; not yet a row in the spec's data model.
+  operator_txs: ['purpose', 'status', 'tx_json', 'tx_hash', 'created_at', 'updated_at'],
 };
 
 /** Primary keys the spec names ("PK (...)", or "(PK)" on a column). */

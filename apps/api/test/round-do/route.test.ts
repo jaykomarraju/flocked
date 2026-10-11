@@ -10,6 +10,7 @@ import {
 } from '@flocked/shared';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { app } from '../../src/app.js';
+import { withAuthDeps } from '../../src/auth/deps.js';
 import { fakeUser, withSession } from '../helpers/index.js';
 import {
   BASE_OPENS_AT,
@@ -30,6 +31,11 @@ beforeAll(async () => {
   await r.stub.init(r.locked);
 });
 
+/** Turnstile (first Free entry of the game day, W4-A) passes; test/anti-abuse covers it. */
+const passTurnstile = withAuthDeps(env, {
+  turnstileFetch: () => Promise.resolve(Response.json({ success: true })),
+});
+
 function post(userId: string | null, roundId: string, body: unknown): Promise<Response> {
   const client = withSession(app, userId ? fakeUser({ id: userId }) : undefined);
   return Promise.resolve(
@@ -38,9 +44,9 @@ function post(userId: string | null, roundId: string, body: unknown): Promise<Re
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ turnstileToken: 'XXXX.DUMMY.TOKEN.XXXX', ...(body as object) }),
       },
-      env,
+      passTurnstile,
     ),
   );
 }

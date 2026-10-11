@@ -336,11 +336,21 @@ describe('sealed pick checks at submit', () => {
 });
 
 describe('daily grant on first entry (daily rounds)', () => {
-  const daily = () => openRound({ kind: 'daily' });
+  // One daily round per close time (migration 0005), so each test's round closes a second earlier.
+  let dailyRounds = 0;
+  const daily = () => openRound({ kind: 'daily', opensAt: BASE_OPENS_AT - 1000 * ++dailyRounds });
+  /** The grant needs a linked Farcaster identity or a wallet with onchain history (W4-A). */
+  const linkFarcaster = (userId: string) =>
+    env.DB.prepare(
+      "INSERT INTO identities (id, user_id, provider, external_id, verified_at) VALUES (?1, ?2, 'farcaster', ?3, 0)",
+    )
+      .bind(newUlid(), userId, `fid-${userId}`)
+      .run();
 
   it('credits +100 below 1,000 before the stake, once', async () => {
     const r = await daily();
     const u = await createUser(500);
+    await linkFarcaster(u);
     okValue(await enter(r, u, '25'));
     expect(await balance(u)).toBe(575);
     expect(await ledgerRows(u)).toEqual([
@@ -359,6 +369,7 @@ describe('daily grant on first entry (daily rounds)', () => {
   it('a grant skipped at ≥ 1,000 is final for the game day, even after the balance drops', async () => {
     const r = await daily();
     const u = await createUser(1000);
+    await linkFarcaster(u);
     okValue(await enter(r, u, '100'));
     expect(await balance(u)).toBe(900);
     const skip = await env.DB.prepare(

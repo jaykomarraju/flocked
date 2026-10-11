@@ -203,7 +203,12 @@ describe('local stack: a Free entry end to end', () => {
       p.ct = await encryptPick(chain, round.beaconRound, pt);
       const res = await call(`/api/v1/rounds/${round.roundId}/entries`, {
         token: p.token,
-        body: { stake: '10', ciphertext: toBase64Url(p.ct) },
+        // The first Free entry of the game day carries a Turnstile token (always-pass test secret).
+        body: {
+          stake: '10',
+          ciphertext: toBase64Url(p.ct),
+          turnstileToken: 'XXXX.DUMMY.TOKEN.XXXX',
+        },
       });
       expect(res.status, JSON.stringify(res.body)).toBe(201);
       p.entry = CreateEntryResponseSchema.parse(res.body);
