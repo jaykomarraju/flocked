@@ -35,7 +35,7 @@ import {
   type Transport,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { chainIdOf, deploymentOf, publicClient } from '../chain/client.js';
+import { ANCHOR_SINGLETON, chainIdOf, deploymentOf, publicClient } from '../chain/client.js';
 import { TxSender, maxFeePerGasOf, type Fees, type OnTxSent, type SentTx } from '../chain/tx.js';
 import { sentTxRecorder } from '../lifecycle/sent.js';
 import type { Env } from '../env.js';
@@ -53,8 +53,8 @@ import type {
   AnchorSubmitAck,
 } from './types.js';
 
-/** The singleton's name: `env.ANCHOR.idFromName(ANCHOR_SINGLETON)`. */
-export const ANCHOR_SINGLETON = 'anchor';
+/** The singleton's name: `env.ANCHOR.idFromName(ANCHOR_SINGLETON)` (src/chain/client.ts). */
+export { ANCHOR_SINGLETON };
 
 export type AnchorKind = 'lock' | 'commit' | 'manifest';
 

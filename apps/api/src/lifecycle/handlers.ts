@@ -16,7 +16,7 @@
 import { roundKey } from '@flocked/shared';
 import { beaconTime, chainFromEnv } from '@flocked/tlock';
 import { keccak256, type Hex } from 'viem';
-import { ANCHOR_SINGLETON } from '../do/anchor-do.js';
+import { ANCHOR_SINGLETON } from '../chain/client.js';
 import type { AnchorCommitItem, AnchorLockItem } from '../do/types.js';
 import type { Env } from '../env.js';
 import { resolveEntered } from '../indexer/entered.js';
