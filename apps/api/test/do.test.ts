@@ -157,10 +157,12 @@ describe('RateLimitDO (binding RATE_LIMIT)', () => {
   });
 });
 
+// IndexerDO is implemented (W4-B); test/indexer/indexer-do.test.ts covers its behaviour. Here: the
+// binding reaches the class (with no RPC URL in tests, a poll indexes nothing).
 describe('IndexerDO (binding INDEXER)', () => {
-  it('pins poll and status', async () => {
+  it('answers poll and status', async () => {
     const s = env.INDEXER.get(env.INDEXER.idFromName(INDEXER_SINGLETON));
-    await expectNotImplemented(s.poll(), 'IndexerDO.poll');
-    await expectNotImplemented(s.status(), 'IndexerDO.status');
+    expect(await s.poll()).toEqual({ fromBlock: 1, toBlock: 0, events: 0, reorg: false });
+    expect(await s.status()).toMatchObject({ chainId: 31337, contracts: [], lagSec: null });
   });
 });
