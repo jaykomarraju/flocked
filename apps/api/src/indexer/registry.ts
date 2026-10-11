@@ -6,17 +6,26 @@ import type { EventHandler } from './types.js';
 /** Registered under this event name, a handler sees every event (before the event's own handlers). */
 export const ANY_EVENT = '*';
 
+export interface HandlerOptions {
+  /**
+   * The handler doesn't depend on event order (ALERT-8). While an earlier entry's dispatch keeps
+   * failing it still sees the additions behind it, so one broken handler can't silence it.
+   */
+  independent?: boolean;
+}
+
 export interface RegisteredHandler {
   event: string;
   name: string;
   fn: EventHandler;
+  independent: boolean;
 }
 
 export class HandlerRegistry {
   private readonly byEvent = new Map<string, RegisteredHandler[]>();
 
   /** @throws when `name` already runs for `event` (registered for it, or for every event). */
-  register(event: string, name: string, fn: EventHandler): void {
+  register(event: string, name: string, fn: EventHandler, opts: HandlerOptions = {}): void {
     if (event === '' || name === '') throw new Error('handler event and name must be non-empty');
     const list = this.byEvent.get(event) ?? [];
     const clash =
@@ -24,7 +33,7 @@ export class HandlerRegistry {
         ? this.list().some((h) => h.name === name)
         : this.for(event).some((h) => h.name === name);
     if (clash) throw new Error(`handler ${name} is already registered for ${event}`);
-    list.push({ event, name, fn });
+    list.push({ event, name, fn, independent: opts.independent === true });
     this.byEvent.set(event, list);
   }
 

@@ -4,8 +4,11 @@
 // chain_events (src/indexer/core.ts, reorgs included), then dispatches pending rows to the registered
 // handlers (src/indexer/dispatch.ts). Polls never overlap: a call during a poll joins it.
 //
-// ALERT_INDEXER_LAG (ALERT-4) fires when the indexed position is more than 150 s behind the chain head,
-// or the RPC has been failing for that long; it repeats at most every 5 minutes while the lag lasts.
+// ALERT_INDEXER_LAG (ALERT-4) fires when the indexed position is more than 150 s behind the chain, or
+// the RPC has been failing for that long; it repeats at most every 5 minutes while the lag lasts. The
+// lag is the head's timestamp minus the indexed block's, plus the head's own age on the game clock, so
+// a provider stuck on an old head counts too. On the local stack the head's age is left out: anvil
+// mines no empty blocks, so its head is often minutes old with nothing to index.
 import { DurableObject } from 'cloudflare:workers';
 import type { Env } from '../env.js';
 import { indexerConfig } from '../indexer/config.js';
@@ -53,6 +56,8 @@ export class IndexerDO extends DurableObject<Env> implements IndexerDORpc {
   registry: HandlerRegistry = handlers;
   /** Overrides for indexOnce (tests narrow maxBlocksPerPoll). */
   indexOptions: Pick<IndexOptions, 'maxBlocksPerPoll'> = {};
+  /** Whether the head's age counts toward the lag; null: everywhere but local. Tests set it. */
+  headAgeLag: boolean | null = null;
 
   private readonly range: LogRange = { maxRange: MAX_LOG_RANGE };
   private inflight: Promise<IndexerPollResult> | null = null;
@@ -103,6 +108,7 @@ export class IndexerDO extends DurableObject<Env> implements IndexerDORpc {
     const env = this.env;
     const nowMs = now(env);
     let result: IndexerPollResult | null = null;
+    let indexed: { rpcCalls: number; changes: number } | null = null;
     const cfg = indexerConfig(env);
     const rpc = this.getRpc();
     if (!cfg.ok || rpc === null) {
@@ -120,7 +126,14 @@ export class IndexerDO extends DurableObject<Env> implements IndexerDORpc {
           ...this.indexOptions,
         });
         result = { fromBlock: r.fromBlock, toBlock: r.toBlock, events: r.events, reorg: r.reorg };
-        await this.recordLag(nowMs, r.lagSec, { head: r.head.number, toBlock: r.toBlock });
+        indexed = { rpcCalls: r.rpcCalls, changes: r.changes };
+        const headAgeSec = Math.max(0, Math.floor(nowMs / 1000) - r.head.timestamp);
+        const countHeadAge = this.headAgeLag ?? env.ENVIRONMENT !== 'local';
+        await this.recordLag(nowMs, r.lagSec + (countHeadAge ? headAgeSec : 0), {
+          head: r.head.number,
+          toBlock: r.toBlock,
+          headAgeSec,
+        });
       } catch (err) {
         log.error('indexer_poll_failed', { chainId, error: errorMessage(err) });
         await this.recordLag(nowMs, null, { error: errorMessage(err) });
@@ -128,7 +141,14 @@ export class IndexerDO extends DurableObject<Env> implements IndexerDORpc {
       // Rows already mirrored are dispatched even when this poll's scan failed.
       try {
         const d = await dispatchPending(env, this.registry, { chainId, targets, rpc, nowMs });
-        log.info('indexer_poll', { chainId, ...result, dispatched: d.dispatched, more: d.more });
+        log.info('indexer_poll', {
+          chainId,
+          ...result,
+          ...indexed,
+          dispatched: d.dispatched,
+          independent: d.independent,
+          more: d.more,
+        });
       } catch (err) {
         log.error('indexer_dispatch_error', { chainId, error: errorMessage(err) });
       }
