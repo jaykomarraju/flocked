@@ -101,17 +101,35 @@ export const EmailProofSchema = z.strictObject({
   code: EmailCodeSchema,
 });
 
-/** Why Stakes is unavailable to the caller. Spec: "Compliance and responsible play". */
-export const STAKES_INELIGIBILITY_REASONS = [
+/**
+ * Why Stakes is unavailable to the caller, in reporting order (`stakesEligibility`, W5-B). Spec:
+ * "Identity and personhood" › Personhood, "Compliance and responsible play".
+ *   - `not_verified`: no person ID, or `kyc_status` is not `verified` (no personal details).
+ *   - `country_unverified`: verified, but no linked wallet holds an unrevoked Coinbase Verified
+ *     Account and Verified Country attestation (or the attestation indexer could not be read).
+ *   - `country_mismatch`: the attested country differs from the Coinbase account's country.
+ *   - `geo_blocked`: the verified country or the request location is not on `geo.stakes.allow`,
+ *     or the request location is unknown.
+ *   - `proxy_detected`: Cloudflare's VPN/proxy signals (Tor exit, low bot score).
+ */
+export const INELIGIBLE_REASONS = [
   'not_verified',
+  'country_unverified',
+  'country_mismatch',
   'geo_blocked',
+  'proxy_detected',
   'age_unattested',
   'tos_not_accepted',
   'self_excluded',
   'suspended',
   'stakes_disabled',
 ] as const;
-export type StakesIneligibilityReason = (typeof STAKES_INELIGIBILITY_REASONS)[number];
+export type IneligibleReason = (typeof INELIGIBLE_REASONS)[number];
+export const IneligibleReasonSchema = z.enum(INELIGIBLE_REASONS);
+/** @deprecated The pre-W5-B names of `INELIGIBLE_REASONS` / `IneligibleReason`. */
+export const STAKES_INELIGIBILITY_REASONS = INELIGIBLE_REASONS;
+/** @deprecated See `IneligibleReason`. */
+export type StakesIneligibilityReason = IneligibleReason;
 
 /** ToS and age attestation state. */
 export const TosStateSchema = z.object({
@@ -161,7 +179,7 @@ export const MeResponseSchema = z.object({
   stakes: z.object({
     eligible: z.boolean(),
     /** Empty when eligible. */
-    reasons: z.array(z.enum(STAKES_INELIGIBILITY_REASONS)),
+    reasons: z.array(IneligibleReasonSchema),
   }),
 });
 export type MeResponse = z.infer<typeof MeResponseSchema>;
