@@ -15,7 +15,8 @@ Each design session creates and edits only the pages its prompt names.
 
 `<surface>/<screen>/<state>/<breakpoint>`, lowercase kebab-case, for example `core/today/open-free/mobile`.
 
-- `surface`: `foundations`, `components`, `core`, `social`, `cards`, `admin`.
+- `surface`: `foundations`, `components`, `core`, `social`, `settings`, `cards`, `admin`. `settings` artboards live
+  on the `Social` page and export to `exports/settings/` (W5-C).
 - `breakpoint`: `mobile` (380 wide), `tablet` (768), `desktop` (1120). Foundation and component sheets are 1120
   wide and use `desktop`.
 - `state`: the screen state (`open-free`, `sealed`, `revealed-win`), or `light` / `dark` for sheets. A sheet that
@@ -81,6 +82,14 @@ From the `Components` page. Code follows these unless a sheet says otherwise.
   the PNG as a baseline.
 - Rows sit 1200 apart on the canvas; a row whose mobile artboard runs past ~1100 takes two slots.
 
+## Screen conventions (Social)
+
+- Same layout as Core flow. Build each screen from a `kit/shell/<tab>/<breakpoint>` artboard (Social page, y −1600):
+  header and nav with the right tab active and an empty `content` frame. Shells aren't exported.
+- Tablet and desktop header links are Today, Archive, Boards and Rooms. Submit, Queue, Claims and Settings sit in
+  the avatar menu; pages reached from it show no active link, and mobile has You active.
+- Rows are 2400 apart, so a long mobile screen (up to ~2300) still takes one row.
+
 ## Paper MCP notes
 
 - Without Paper Pro, MCP calls are capped per week. Once capped, writes, `export` and `find_nodes` fail. W2-C.2
@@ -107,3 +116,7 @@ From the `Components` page. Code follows these unless a sheet says otherwise.
   `get_tree_summary` before editing by id.
 - A `duplicate_nodes` into an artboard with `parentId` sometimes lands at index 0, above the header, and reordered
   children can come back in their original order. Screenshot each copy and fix the order with `move_nodes`.
+- Duplicating an artboard that has an absolute overlay at 100% height can reset the overlay's height to 0px, and can
+  swap the order of sibling sections. Screenshot every duplicated overlay screen (W5-C).
+- Several builder subagents can work on one page at once if each has its own canvas band and touches only its own
+  artboards. Keep `export` in one place and run it one call at a time (W5-C exported 141 artboards in 9-node calls).
