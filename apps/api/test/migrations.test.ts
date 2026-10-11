@@ -403,6 +403,27 @@ describe('unique keys and indexes', () => {
 });
 
 describe('constraints reject bad rows', () => {
+  it('settlement_holds (0008): void_rate holds have no tx_hash; foreign_entry holds need one', async () => {
+    const insert =
+      'INSERT INTO settlement_holds (round_id, mode, reason, tx_hash, created_at) VALUES (?1, ?2, ?3, ?4, 0)';
+    await env.DB.prepare(insert).bind('r-0008', 'free', 'void_rate', null).run();
+    await env.DB.prepare(insert).bind('r-0008', 'stakes', 'foreign_entry', '0xabc').run();
+    expect(await rejects(insert, 'r-0008', 'stakes', 'void_rate', '0xabc')).toContain(
+      'CHECK constraint failed: settlement_holds_tx',
+    );
+    expect(await rejects(insert, 'r-0008', 'free', 'foreign_entry', null)).toContain(
+      'CHECK constraint failed: settlement_holds_tx',
+    );
+    expect(await rejects(insert, 'r-0008', 'free', 'other', null)).toContain(
+      'CHECK constraint failed',
+    );
+    expect(await rejects(insert, 'r-0008', 'free', 'void_rate', null)).toContain('UNIQUE');
+    const { results } = await env.DB.prepare('SELECT name FROM d1_migrations').all<{
+      name: string;
+    }>();
+    expect(results.map((r) => r.name)).toContain('0008_settlement.sql');
+  });
+
   it('point_balances: balance >= 0', async () => {
     expect(
       await rejects(

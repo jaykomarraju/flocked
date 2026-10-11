@@ -4,8 +4,8 @@
 //   * handler resolves  → ack;
 //   * handler throws    → retry (wrangler.jsonc max_retries, then the queue's DLQ);
 //   * invalid message   → logged and acked: retrying a malformed body can never succeed.
-// Handlers are stubs until their owners replace them: settle and decrypt (W5-A), cards (W10-A),
-// notify (W9-A). Each owner edits only its entry in HANDLERS.
+// settle and decrypt are W5-A's (src/queues/settle.ts, decrypt.ts); cards (W10-A) and notify
+// (W9-A) are stubs until their owners replace them. Each owner edits only its entry in HANDLERS.
 import {
   QUEUE_NAMES,
   QueueMessageSchemas,
@@ -15,6 +15,8 @@ import {
 import type { Env } from '../env.js';
 import { NotImplementedError } from '../lib/errors.js';
 import { log } from '../lib/log.js';
+import { decryptHandler } from './decrypt.js';
+import { settleHandler } from './settle.js';
 
 /** Staging queues carry this suffix (wrangler.jsonc env.staging); local and production do not. */
 const ENV_SUFFIXES = ['-staging'] as const;
@@ -44,9 +46,9 @@ const stub =
 
 /** One handler per logical queue. */
 export const HANDLERS: Handlers = {
-  settle: stub('settle'),
-  'decrypt-daily': stub('decrypt-daily'),
-  'decrypt-rooms': stub('decrypt-rooms'),
+  settle: (body, _message, env) => settleHandler(body, env),
+  'decrypt-daily': (body, _message, env) => decryptHandler(body, env),
+  'decrypt-rooms': (body, _message, env) => decryptHandler(body, env),
   cards: stub('cards'),
   notify: stub('notify'),
 };
