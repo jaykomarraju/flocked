@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import {IAccessControl} from "@openzeppelin-contracts/access/IAccessControl.sol";
 import {Pausable} from "@openzeppelin-contracts/utils/Pausable.sol";
+import {Vm} from "forge-std/Vm.sol";
 
 import {IFlockedEscrow} from "../src/interfaces/IFlockedEscrow.sol";
 import {MockUSDC} from "./mocks/MockUSDC.sol";
@@ -371,10 +372,20 @@ contract EscrowRolesTest is EscrowBase {
 
     function test_transferGuardian_movesRoleImmediately() public {
         bytes32 role = escrow.GUARDIAN_ROLE();
-        vm.expectEmit(true, true, false, false, address(escrow));
-        emit IFlockedEscrow.GuardianTransferred(guardian, newGuardian);
+        vm.recordLogs();
         vm.prank(guardian);
         escrow.transferGuardian(newGuardian);
+        // Exactly one GuardianTransferred(guardian, newGuardian), and no GuardianReplaced (that is the admin's path).
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        uint256 transferred;
+        for (uint256 i; i < logs.length; i++) {
+            assertTrue(logs[i].topics[0] != IFlockedEscrow.GuardianReplaced.selector, "GuardianReplaced");
+            if (logs[i].topics[0] != IFlockedEscrow.GuardianTransferred.selector) continue;
+            transferred++;
+            assertEq(logs[i].topics[1], bytes32(uint256(uint160(guardian))));
+            assertEq(logs[i].topics[2], bytes32(uint256(uint160(newGuardian))));
+        }
+        assertEq(transferred, 1, "GuardianTransferred count");
 
         assertEq(escrow.guardian(), newGuardian);
         assertTrue(escrow.hasRole(role, newGuardian));
@@ -436,8 +447,11 @@ contract EscrowRolesTest is EscrowBase {
         vm.expectRevert(_notReady(action, abi.encode(newGuardian), readyAt));
         escrow.executeGuardianReplacement(newGuardian);
         vm.warp(readyAt);
-        vm.expectEmit(true, false, false, false, address(escrow));
-        emit IFlockedEscrow.GuardianReplaced(newGuardian);
+        // Both events name the holder the replacement removed (the rogue, not the guardian it was scheduled against).
+        vm.expectEmit(true, true, false, true, address(escrow));
+        emit IFlockedEscrow.GuardianTransferred(rogue, newGuardian);
+        vm.expectEmit(true, true, false, true, address(escrow));
+        emit IFlockedEscrow.GuardianReplaced(rogue, newGuardian);
         escrow.executeGuardianReplacement(newGuardian);
         vm.stopPrank();
 
