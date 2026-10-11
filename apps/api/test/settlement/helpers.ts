@@ -16,12 +16,14 @@ import {
   type AlertCode,
   type DecryptMessage,
   type LockedConfig,
+  type Mode,
 } from '@flocked/shared';
 import {
   QUICKNET,
   beaconTime,
   encodePlaintext,
   encryptPick,
+  roundRefFromChainId,
   roundRefFromUlid,
 } from '@flocked/tlock';
 import { bytesToHex, keccak256, type Hex } from 'viem';
@@ -235,6 +237,76 @@ export function seedPicks(
   );
 }
 
+/**
+ * A locked daily Stakes round (onchain round `chainRoundId`) targeting BEACON.round, pending, with
+ * one mirrored `Entered` entry per option, in block order.
+ */
+export async function seedStakesRound(
+  options: readonly (0 | 1)[],
+  chainRoundId = 7n,
+): Promise<{ roundId: string; wallets: Hex[] }> {
+  const roundId = newUlid();
+  const closesAt = BEACON_TIME_MS - 120_000 - 1000 * seeded++;
+  const config = LockedConfigSchema.parse({
+    beaconDelay: 120,
+    stakes: { ...LOCKED_CONFIG_DEFAULTS.stakes, creator: `0x${'de'.repeat(20)}` },
+  });
+  const roundRef = roundRefFromChainId(chainRoundId);
+  const rows = await Promise.all(
+    options.map(async (o, i) => {
+      const ct = await encryptPick(
+        QUICKNET,
+        BEACON.round,
+        encodePlaintext({ roundRef, optionIndex: o, nonce: nonce() }),
+      );
+      return { id: newUlid(), userId: newUlid(), wallet: randomHex(20), ct, block: 100 + i };
+    }),
+  );
+  const db = env.DB;
+  await db.batch([
+    db
+      .prepare(
+        `INSERT INTO rounds (id, kind, room_id, question_id, opens_at, closes_at, beacon_round, status, locked_at, config_json)
+         VALUES (?1, 'daily', NULL, ?2, ?3, ?4, ?5, 'closed', ?6, ?7)`,
+      )
+      .bind(
+        roundId,
+        newUlid(),
+        closesAt - 86_400_000,
+        closesAt,
+        BEACON.round,
+        1,
+        JSON.stringify(config),
+      ),
+    db
+      .prepare(
+        "INSERT INTO round_modes (round_id, mode, status, chain_round_id) VALUES (?1, 'stakes', 'pending', ?2)",
+      )
+      .bind(roundId, chainRoundId.toString()),
+    ...rows.map((r) =>
+      db
+        .prepare(
+          `INSERT INTO entries (id, round_id, mode, user_id, wallet, person_tag, stake, ciphertext, commitment,
+             tx_hash, block_number, log_index, created_at)
+           VALUES (?1, ?2, 'stakes', ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 0, 1)`,
+        )
+        .bind(
+          r.id,
+          roundId,
+          r.userId,
+          r.wallet,
+          randomHex(32),
+          Number(config.stakes?.stake),
+          r.ct,
+          keccak256(r.ct),
+          randomHex(32),
+          r.block,
+        ),
+    ),
+  ]);
+  return { roundId, wallets: rows.map((r) => r.wallet) };
+}
+
 export async function modeStatus(roundId: string): Promise<string | null> {
   const row = await env.DB.prepare(
     "SELECT status FROM round_modes WHERE round_id = ?1 AND mode = 'free'",
@@ -300,8 +372,8 @@ export function alertSpy(): { codes(): AlertCode[]; spy: MockInstance } {
 
 // The DO ----------------------------------------------------------------------------------------
 
-export function settlement(roundId: string, name = settlementName(roundId, 'free')) {
-  return env.SETTLEMENT.get(env.SETTLEMENT.idFromName(name));
+export function settlement(roundId: string, mode: Mode = 'free') {
+  return env.SETTLEMENT.get(env.SETTLEMENT.idFromName(settlementName(roundId, mode)));
 }
 
 export interface Harness {
@@ -327,25 +399,35 @@ export async function harness(
     relays?: ReturnType<typeof fakeRelays>;
     sizes?: { decrypt: number; bundle: number };
     apply?: 'record' | 'stub';
-    name?: string;
+    /** Wipes the DO's storage first: a fresh run of the same (round, mode). */
+    fresh?: boolean;
+    mode?: Mode;
+    /** Stakes: stand in for W6-A's safe-head flag. */
+    safeHead?: boolean;
   } = {},
 ): Promise<Harness> {
-  const stub = settlement(roundId, opts.name);
+  const mode = opts.mode ?? 'free';
+  const stub = settlement(roundId, mode);
   const applied: TallyResult[] = [];
   const sent = recordDecryptQueues();
   const relays = opts.relays ?? fakeRelays(() => 'ok');
-  await runInDurableObject(stub, (o: SettlementDO) => {
+  await runInDurableObject(stub, async (o: SettlementDO, state) => {
+    if (opts.fresh) {
+      await state.storage.deleteAlarm();
+      await state.storage.deleteAll();
+      Reflect.set(o, 'job', undefined);
+    }
     o.manualAlarms = true;
     o.relayFetch = relays.fetch;
     o.chunkSizes = opts.sizes ?? { decrypt: 4, bundle: 8 };
-    if (opts.apply !== 'stub') {
-      o.hooks = {
-        ...o.hooks,
-        applyFree: (_env, result) => {
-          applied.push(result);
-          return Promise.resolve();
-        },
-      };
+    const record = (_env: unknown, result: TallyResult) => {
+      applied.push(result);
+      return Promise.resolve();
+    };
+    if (opts.apply !== 'stub') o.hooks = { ...o.hooks, applyFree: record, applyStakes: record };
+    if (opts.safeHead !== undefined) {
+      const ready = opts.safeHead;
+      o.hooks = { ...o.hooks, safeHeadReady: () => Promise.resolve(ready) };
     }
   });
   const h: Harness = {
@@ -353,7 +435,7 @@ export async function harness(
     applied,
     sent,
     start: async () =>
-      (await stub.start({ roundId, mode: 'free', idempotencyKey: `${roundId}:free` })).status,
+      (await stub.start({ roundId, mode, idempotencyKey: `${roundId}:${mode}` })).status,
     alarm: async () => {
       await runDurableObjectAlarm(stub);
       return stub.status();

@@ -158,7 +158,7 @@ export async function reduce(
       decryptOutputKey(roundId, mode, index),
     );
     reconcileChunk(index, input, output, i.partials[index]);
-    output.entries.forEach((o, k) => {
+    for (const [k, o] of output.entries.entries()) {
       const e = input.entries[k];
       if (!e) throw new IntegrityError('unreachable: reconciled');
       if (!users.has(e.entryId)) throw new IntegrityError(`entry ${e.entryId} is not in D1`);
@@ -182,8 +182,9 @@ export async function reduce(
         voidReason: o.voidReason,
         ...(mode === 'free' ? { commitment: e.commitment, ciphertext: e.ciphertext } : {}),
       });
-    });
-    if (pending.length >= bundleChunkSize) await flush();
+      // Bundle chunk i is exactly entries [i·size, (i + 1)·size) in seq order.
+      if (pending.length === bundleChunkSize) await flush();
+    }
   }
   await flush();
   if (entries.length !== users.size) {

@@ -121,7 +121,7 @@ export class SettlementDO extends DurableObject<Env> implements SettlementDORpc 
   /** Tests: smaller chunks, read when a job starts. */
   chunkSizes = { decrypt: DECRYPT_CHUNK_SIZE, bundle: BUNDLE_CHUNK_SIZE };
   /** Tests: observe or replace the mode hooks (the stubs W5-D and W6-A implement). */
-  hooks = { applyFree, applyStakes, refundFree };
+  hooks = { applyFree, applyStakes, refundFree, safeHeadReady };
 
   private job: Job | null | undefined;
   private running: Promise<void> | null = null;
@@ -300,7 +300,7 @@ export class SettlementDO extends DurableObject<Env> implements SettlementDORpc 
       await this.save(job);
     }
 
-    if (!(await safeHeadReady(this.env, job.roundId, job.mode))) {
+    if (!(await this.hooks.safeHeadReady(this.env, job.roundId, job.mode))) {
       return this.retryIn(job, beaconRetryMs(t, beaconSec));
     }
 
