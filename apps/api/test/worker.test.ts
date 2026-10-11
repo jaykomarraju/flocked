@@ -114,10 +114,14 @@ describe('cron triggers', () => {
         ctx,
       );
     }
-    expect(warn).not.toHaveBeenCalled();
+    // The jobs run for real since W4-D; the indexer warns `indexer_unconfigured` here (no
+    // deployment in this env). What matters is that no configured cron is unknown.
+    const unknownCron = () =>
+      warn.mock.calls.some((c) => typeof c[0] === 'string' && c[0].includes('"cron_unknown"'));
+    expect(unknownCron()).toBe(false);
     expect(logs).toHaveBeenCalled();
     await worker.scheduled(createScheduledController({ cron: '5 5 5 5 5' }), env, ctx);
-    expect(warn).toHaveBeenCalled();
+    expect(unknownCron()).toBe(true);
   });
 });
 

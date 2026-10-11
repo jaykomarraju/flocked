@@ -47,6 +47,10 @@ export function inputFiles(root = ROOT) {
   };
   walk(join(root, 'contracts/src'));
   files.push(join(root, 'contracts/test/mocks/MockUSDC.sol'), join(root, 'contracts/soldeer.lock'));
+  // The compiler settings and import paths shape the build too. Both are committed; a synthetic root may omit them.
+  for (const config of ['contracts/foundry.toml', 'contracts/remappings.txt']) {
+    if (existsSync(join(root, config))) files.push(join(root, config));
+  }
   for (const chainId of COMMITTED_CHAINS) {
     const path = join(root, `contracts/deployments/${chainId}.json`);
     if (existsSync(path)) files.push(path);

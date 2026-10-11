@@ -11,12 +11,38 @@ interface IFlockedAnchor {
     // ---------------------------------------------------------------------------------------------
 
     // roundKey = keccak256(abi.encode(roundId, mode))
+
+    /// @notice A round key's lock leaf was written (once, before close).
+    /// @param roundKey `roundKey(roundId, mode)`.
+    /// @param closesAt The round's close time.
+    /// @param beaconRound The drand round the picks are encrypted to.
+    /// @param questionHash keccak256 of the canonical prompt and both options.
+    /// @param configHash Hash of the round config.
     event Locked(
         bytes32 indexed roundKey, uint64 closesAt, uint64 beaconRound, bytes32 questionHash, bytes32 configHash
     );
+
+    /// @notice A round key's commitment root was written (once, between close and the beacon).
+    /// @param roundKey `roundKey(roundId, mode)`.
+    /// @param commitmentRoot Merkle root over the round's committed receipt leaves.
+    /// @param entryCount Number of leaves.
+    /// @param totalStake Sum of the leaves' stakes (points).
     event Committed(bytes32 indexed roundKey, bytes32 commitmentRoot, uint32 entryCount, uint64 totalStake);
+
+    /// @notice A round key's settlement manifest hash was written (once, at or after the beacon).
+    /// @param roundKey `roundKey(roundId, mode)`.
+    /// @param manifestHash keccak256 of the verification bundle manifest.
     event ManifestAnchored(bytes32 indexed roundKey, bytes32 manifestHash);
+
+    /// @notice The receipt signer changed (at deployment, through the timelock, or disabled to zero). The events form
+    ///         the signer's full history, so an older receipt is checked against the signer valid when it was issued.
+    /// @param signer The new signer; zero means receipts are disabled.
+    /// @param validFrom The block timestamp from which it signs.
     event ReceiptSignerSet(address signer, uint64 validFrom);
+
+    /// @notice A batch item was skipped and nothing was written for it; the rest of the batch still applies.
+    /// @param roundKey The skipped item's round key.
+    /// @param reason 1 already written, 2 not locked, 3 outside its time window, 4 beacon round out of bounds.
     event Skipped(bytes32 indexed roundKey, uint8 reason);
 
     /// @notice Writes each round key's lock leaf, once. ANCHOR_ROLE.
@@ -53,8 +79,8 @@ interface IFlockedAnchor {
     ) external;
 
     /// @notice Anchors a locked round key's settlement manifest hash, once, at or after its beacon time. ANCHOR_ROLE.
-    /// @dev Not a batch, so it reverts instead of skipping: `ZeroManifestHash`, `ManifestAlreadyAnchored`,
-    ///      `NotLocked`, `BeaconNotReached`.
+    /// @dev Needs a lock but not a commitment. Not a batch, so it reverts instead of skipping: `ZeroManifestHash`,
+    ///      `ManifestAlreadyAnchored`, `NotLocked`, `BeaconNotReached`.
     /// @param roundKey `roundKey(roundId, mode)`.
     /// @param manifestHash keccak256 of the verification bundle manifest (non-zero).
     function anchorManifest(bytes32 roundKey, bytes32 manifestHash) external;
@@ -94,8 +120,23 @@ interface IFlockedAnchor {
         bytes32 manifestHash;
     }
 
+    /// @notice A timelocked change was scheduled.
+    /// @param id The operation ID, `operationId(action, data)`.
+    /// @param action The action tag.
+    /// @param data The ABI-encoded parameters.
+    /// @param readyAt The earliest time it can execute.
     event TimelockScheduled(bytes32 indexed id, bytes32 indexed action, bytes data, uint256 readyAt);
+
+    /// @notice A timelocked change was executed (its effect follows in the same transaction).
+    /// @param id The operation ID.
+    /// @param action The action tag.
+    /// @param data The ABI-encoded parameters.
     event TimelockExecuted(bytes32 indexed id, bytes32 indexed action, bytes data);
+
+    /// @notice A scheduled change was cancelled.
+    /// @param id The operation ID.
+    /// @param action The action tag.
+    /// @param data The ABI-encoded parameters.
     event TimelockCancelled(bytes32 indexed id, bytes32 indexed action, bytes data);
 
     error ZeroAddress();

@@ -1,9 +1,11 @@
 // Cron triggers (wrangler.jsonc `triggers.crons`; spec "Architecture": Scheduler and Chain indexer,
-// "Data model": nightly reconciliation). Times are UTC. The jobs are stubs that only log until
-// their owners land: scheduler and question lock (W4-A), indexer kick (W4-B), reconciliation
-// (W5-D, src/jobs/reconcile.ts, using src/points findBalanceMismatches).
+// "Data model": nightly reconciliation). Times are UTC. The scheduler (W4-A) and the indexer kick
+// (W4-B) are wired; reconciliation is a stub that only logs until W5-D lands (src/jobs/reconcile.ts,
+// using src/points findBalanceMismatches).
 import type { Env } from './env.js';
+import { indexerKick } from './indexer/cron.js';
 import { log } from './lib/log.js';
+import { SCHEDULER_JOBS } from './scheduler/index.js';
 
 export const CRONS = {
   /** Indexer kick + scheduler tick (question lock, house-question fill, daily cast). */
@@ -34,9 +36,9 @@ const pending =
   };
 
 export const CRON_HANDLERS: Record<CronJob, CronJobHandler> = {
-  scheduler_tick: pending('scheduler_tick'),
-  indexer_kick: pending('indexer_kick'),
-  create_rounds_ahead: pending('create_rounds_ahead'),
+  scheduler_tick: SCHEDULER_JOBS.scheduler_tick,
+  indexer_kick: indexerKick,
+  create_rounds_ahead: SCHEDULER_JOBS.create_rounds_ahead,
   reconcile_points: pending('reconcile_points'),
 };
 

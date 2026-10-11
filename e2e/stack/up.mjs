@@ -6,7 +6,8 @@
 //   3. the CREATE2 deploy (contracts/script/Deploy.s.sol) with the local drand genesis and period
 //      and fresh role keys;
 //   4. e2e/stack/.dev.vars (the drand chain, the deployment, fresh keys, the test seam key), the D1
-//      migrations, and `wrangler dev --local` for apps/api, plus the Farcaster Quick Auth mock.
+//      migrations, and `wrangler dev --local` for apps/api, plus the Farcaster Quick Auth mock;
+//   5. the cron driver (cron.mjs), which runs the Worker's cron jobs, as wrangler dev fires none.
 //
 // Idempotent: a healthy stack is left alone; anything else is torn down and started fresh. Stack
 // facts go to e2e/stack/.state.json, logs to e2e/stack/.run/logs.
@@ -17,6 +18,7 @@ import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { createPublicClient, http, parseAbi } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
+import { CRON_HEARTBEAT_FILE } from './cron.mjs';
 import { down } from './down.mjs';
 import {
   API_DIR,
@@ -335,6 +337,7 @@ async function main() {
   };
   save();
 
+  const seamKey = randomBytes(32).toString('hex');
   writeDevVars({
     APP_ORIGIN: urls.appOrigin,
     EMAIL_FROM: 'codes@flocked.test',
@@ -350,7 +353,7 @@ async function main() {
     BASE_RPC_URL: urls.anvil,
     TURNSTILE_SECRET_KEY: TURNSTILE_TEST_SECRET,
     FARCASTER_AUTH_ORIGIN: urls.farcaster,
-    FLOCKED_TEST_SEAM_KEY: randomBytes(32).toString('hex'),
+    FLOCKED_TEST_SEAM_KEY: seamKey,
   });
   if (!existsSync(join(WEB_DIST_DIR, 'index.html'))) {
     ensureDir(WEB_DIST_DIR);
@@ -399,6 +402,16 @@ async function main() {
   );
   await waitForProcess('farcaster', state.pids.farcaster, 'the Farcaster mock', () =>
     getJson(`${urls.farcaster}/health`),
+  );
+
+  // wrangler dev fires no cron triggers; the driver runs them through the seam (cron.mjs).
+  log('starting the cron driver');
+  state.pids.cron = start('cron', process.execPath, [join(STACK_DIR, 'cron.mjs')], {
+    env: { ...process.env, STACK_CRON_API: urls.api, STACK_CRON_KEY: seamKey },
+  });
+  save();
+  await waitForProcess('cron', state.pids.cron, 'the first cron pass', () =>
+    existsSync(CRON_HEARTBEAT_FILE),
   );
 
   log('waiting for beacons over HTTP');

@@ -7,5 +7,8 @@ export default defineConfig({
     // A round has to close and its beacon arrive (beaconDelay 60 s on a 3 s chain).
     testTimeout: 240_000,
     hookTimeout: 60_000,
+    // Every file shares the stack's anvil and its keys, and some turn automine off or revert
+    // snapshots (anchor-tx, indexer-reorg), so files run one at a time.
+    fileParallelism: false,
   },
 });

@@ -7,6 +7,7 @@ The `local` environment from plan 4.4 on one machine: a drand network in Docker,
 nvm use                      # Node 22.23
 pnpm stack:up                # ~20 s (the first run on a Mac also pulls the drand image)
 pnpm --filter @flocked/e2e exec vitest run tests/stack-smoke.test.ts   # ~70 s
+pnpm --filter @flocked/e2e exec vitest run   # every stack test, one file at a time (~2.5 min)
 pnpm stack:status            # exits 1 if anything is down
 pnpm stack:down              # stops everything and deletes the state
 ```
@@ -32,6 +33,12 @@ Needs Docker (OrbStack on the owner's Mac, OA-01), Foundry 1.7.1 (`anvil`, `forg
    `wrangler dev --local --env-file e2e/stack/.dev.vars` on `127.0.0.1:8787`. A developer's own
    `apps/api/.dev.vars` is not read and not touched. The Farcaster Quick Auth mock (`e2e/mocks/farcaster`) runs
    on `127.0.0.1:8789`.
+5. **Crons** (`cron.mjs`): `wrangler dev` never fires the Worker's cron triggers, so a driver process runs them
+   through the seam (`POST /__test/cron`): the minute cron (scheduler tick and indexer kick) every 5 s
+   (`STACK_CRON_INTERVAL_MS`) and the hourly one every 10 minutes (`STACK_CRON_HOURLY_MS`). Passes never
+   overlap, and each writes a heartbeat to `.run/cron.json` that `stack:status` checks. The scheduler logs
+   `ALERT_SCHEDULE_GAP` for today's real daily round, which has no house question on the stack; that is
+   expected.
 
 `up` is idempotent: a healthy stack is left as it is, and anything else (a half-started or stale stack) is torn
 down and started fresh. Ports can be moved with `STACK_API_PORT`, `STACK_ANVIL_PORT`, `STACK_DRAND_PORT`,
@@ -55,12 +62,27 @@ addresses are kept. Email sign-in codes sent locally land as files under `apps/a
 them. It answers 404 unless `ENVIRONMENT` is `local` and the request carries `FLOCKED_TEST_SEAM_KEY` (generated per
 run) as a Bearer token.
 
-| Route                                                   | Does                                                                                                                                                   |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `POST /__test/clock {nowMs}`                            | Pins the game clock (`FLOCKED_TEST_CLOCK`) for the Worker and every DO; `null` returns to wall time. A wrangler restart forgets it                     |
-| `POST /__test/rounds {opensAt, closesAt, beaconDelay?}` | A daily Free round, locked: question, `rounds`, `round_modes`, then `RoundDO.init`. The beacon round is the first at or after `closesAt + beaconDelay` |
-| `GET /__test/rounds/:id`                                | RoundDO state, D1 status, the Free commitment root, the entries                                                                                        |
-| `POST /__test/rounds/:id/reveal {signature}`            | Verifies the beacon and opens every entry inside the Worker (`decryptWithSignature`, `classify`); writes nothing                                       |
+| Route                                                             | Does                                                                                                                                                       |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /__test/clock {nowMs}`                                      | Pins the game clock (`FLOCKED_TEST_CLOCK`) for the Worker and every DO; `null` returns to wall time. A wrangler restart forgets it                         |
+| `POST /__test/cron {cron}`                                        | Runs a configured cron expression's jobs (`src/cron.ts` `runCron`), as its trigger would. The cron driver calls it                                         |
+| `POST /__test/rounds/scheduled {opensAt, closesAt, beaconDelay?}` | A daily-shaped Free round and its question, unlocked. The scheduler's next tick locks it (past opensAt − 6 h), anchors its lock leaf and inits its RoundDO |
+| `POST /__test/rounds {opensAt, closesAt, beaconDelay?}`           | A daily Free round, locked: question, `rounds`, `round_modes`, then `RoundDO.init`. The beacon round is the first at or after `closesAt + beaconDelay`     |
+| `GET /__test/rounds/:id`                                          | RoundDO state, D1 status, the Free mode (commitment root, `lockTx`, `commitTx`), the entries, and the round key's anchor events in `chain_events`          |
+| `POST /__test/rounds/:id/reveal {signature}`                      | Verifies the beacon and opens every entry inside the Worker (`decryptWithSignature`, `classify`); writes nothing                                           |
+
+## Stack tests
+
+| File                                 | What                                                                                                                                                                                                                            |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/stack-smoke.test.ts`          | One real Free round end to end through the seam: SIWE, sealed picks, receipts, close, the local beacon, reveal in Node and in the Worker                                                                                        |
+| `tests/lifecycle-open-close.test.ts` | A minute-long daily-shaped round moved only by the cron driver and the DOs' alarms: lock, lock leaf onchain, open, entries, close, commitment onchain before the beacon, both writes mirrored by the indexer (AC-6, first half) |
+| `tests/anchor-tx.test.ts`            | The AnchorDO's and operator's transactions on anvil: batches with `Skipped`, a stuck transaction replaced at the same nonce                                                                                                     |
+| `tests/indexer-reorg.test.ts`        | The indexer core over anvil: a reorg made with `evm_snapshot` / `evm_revert` and repaired, ALERT-8                                                                                                                              |
+
+Files run one at a time (`fileParallelism: false`): they share anvil and the stack's keys, and `anchor-tx` turns
+automine off for a moment. Run `anchor-tx` and `indexer-reorg` when no other round on the stack is about to lock
+or close, since they sign with the same anchor key as the AnchorDO.
 
 ## Time
 

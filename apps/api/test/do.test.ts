@@ -1,6 +1,7 @@
 // Every Durable Object binding resolves to its class in the Workers runtime and each pinned RPC
-// method answers "not implemented" (plan P2.4: src/do/types.ts).
+// method answers "not implemented" until it is built (plan P2.4: src/do/types.ts).
 import { env } from 'cloudflare:test';
+import { roundKey } from '@flocked/shared';
 import { describe, expect, it } from 'vitest';
 import { ANCHOR_SINGLETON, INDEXER_SINGLETON, settlementName } from '../src/do/index.js';
 import type { AnchorCommitItem, StakesEntryEvent } from '../src/do/types.js';
@@ -49,15 +50,20 @@ const commit: AnchorCommitItem = {
 describe('RoundDO (binding ROUND)', () => {
   const stub = () => env.ROUND.get(env.ROUND.idFromName(FIXTURE_IDS.round));
 
-  // init, enterFree and getState are implemented (W3-B): test/round-do/.
-  it('pins ingestStakesEntry, onModeResult, requestVoid', async () => {
+  // init, enterFree and getState are implemented (W3-B): test/round-do/. ingestStakesEntry,
+  // onModeResult and requestVoid are implemented (W4-D): test/lifecycle/ and test/round-do/.
+  it('answers ingestStakesEntry, onModeResult and requestVoid with not_found before init', async () => {
     const s = stub();
-    await expectNotImplemented(s.ingestStakesEntry(stakesEvent), 'RoundDO.ingestStakesEntry');
-    await expectNotImplemented(
-      s.onModeResult('free', { outcome: 'refunded', reason: 1, provisional: false }),
-      'RoundDO.onModeResult',
-    );
-    await expectNotImplemented(s.requestVoid(), 'RoundDO.requestVoid');
+    const notFound = async (call: Promise<unknown>) => {
+      const err = await call.then(
+        () => new Error('expected a rejection'),
+        (e: unknown) => e,
+      );
+      expect((err as Error).message).toBe('not_found: the round is not initialized');
+    };
+    await notFound(s.ingestStakesEntry(stakesEvent));
+    await notFound(s.onModeResult('free', { outcome: 'refunded', reason: 1, provisional: false }));
+    await notFound(s.requestVoid());
   });
 
   it('answers fetch (future WebSocket upgrades) with a 501 envelope', async () => {
@@ -83,34 +89,44 @@ describe('RoundViewerDO (binding ROUND_VIEWER)', () => {
 });
 
 describe('AnchorDO (binding ANCHOR)', () => {
+  // Implemented in W4-A; its behaviour is in test/anchor-do. Here: the pinned RPC shapes.
   it('pins submitLock, submitCommit, submitManifest, status', async () => {
     const s = env.ANCHOR.get(env.ANCHOR.idFromName(ANCHOR_SINGLETON));
-    await expectNotImplemented(
-      s.submitLock([
+    const key = roundKey(FIXTURE_IDS.round, 'free');
+    expect(
+      await s.submitLock([
         {
-          roundKey: HASH,
+          roundKey: key,
           roundId: FIXTURE_IDS.round,
           mode: 'free',
-          closesAtSec: 1,
+          closesAtSec: 4_000_000_000,
           beaconRound: 1,
           questionHash: HASH,
           configHash: HASH,
         },
       ]),
-      'AnchorDO.submitLock',
-    );
-    await expectNotImplemented(s.submitCommit(commit), 'AnchorDO.submitCommit');
-    await expectNotImplemented(
-      s.submitManifest({
+    ).toEqual({ queued: [key], alreadyAnchored: [] });
+    // Past its deadline (closesAt 1): refused at once, so neither queued nor anchored.
+    expect(await s.submitCommit({ ...commit, roundKey: key })).toEqual({
+      queued: [],
+      alreadyAnchored: [],
+    });
+    // A round key that isn't keccak256(abi.encode(roundId, mode)) is ignored.
+    expect(
+      await s.submitManifest({
         roundKey: HASH,
         roundId: FIXTURE_IDS.round,
         mode: 'free',
         manifestHash: HASH,
         beaconTimeSec: 2,
       }),
-      'AnchorDO.submitManifest',
-    );
-    await expectNotImplemented(s.status(HASH), 'AnchorDO.status');
+    ).toEqual({ queued: [], alreadyAnchored: [] });
+    expect(await s.status(key)).toEqual({
+      roundKey: key,
+      lock: { state: 'queued' },
+      commit: { state: 'failed', deadlineSec: -28, detail: 'deadline_passed' },
+      manifest: { state: 'none' },
+    });
   });
 });
 
@@ -157,10 +173,12 @@ describe('RateLimitDO (binding RATE_LIMIT)', () => {
   });
 });
 
+// IndexerDO is implemented (W4-B); test/indexer/indexer-do.test.ts covers its behaviour. Here: the
+// binding reaches the class (with no RPC URL in tests, a poll indexes nothing).
 describe('IndexerDO (binding INDEXER)', () => {
-  it('pins poll and status', async () => {
+  it('answers poll and status', async () => {
     const s = env.INDEXER.get(env.INDEXER.idFromName(INDEXER_SINGLETON));
-    await expectNotImplemented(s.poll(), 'IndexerDO.poll');
-    await expectNotImplemented(s.status(), 'IndexerDO.status');
+    expect(await s.poll()).toEqual({ fromBlock: 1, toBlock: 0, events: 0, reorg: false });
+    expect(await s.status()).toMatchObject({ chainId: 31337, contracts: [], lagSec: null });
   });
 });

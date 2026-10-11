@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 // `pnpm stack:status`: what the stack is and whether each part answers. Exits 1 when the stack is
 // down or any part is unhealthy, so scripts can gate on it.
+import { existsSync, readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
+import { CRON_HEARTBEAT_FILE } from './cron.mjs';
 import { alive, getJson, readDevVars, readState, rpc } from './env.mjs';
 
 async function probe(fn) {
@@ -39,6 +41,17 @@ export async function health(state) {
       await getJson(`${state.farcasterUrl}/health`);
       return state.farcasterUrl;
     }),
+    cron: probe(() => {
+      if (!alive(state.pids?.cron)) throw new Error('process not running');
+      if (!existsSync(CRON_HEARTBEAT_FILE)) throw new Error('no pass yet');
+      const beat = JSON.parse(readFileSync(CRON_HEARTBEAT_FILE, 'utf8'));
+      const age = Date.now() - beat.at;
+      // A pass can wait on receipts, so a few missed intervals are fine.
+      if (age > beat.intervalMs * 3 + 60_000)
+        throw new Error(`last pass ${Math.round(age / 1000)} s ago`);
+      const failed = beat.results.filter((r) => !r.ok).map((r) => r.cron);
+      return `every ${beat.intervalMs / 1000} s${failed.length ? `, last pass failed: ${failed.join(', ')}` : ''}`;
+    }),
   };
   const results = Object.fromEntries(
     await Promise.all(Object.entries(checks).map(async ([k, p]) => [k, await p])),
@@ -56,6 +69,7 @@ export function printStatus(state, h) {
     ['anvil', h.results.anvil],
     ['api', h.results.api],
     ['farcaster', h.results.farcaster],
+    ['cron', h.results.cron],
   ];
   for (const [name, r] of rows)
     console.log(`  ${r.ok ? 'ok  ' : 'FAIL'} ${name.padEnd(10)} ${r.detail}`);

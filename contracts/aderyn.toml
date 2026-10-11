@@ -1,0 +1,10 @@
+# Aderyn configuration (aderyn 0.6.8). Triage of every finding: docs/audit/static-analysis.md.
+# DO NOT CHANGE version: only 1 is supported.
+version = 1
+
+# The Foundry project root and the audited sources (test/, script/ and dependencies/ are out of scope).
+root = "."
+src = "src/"
+
+[detectors]
+# Every detector runs; findings are triaged in docs/audit/static-analysis.md rather than excluded here.

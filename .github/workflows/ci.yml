@@ -58,6 +58,45 @@ jobs:
         env:
           FOUNDRY_PROFILE: ci
 
+  # Contracts static analysis (W4-C, docs/audit/static-analysis.md): slither fails on any medium or
+  # high that is not suppressed inline with a reason, aderyn on any high, and the NatSpec check on any
+  # external function, getter or event without NatSpec.
+  static-analysis:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v7
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.7.1
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - run: forge soldeer install
+      # slither compiles through forge, so it needs no solc-select.
+      - run: pip install slither-analyzer==0.11.6
+      - run: npm install -g @cyfrin/aderyn@0.6.8
+      - name: slither (fails on any unsuppressed medium or high)
+        run: slither . --fail-medium --sarif slither.sarif
+      - name: aderyn (fails on any high)
+        run: aderyn . -o aderyn.json && jq -e '.issue_count.high == 0' aderyn.json
+      - name: NatSpec complete
+        run: forge build && node tools/check-natspec.mjs
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: static-analysis
+          path: |
+            contracts/slither.sarif
+            contracts/aderyn.json
+          if-no-files-found: ignore
+
   properties:
     runs-on: ubuntu-latest
     timeout-minutes: 15

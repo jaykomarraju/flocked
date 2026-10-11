@@ -1,7 +1,9 @@
-// Test-only seam for the local stack (W3-D; e2e/stack/README.md). It stands in for the scheduler and
-// the settlement pipeline that later waves build: it creates and locks a Free round (D1 rows plus
-// RoundDO.init), moves the game clock, and opens a round's entries with a beacon signature inside
-// the Worker, so the e2e smoke test runs tlock in the `wrangler dev` bundle.
+// Test-only seam for the local stack (W3-D; e2e/stack/README.md). It stands in for what `wrangler dev`
+// and later waves don't provide: it creates and locks a Free round (D1 rows plus RoundDO.init), or
+// creates an unlocked one for the real scheduler to lock (W4-D); moves the game clock; runs a cron
+// expression's jobs (the stack's cron driver, e2e/stack/cron.mjs, calls it in place of Cloudflare's
+// cron triggers, which `wrangler dev` doesn't fire); and opens a round's entries with a beacon
+// signature inside the Worker, so the e2e smoke test runs tlock in the `wrangler dev` bundle.
 //
 // It answers 404, exactly like an unknown path, unless ENVIRONMENT is 'local', FLOCKED_TEST_SEAM_KEY
 // is set (only `pnpm stack:up` sets it, per run) and the request carries that key as a Bearer token,
@@ -14,6 +16,7 @@ import {
   UlidSchema,
   errorEnvelope,
   newUlid,
+  roundKey,
 } from '@flocked/shared';
 import {
   MAX_BEACON_DELAY,
@@ -31,6 +34,7 @@ import {
 import { Hono, type MiddlewareHandler } from 'hono';
 import { z } from 'zod';
 import { timingSafeEqual } from '../auth/crypto.js';
+import { CRON_JOBS, runCron } from '../cron.js';
 import type { LockedRound } from '../do/types.js';
 import type { Env } from '../env.js';
 import { now } from '../lib/clock.js';
@@ -74,6 +78,19 @@ const CreateRoundSchema = z
     ]),
   })
   .refine((r) => r.closesAt > r.opensAt, 'closesAt must be after opensAt');
+
+const ScheduledRoundSchema = z
+  .strictObject({
+    opensAt: WholeSecondMs,
+    closesAt: WholeSecondMs,
+    beaconDelay: z.int().min(MIN_BEACON_DELAY).max(MAX_BEACON_DELAY).default(MIN_BEACON_DELAY),
+    prompt: z.string().min(1).max(200).default('Sheep or goats?'),
+  })
+  .refine((r) => r.closesAt > r.opensAt, 'closesAt must be after opensAt');
+
+const CronSchema = z.strictObject({
+  cron: z.string().refine((c) => c in CRON_JOBS, 'not a configured cron expression'),
+});
 
 const RoundParamsSchema = z.strictObject({ id: UlidSchema });
 const RevealSchema = z.strictObject({ signature: z.string().regex(/^[0-9a-f]{96}$/) });
@@ -163,16 +180,75 @@ app.post('/rounds', validate('json', CreateRoundSchema), async (c) => {
   return c.json({ locked, state }, 201);
 });
 
-/** GET /__test/rounds/:id: the RoundDO state and what D1 holds for the round's Free mode. */
+/**
+ * POST /__test/rounds/scheduled: a daily-shaped round with a Free mode and its question, unlocked, as
+ * the scheduler's hourly job creates them but with any open and close time (minutes apart, say). The
+ * scheduler's tick locks it once opensAt − 6 h has passed, queues its lock leaf and inits its
+ * RoundDO; nothing else is done here.
+ */
+app.post('/rounds/scheduled', validate('json', ScheduledRoundSchema), async (c) => {
+  const body = c.req.valid('json');
+  const config = {
+    beaconDelay: body.beaconDelay,
+    free: { ...LOCKED_CONFIG_DEFAULTS.free, awardRecipient: null },
+  };
+  const t = now(c.env);
+  const roundId = newUlid();
+  const questionId = newUlid();
+  await c.env.DB.batch([
+    c.env.DB.prepare(
+      'INSERT INTO questions (id, author_user_id, prompt, options_json, category, status, created_at) ' +
+        "VALUES (?1, NULL, ?2, ?3, 'test', 'scheduled', ?4)",
+    ).bind(
+      questionId,
+      body.prompt,
+      JSON.stringify([
+        { label: 'Sheep', emoji: '🐑' },
+        { label: 'Goats', emoji: '🐐' },
+      ]),
+      t,
+    ),
+    c.env.DB.prepare(
+      'INSERT INTO rounds (id, kind, room_id, question_id, opens_at, closes_at, status, config_json) ' +
+        "VALUES (?1, 'daily', NULL, ?2, ?3, ?4, 'scheduled', ?5)",
+    ).bind(roundId, questionId, body.opensAt, body.closesAt, JSON.stringify(config)),
+  ]);
+  log.warn('test_round_scheduled', { roundId, opensAt: body.opensAt, closesAt: body.closesAt });
+  return c.json({ roundId, questionId }, 201);
+});
+
+/** POST /__test/cron {cron}: runs that cron expression's jobs (src/cron.ts), as its trigger would. */
+app.post('/cron', validate('json', CronSchema), async (c) => {
+  const { cron } = c.req.valid('json');
+  const jobs = await runCron(cron, c.env, Date.now());
+  return c.json({ cron, jobs });
+});
+
+/**
+ * GET /__test/rounds/:id: the RoundDO state, what D1 holds for the round's Free mode, and the Free
+ * round key's anchor events the indexer mirrored.
+ */
 app.get('/rounds/:id', validate('param', RoundParamsSchema), async (c) => {
   const { id } = c.req.valid('param');
   const round = await c.env.DB.prepare(
-    'SELECT r.status, m.status AS free_status, m.commitment_root FROM rounds r ' +
+    'SELECT r.status, m.status AS free_status, m.commitment_root, m.lock_tx, m.commit_tx FROM rounds r ' +
       "JOIN round_modes m ON m.round_id = r.id AND m.mode = 'free' WHERE r.id = ?1",
   )
     .bind(id)
-    .first<{ status: string; free_status: string; commitment_root: string | null }>();
+    .first<{
+      status: string;
+      free_status: string;
+      commitment_root: string | null;
+      lock_tx: string | null;
+      commit_tx: string | null;
+    }>();
   if (!round) throw new HttpError('not_found', 'no such round');
+  const { results: anchorEvents } = await c.env.DB.prepare(
+    "SELECT event, tx_hash, removed FROM chain_events WHERE json_extract(args_json, '$.roundKey') = ?1 " +
+      'ORDER BY block_number, log_index',
+  )
+    .bind(roundKey(id, 'free'))
+    .all<{ event: string; tx_hash: string; removed: number }>();
   const { results } = await c.env.DB.prepare(
     "SELECT id, user_id, stake, commitment, receipt_seq FROM entries WHERE round_id = ?1 AND mode = 'free' ORDER BY receipt_seq",
   )
@@ -181,7 +257,17 @@ app.get('/rounds/:id', validate('param', RoundParamsSchema), async (c) => {
   return c.json({
     state: await roundStub(c.env, id).getState(),
     status: round.status,
-    free: { status: round.free_status, commitmentRoot: round.commitment_root },
+    free: {
+      status: round.free_status,
+      commitmentRoot: round.commitment_root,
+      lockTx: round.lock_tx,
+      commitTx: round.commit_tx,
+    },
+    anchorEvents: anchorEvents.map((e) => ({
+      event: e.event,
+      txHash: e.tx_hash,
+      removed: e.removed === 1,
+    })),
     entries: results.map((e) => ({
       id: e.id,
       userId: e.user_id,

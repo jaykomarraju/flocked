@@ -81,6 +81,7 @@ Files that make up the plan:
 - **Blocked.** A session blocked on an owner action or a spec question stops, writes `blocked`, and tells the owner exactly what it needs. It never fakes a credential and never stubs around a launch gate. Mocks for external services in tests are fine; production code paths never fall back to a mock.
 - **D checks first.** D reads the three handoffs before merging. If any isn't `complete`, D stops and emits the continuation prompts to run first, plus a fresh D prompt.
 - **Z never merges a red wave.** Small fixes (roughly < 50 lines, no new behaviour) it makes itself. Anything larger becomes a fix session `W{n}-F{k}` on `w{n}-integration`. Z emits that prompt plus a fresh Z prompt (`W{n}-Z.2`) to run after it.
+- **Review findings on a green wave** (owner decision, Oct 11, 2026). When the wave is green and its review finds defects that no test catches, the owner may let Z merge and run the fix session alongside the next wave instead. `W{n}-F{k}` then branches from the tag `wave-{n}`, owns paths that the next wave's A, B and C don't touch, and the next D merges it as a fourth branch. W4-F1 is the first.
 
 ### 2.7 Spec and design changes
 
@@ -214,7 +215,7 @@ complete | partial | blocked — <one line>
 
 1. Read the four handoffs. Every one must be `complete`.
 2. `git diff --stat main...w{n}-integration`; read full diffs only where a handoff flags risk, plus any change to a pinned interface.
-3. On `w{n}-integration` in a fresh worktree: `pnpm install --frozen-lockfile && (cd contracts && forge soldeer install) && pnpm check` and `(cd contracts && FOUNDRY_PROFILE=ci forge test)`, plus the stack smoke (`pnpm stack:up && pnpm --filter @flocked/e2e exec vitest run tests/stack-smoke.test.ts && pnpm stack:down`, from W3-D) and `pnpm e2e` once it exists. Check CI and Stack are green on the pushed branch (`gh run list --branch w{n}-integration`).
+3. On `w{n}-integration` in a fresh worktree: `pnpm install --frozen-lockfile && (cd contracts && forge soldeer install) && pnpm check` and `(cd contracts && FOUNDRY_PROFILE=ci forge test)`, plus every stack test (`pnpm stack:up && pnpm --filter @flocked/e2e exec vitest run && pnpm stack:down`, one file at a time, from W4-D) and `pnpm e2e` once it exists. Check CI and Stack are green on the pushed branch (`gh run list --branch w{n}-integration`).
 4. Every traceability row assigned to this wave has a named, passing test. Update the row's status.
 5. Collect "Spec issues" and raise them with the owner. Apply decisions to the spec and Decision log.
 6. Merge into `main` (`--no-ff`) and push it, delete merged branches and the wave's worktrees. Tag `wave-{n}` on `main` once the wave summary and the next wave's prompts are committed (steps 7 and 9), so the tag, which the next wave branches from, contains them and `main` equals the tag (2.4).
@@ -258,7 +259,7 @@ docs/             plan/, prompts/, sessions/, design/, runbooks/, audit/
 | Workers tests | `@cloudflare/vitest-plugin` (the renamed `vitest-pool-workers`; `cloudflareTest` plugin; Workers runtime, Miniflare D1/R2/KV/DO/Queues). Copy `apps/api/vitest.config.ts` (D1/DO) or `packages/tlock/vitest.config.ts` (pre-bundled CJS deps) |
 | Worker framework | Hono for routing; zod for validation |
 | Chain | viem in all TypeScript; Foundry 1.7 (forge, anvil, cast) for contracts; OpenZeppelin Contracts 5.x and `@openzeppelin/merkle-tree` |
-| Contracts static analysis | slither and aderyn (from W4-C on) |
+| Contracts static analysis | slither 0.11.6 and aderyn 0.6.8 (from W4-C on), triaged in `docs/audit/static-analysis.md`. Locally: `uv tool install slither-analyzer`, and aderyn from npm (`npm install -g @cyfrin/aderyn@0.6.8`; crates.io has only a stale 0.1.9). NatSpec completeness: `contracts/tools/check-natspec.mjs` |
 | Timelock crypto | `tlock-js` (and its drand client) wrapped by `@flocked/tlock` |
 | Web | React + Vite, react-router, wagmi + viem with Coinbase Smart Wallet, `@farcaster/miniapp-sdk` |
 | Cards | satori + resvg-wasm in a Worker |
@@ -277,8 +278,9 @@ Exact library versions are chosen at install time by the session that adds them 
 | `pnpm contracts:test` | `forge test --root contracts` (unit, fuzz, invariant, vectors). The CI profile runs as `FOUNDRY_PROFILE=ci forge test` in `contracts/` (doubled fuzz and invariant runs; Foundry 1.7 has no `--profile` flag) |
 | `pnpm contracts:build` | `forge build --root contracts && node packages/abi/scripts/gen.mjs` (ABI codegen into `packages/abi`) |
 | `pnpm spec "<heading>" [--sub "<label>"]` | Prints one `## ` section of `Product_Spec.md` (or one bold sub-block of it) |
-| `pnpm stack:up` / `pnpm stack:down` / `pnpm stack:status` | Local stack (W3-D, `e2e/stack/README.md`): drand network, anvil 31337 (forks Base only with `STACK_FORK_URL`), CREATE2 deploy, D1 migrations, `wrangler dev --local`, Farcaster mock. Writes `e2e/stack/.dev.vars` and `.state.json` (gitignored). Needs Docker (OrbStack) and Foundry on `PATH`; up ~18 s cold |
+| `pnpm stack:up` / `pnpm stack:down` / `pnpm stack:status` | Local stack (W3-D, `e2e/stack/README.md`): drand network, anvil 31337 (forks Base only with `STACK_FORK_URL`), CREATE2 deploy, D1 migrations, `wrangler dev --local`, Farcaster mock, and the cron driver (`e2e/stack/cron.mjs`, W4-D: `wrangler dev` fires no cron triggers, so it posts `POST /__test/cron` every 5 s). Writes `e2e/stack/.dev.vars` and `.state.json` (gitignored). `stack:status` has a `cron` row. Needs Docker (OrbStack) and Foundry on `PATH`; up ~18 s cold |
 | `pnpm --filter @flocked/e2e exec vitest run tests/stack-smoke.test.ts` | Stack smoke: a real Free round end to end on the running stack (~70 s) |
+| `pnpm --filter @flocked/e2e exec vitest run` | Every stack test on the running stack, one file at a time (`fileParallelism: false`; ~2.5 min in wave 4): smoke, `lifecycle-open-close`, `anchor-tx`, `indexer-reorg` (W4-D) |
 | `pnpm e2e` | Playwright against the local stack (from W7-D) |
 | `pnpm e2e:ui` | Playwright UI tests with screenshot comparisons (from W8-C) |
 
@@ -303,12 +305,12 @@ Exact library versions are chosen at install time by the session that adds them 
 
 ### 4.6 CI
 
-- `.github/workflows/ci.yml` (from W1-A): on push and PR, three jobs. `check`: install with the frozen lockfile, `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm format:check`, the settle and tlock vector-freshness checks, and the design-tokens schema test. `contracts` (from W1-D): Foundry v1.7.1, `forge soldeer install`, `forge fmt --check`, `forge build`, the ABI freshness check (`node ../packages/abi/scripts/gen.mjs --check`), `FOUNDRY_PROFILE=ci forge test`. `properties` (from W1-D): settle's and tlock's property tests with `FAST_CHECK_RUNS=10000`, selected by file path (tlock: `test/plaintext.test.ts` and `test/classify.properties.test.ts`, the second from W3-D). Every `pnpm --filter` step uses `--fail-if-no-match` (W2-D), so a renamed package can't make a step pass on nothing.
+- `.github/workflows/ci.yml` (from W1-A): on push and PR, four jobs. `check`: install with the frozen lockfile, `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm format:check`, the settle and tlock vector-freshness checks, and the design-tokens schema test. `contracts` (from W1-D): Foundry v1.7.1, `forge soldeer install`, `forge fmt --check`, `forge build`, the ABI freshness check (`node ../packages/abi/scripts/gen.mjs --check`), `FOUNDRY_PROFILE=ci forge test`. `properties` (from W1-D): settle's and tlock's property tests with `FAST_CHECK_RUNS=10000`, selected by file path (tlock: `test/plaintext.test.ts` and `test/classify.properties.test.ts`, the second from W3-D). Every `pnpm --filter` step uses `--fail-if-no-match` (W2-D), so a renamed package can't make a step pass on nothing. `static-analysis` (from W4-D, on `ubuntu-24.04`): slither 0.11.6 `--fail-medium`, aderyn 0.6.8 failing on any high (`jq -e '.issue_count.high == 0'`), and the NatSpec check; a new medium or high fails until it is fixed or triaged in `docs/audit/static-analysis.md` with an inline suppression.
 - A fresh worktree needs `pnpm install` and `(cd contracts && forge soldeer install)` before `pnpm check` (Soldeer dependencies are gitignored).
-- `.github/workflows/stack.yml` (from W3-D): the `smoke` job brings up the local stack and runs the stack smoke on pushes to `main` and `w*-integration`. It doesn't run on PRs, so it can't be a required check; Z checks it before merging (3.4 step 3). It runs on `ubuntu-latest`, which becomes Ubuntu 26 on Oct 19, 2026: pin `ubuntu-24.04` if the job breaks.
+- `.github/workflows/stack.yml` (from W3-D): the `smoke` job brings up the local stack on pushes to `main` and `w*-integration` and runs each stack test as its own step (from W4-D): `stack-smoke`, `lifecycle-open-close`, `anchor-tx`, `indexer-reorg`. It doesn't run on PRs, so it can't be a required check; Z checks it before merging (3.4 step 3). It runs on `ubuntu-latest`, which becomes Ubuntu 26 on Oct 19, 2026: pin `ubuntu-24.04` if the job breaks.
 - `e2e.yml` (from W7-D) runs the local stack plus Playwright on `w*-integration` and `main`.
 - `deploy.yml` (from W13-D) deploys to staging on `main`, and to production on manual dispatch with a required reviewer.
-- CI must be green before Z merges. `main` is protected by two rulesets (OA-03): no force pushes or deletion for anyone, and the three CI jobs required, with repository admins allowed to bypass so Z can push its `--no-ff` merge after checking CI itself.
+- CI must be green before Z merges. `main` is protected by two rulesets (OA-03): no force pushes or deletion for anyone, and the `check`, `contracts` and `properties` jobs required (`static-analysis` can be added, OA-03), with repository admins allowed to bypass so Z can push its `--no-ff` merge after checking CI itself.
 
 ---
 
@@ -425,7 +427,7 @@ External long poles, started early so they stay off the critical path:
 | OA-17 | Admin multisig (Safe) and a separate guardian multisig on Base Sepolia and Base; quorum and signers | Contract deploy roles | W14 (Sepolia), W16 (Base) | W10 |
 | OA-18 | Guardian paging channel (e.g. PagerDuty or Opsgenie) and on-call rota; guardian charter document | Watcher paging; guardian policy | W14 | W11 |
 | OA-19 | Independently hosted dead-man's switch (e.g. healthchecks.io or Cronitor) that pages if watcher verdicts stop | Missing-verdict alert | W14 | W11 |
-| OA-20 | **Gate 3: contract audit.** Book an auditor now; send the package from W4-C after W4-Z; receive the report | Mainnet deploy | Report by W15 | **W1** |
+| OA-20 | **Gate 3: contract audit.** Book an auditor now; send the package from W4-C after W4-Z; receive the report. **Package ready (W4-Z, Oct 11, 2026):** `docs/audit/package.md` (with `threat-model.md` and `static-analysis.md`), contracts at tag `audit-candidate-1` (`contracts/src` as of `36d115c`); auditor not booked yet | Mainnet deploy | Report by W15 | **W1** |
 | OA-21 | **Gate 1: legal sign-off.** First jurisdictions for `geo.stakes.allow`, skill-contest vs wager position, ToS, privacy policy, responsible-play resources, age rules per region | ToS/privacy text (W12-B); production launch | Text by W12; sign-off by W16 | **W1** |
 | OA-22 | **Gate 2: Coinbase personhood.** Confirm `GET /v2/user/personal-details` returns data only for ID-verified accounts | Stakes in production (Free launches without it) | W16 | **W1** |
 | OA-23 | **Gate 4: load-test sign-off** on the W14-D report (or send the fan-out design back) | Production launch | W16 | W14 |
@@ -486,11 +488,12 @@ Legend: ⬜ not started · 🟡 in progress · ✅ complete · ⛔ blocked. Z se
 | W3-C | Design: core round flow (+ W3-C.2) | M | ✅ |
 | W3-D | Local stack + first Free entry end to end | M | ✅ |
 | W3-Z | Consolidate wave 3 | M | ✅ |
-| W4-A | Scheduler, question lock, AnchorDO | M | ⬜ |
-| W4-B | Chain indexer | M | ⬜ |
-| W4-C | Contracts audit prep | M | ⬜ |
-| W4-D | Lifecycle wiring | M | ⬜ |
-| W4-Z | Consolidate wave 4 | S | ⬜ |
+| W4-A | Scheduler, question lock, AnchorDO | M | ✅ |
+| W4-B | Chain indexer | M | ✅ |
+| W4-C | Contracts audit prep | M | ✅ |
+| W4-D | Lifecycle wiring | M | ✅ |
+| W4-Z | Consolidate wave 4 | S | ✅ |
+| W4-F1 | Wave-4 review fixes (alongside W5-A/B/C; W5-D merges it) | M | ⬜ |
 | W5-A | Settlement core | M | ⬜ |
 | W5-B | Personhood | M | ⬜ |
 | W5-C | Design: profiles, boards, rooms, settings, verify | M | ⬜ |
@@ -572,7 +575,7 @@ Legend: ⬜ not started · 🟡 in progress · ✅ complete · ⛔ blocked. Z se
 | OA-17 | Admin + guardian multisigs | W14/W16 | ⬜ |
 | OA-18 | Guardian paging + charter | W14 | ⬜ |
 | OA-19 | Dead-man's switch | W14 | ⬜ |
-| OA-20 | Gate 3: audit | W15 | ⬜ |
+| OA-20 | Gate 3: audit (package ready at `audit-candidate-1`; auditor not booked) | W15 | ⬜ |
 | OA-21 | Gate 1: legal sign-off (+ ToS/privacy text by W12) | W16 | 🟡 |
 | OA-22 | Gate 2: Coinbase personhood | W16 | ✅ |
 | OA-23 | Gate 4: load-test sign-off | W16 | ⬜ |

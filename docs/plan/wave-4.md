@@ -47,6 +47,43 @@
 - **Required tests.** SET-1b (rule 4). AC-6 (first half: one lock leaf, one commitment before the beacon, on the local stack). Void before close; void that misses close is abandoned. A local-stack test runs a short daily-shaped round (minutes long, via config) through open → close → commit with no manual call.
 - **Emits.** W4-Z prompt.
 
+## W4-F1: Wave-4 review fixes (added by W4-Z, Oct 11, 2026)
+
+- **Role / size:** fix, M (split into `W4-F1.2` if needed: TxSender, operator and AnchorDO first; indexer and void second).
+- **When.** Wave 4 was green, so the owner chose to merge it and run this session alongside W5-A, B and C (plan.md 2.6). It branches from the tag `wave-4`, and W5-D merges it as a fourth branch. **Migration reserved:** `0007` (unused in wave 4).
+- **Objective.** Fix the defects that W4-Z's three adversarial reviews found and that no test catches. Each fix comes with a test that fails without it. File and line references are at `w4-integration` @ `09a65e4`.
+- **Owns.** `apps/api/src/chain/**`, `apps/api/src/do/{anchor-do,indexer-do}.ts`, `apps/api/src/scheduler/**`, `apps/api/src/indexer/**`, `apps/api/src/lifecycle/**`, and in `apps/api/src/do/round-do.ts` only the void, `ingestStakesEntry` and `onModeResult` paths. Also their tests in `apps/api/test/{anchor-do,scheduler,indexer,lifecycle,round-do}/**`, `e2e/tests/{anchor-tx,indexer-reorg,lifecycle-open-close}.test.ts`, migration `0007`, and `docs/sessions/W4-F1.md`. Never `contracts/**`, which is the audit candidate. A new env var or binding goes in the handoff's "Notes for D" for W5-D.
+- **Void (owner decision, Oct 11; spec "Round lifecycle" › Void):**
+  - **V1 (high).** At close, a void must be abandoned only on proof. `resolveVoidAtClose` (`round-do.ts:809-820`) and `chainPastClose` (`lifecycle/void.ts:72-81`) abandon after a thrown push (`round-do.ts:787-789` maps it to `pending`) or on the blind 20 s grace, and they read the receipt before the head.
+    - Read the head first, then push once more. Abandon only when the head is stamped ≥ closesAt and the push answered definitely (`pending`, `reverted` or `refused` from `runOperatorTx`, never a thrown error).
+    - Keep the blind grace for `ENVIRONMENT === 'local'` only.
+    - In `stakesVoidHandler`'s "ours" branch (`lifecycle/handlers.ts:155-168`), alert when Free isn't `voided`.
+  - **V2.** A void that can never confirm keeps Free entries blocked until close with only `log.info`. Alert once on `reverted`, or on `refused` after N tries (`round-do.ts:782-802`, `void.ts:51-56`).
+  - **V3.** Permanent handler conditions (`RangeError` from `ingestStakesEntry` / `onModeResult`) are rethrown and wedge dispatch (`handlers.ts:51-52`, `164-165`). Alert and return.
+- **TxSender and operator:**
+  - **T1.** `check()` rebroadcasts without `onTxSent` (`chain/tx.ts:233`). This gives false `ALERT_FOREIGN_EVENT`s, and our own void is read as a guardian void. Call it before every (re)broadcast, including after a crash between saving and broadcasting.
+  - **T2.** Fees compound 25 % per replacement even when no node accepted the previous version (`tx.ts:224`, `131-135`). Bump only from a version a node accepted. Add a max-fee cap from env (W13-D/W14-A set the values per environment). Bound `hashes` and the receipt polling.
+  - **T3.** A lagging RPC can report `nonce_consumed` falsely, and the operator re-signs `createRound` at a fresh nonce, which mines a second escrow round (`tx.ts:219-222`, `operator.ts:182-189`). Require it to be seen twice, at least one block apart.
+  - **T4.** Abandoned operator transactions (a `createRound` past opensAt, a `voidRound` abandoned at close) are never cancelled and can block the shared nonce. Cancel them with a 0-value self-send at the same nonce.
+- **AnchorDO:**
+  - **N1.** A revert, or a receipt from an earlier version, is applied to the latest version's keys and kind (`anchor-do.ts:633-651`). Keep keys and kind per hash. A manifest that reverts `BeaconNotReached` at a block stamped before beacon time is retried, not failed (latent until W5-D calls `submitManifest`).
+  - **N2.** A reorged anchor write is never resent. `submit` answers `alreadyAnchored` for `confirmed` rows (`anchor-do.ts:276-279`), and the RoundDO never resubmits a commit, while `anchorConfirmationHandler` clears `lock_tx` / `commit_tx` "so it is sent again". Re-check the chain and resend, or at least alert.
+  - **N3.** Keys confirmed through `settleExisting`, or by a retried `applyReceipt`, get no `tx_hash` and no `writeConfirmations` (`anchor-do.ts:611-624`, `657`).
+  - **N4.** A sent lock that goes stuck after closesAt − 30 s is marked failed while its old version can still land (`anchor-do.ts:583-584`).
+- **Indexer:**
+  - **I1.** Dispatch orders by (block, log_index) and ignores `removed`. A log re-included at a lower position is applied before the old row's removal, which then clears a live `lock_tx` (`dispatch.ts:90`).
+  - **I2.** The upsert lets one (tx_hash, log_index) switch to a different event or args in place, so handlers of the old event never see a removal (`core.ts:268-284`). Treat a change as remove-old plus add-new.
+  - **I3.** The ALERT-8 constructor exemption (a tx with no `to`, or one to the CREATE2 factory) is not tied to the deployment, so a role holder can wrap calls to dodge it (`policy.ts:84-98`). Exempt only when the contract had no code at `blockNumber − 1`.
+  - **I4.** `forkPoint` uses stored events as its only probes, so a reorg deeper than 5 blocks with no stored event in the fork loses logs (`core.ts:220-238`). Keep recent poll-end (block, hash) checkpoints, migration `0007`.
+  - **I5.** The learned `maxRange` only halves, even on transient timeouts, and a poll writes nothing until all 10,000 blocks are fetched (`core.ts:203-205`, `256`). Regrow it, and apply each chunk as it arrives.
+  - **I6.** The skip rule for a removed row is per row, not per handler (`dispatch.ts:105-110`). Check `chain_event_handled` per handler.
+  - **I7.** A poison row alerts once and then blocks every later row, ALERT-8 included (`dispatch.ts:157-160`). Repeat the alert, or run ALERT-8 outside the stop-at-failure loop.
+  - **I8.** Lag is measured against the provider's own head, so a stuck provider never trips ALERT-4 (`core.ts:156-173`, `indexer-do.ts:123`). Also bound it by wall clock minus `head.timestamp`.
+  - **I9.** Only end-block hashes are checked when logs carry `blockTimestamp` (`core.ts:325-330`). **I10.** A log re-mined at the same index in a different block keeps stale block fields (`core.ts:280`).
+  - **I11.** Measure D1 and subrequest calls per poll against the Workers limits, and lower `DISPATCH_LIMIT` if needed.
+- **Required tests.** One per item above. The reorg tests also cover a log moving to a lower (block, logIndex), and a reorg deeper than 5 blocks. Every stack test still passes.
+- **Emits.** Nothing. W5-D merges it.
+
 ## W4-Z checklist
 
 - PIPE-2, PIPE-3, SET-1b (4), ALERT-2/4/6/8 detection proven.
