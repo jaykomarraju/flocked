@@ -14,6 +14,15 @@ async function probe(fn) {
   }
 }
 
+/** A service mock: its process and its `/health`. */
+function mockProbe(pid, url) {
+  return probe(async () => {
+    if (!alive(pid)) throw new Error('process not running');
+    await getJson(`${url}/health`);
+    return url;
+  });
+}
+
 /** Probes every part of the stack. `failing` names the parts that did not answer as expected. */
 export async function health(state) {
   const checks = {
@@ -36,11 +45,9 @@ export async function health(state) {
       if (res.status !== 401) throw new Error(`GET /api/v1/me answered ${res.status}`);
       return state.apiUrl;
     }),
-    farcaster: probe(async () => {
-      if (!alive(state.pids?.farcaster)) throw new Error('process not running');
-      await getJson(`${state.farcasterUrl}/health`);
-      return state.farcasterUrl;
-    }),
+    farcaster: mockProbe(state.pids?.farcaster, state.farcasterUrl),
+    coinbase: mockProbe(state.pids?.coinbase, state.coinbaseUrl),
+    eas: mockProbe(state.pids?.eas, state.easUrl),
     cron: probe(() => {
       if (!alive(state.pids?.cron)) throw new Error('process not running');
       if (!existsSync(CRON_HEARTBEAT_FILE)) throw new Error('no pass yet');
@@ -69,6 +76,8 @@ export function printStatus(state, h) {
     ['anvil', h.results.anvil],
     ['api', h.results.api],
     ['farcaster', h.results.farcaster],
+    ['coinbase', h.results.coinbase],
+    ['eas', h.results.eas],
     ['cron', h.results.cron],
   ];
   for (const [name, r] of rows)

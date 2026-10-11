@@ -30,8 +30,9 @@ import { bytesToHex, keccak256, type Hex } from 'viem';
 import { vi, type MockInstance } from 'vitest';
 import { receiptUserIdHash } from '../../src/crypto/receipt.js';
 import { settlementName, type SettlementDO } from '../../src/do/settlement-do.js';
-import type { SettlementStatus } from '../../src/do/types.js';
+import type { AnchorManifestItem, ModeResult, SettlementStatus } from '../../src/do/types.js';
 import { decryptHandler } from '../../src/queues/decrypt.js';
+import { applyFree, refundFree, type FreeApplyDeps } from '../../src/settlement/apply/free.js';
 import type { TallyResult } from '../../src/settlement/types.js';
 
 /** Recorded quicknet beacons. */
@@ -376,10 +377,29 @@ export function settlement(roundId: string, mode: Mode = 'free') {
   return env.SETTLEMENT.get(env.SETTLEMENT.idFromName(settlementName(roundId, mode)));
 }
 
+/** Fakes for applyFree's and refundFree's DO calls, recording what they were given. */
+export function recordedDeps() {
+  const results: { roundId: string; result: ModeResult }[] = [];
+  const manifests: AnchorManifestItem[] = [];
+  const deps: FreeApplyDeps = {
+    notifyRound: (_env, roundId, result) => {
+      results.push({ roundId, result });
+      return Promise.resolve();
+    },
+    anchorManifest: (_env, item) => {
+      manifests.push(item);
+      return Promise.resolve();
+    },
+  };
+  return { deps, results, manifests };
+}
+
 export interface Harness {
   stub: DurableObjectStub<SettlementDO>;
   applied: TallyResult[];
   sent: DecryptMessage[];
+  /** `apply: 'real'`: the RoundDO results and manifest items the real hooks handed out. */
+  calls: ReturnType<typeof recordedDeps>;
   start(): Promise<SettlementStatus>;
   /** Runs the pending alarm; returns the status after it. */
   alarm(): Promise<SettlementStatus>;
@@ -391,14 +411,15 @@ export interface Harness {
 
 /**
  * A SettlementDO for the round with manual alarms, the fake relays, small chunks, and an applyFree
- * that records its TallyResult (`apply: 'stub'` keeps the real not-implemented stub).
+ * that records its TallyResult. `apply: 'real'` runs the real applyFree and refundFree with
+ * recorded DO calls (`calls`); the TallyResult is still recorded.
  */
 export async function harness(
   roundId: string,
   opts: {
     relays?: ReturnType<typeof fakeRelays>;
     sizes?: { decrypt: number; bundle: number };
-    apply?: 'record' | 'stub';
+    apply?: 'record' | 'real';
     /** Wipes the DO's storage first: a fresh run of the same (round, mode). */
     fresh?: boolean;
     mode?: Mode;
@@ -409,6 +430,7 @@ export async function harness(
   const mode = opts.mode ?? 'free';
   const stub = settlement(roundId, mode);
   const applied: TallyResult[] = [];
+  const calls = recordedDeps();
   const sent = recordDecryptQueues();
   const relays = opts.relays ?? fakeRelays(() => 'ok');
   await runInDurableObject(stub, async (o: SettlementDO, state) => {
@@ -424,7 +446,18 @@ export async function harness(
       applied.push(result);
       return Promise.resolve();
     };
-    if (opts.apply !== 'stub') o.hooks = { ...o.hooks, applyFree: record, applyStakes: record };
+    if (opts.apply === 'real') {
+      o.hooks = {
+        ...o.hooks,
+        applyFree: (e, result) => {
+          applied.push(result);
+          return applyFree(e, result, calls.deps);
+        },
+        refundFree: (e, id, reason) => refundFree(e, id, reason, calls.deps),
+      };
+    } else {
+      o.hooks = { ...o.hooks, applyFree: record, applyStakes: record };
+    }
     if (opts.safeHead !== undefined) {
       const ready = opts.safeHead;
       o.hooks = { ...o.hooks, safeHeadReady: () => Promise.resolve(ready) };
@@ -434,6 +467,7 @@ export async function harness(
     stub,
     applied,
     sent,
+    calls,
     start: async () =>
       (await stub.start({ roundId, mode, idempotencyKey: `${roundId}:${mode}` })).status,
     alarm: async () => {

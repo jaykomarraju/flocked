@@ -101,12 +101,15 @@ describe('settlement pipeline (Free)', () => {
     }
   });
 
-  it('calls the real applyFree stub, which is not implemented until W5-D', async () => {
+  it('runs the real applyFree, which settles the mode and anchors the manifest (W5-D)', async () => {
     atBeaconPlus(5_000);
     const r = await seedPicks([0, 1, 1]);
-    const h = await harness(r.roundId, { apply: 'stub' });
+    const h = await harness(r.roundId, { apply: 'real' });
     const status = await h.run();
-    expect(status).toMatchObject({ phase: 'failed', error: 'not_implemented: applyFree' });
+    expect(status).toMatchObject({ phase: 'done', error: null });
     expect((await bundleObjects(r.roundId)).size).toBe(2);
+    expect(await modeStatus(r.roundId)).toBe('settled');
+    expect(h.calls.results.map((c) => c.result.outcome)).toEqual(['revealed']);
+    expect(h.calls.manifests.map((m) => m.manifestHash)).toEqual([h.applied[0]?.bundleHash]);
   });
 });

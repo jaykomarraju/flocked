@@ -36,6 +36,8 @@ export const PORTS = Object.freeze({
   anvil: port('STACK_ANVIL_PORT', 18545),
   drand: port('STACK_DRAND_PORT', 18080),
   farcaster: port('STACK_FARCASTER_PORT', 8789),
+  coinbase: port('STACK_COINBASE_PORT', 8790),
+  eas: port('STACK_EAS_PORT', 8791),
   inspector: port('STACK_INSPECTOR_PORT', 19229),
 });
 

@@ -2,8 +2,9 @@
 // and later waves don't provide: it creates and locks a Free round (D1 rows plus RoundDO.init), or
 // creates an unlocked one for the real scheduler to lock (W4-D); moves the game clock; runs a cron
 // expression's jobs (the stack's cron driver, e2e/stack/cron.mjs, calls it in place of Cloudflare's
-// cron triggers, which `wrangler dev` doesn't fire); and opens a round's entries with a beacon
-// signature inside the Worker, so the e2e smoke test runs tlock in the `wrangler dev` bundle.
+// cron triggers, which `wrangler dev` doesn't fire); opens a round's entries with a beacon
+// signature inside the Worker, so the e2e smoke test runs tlock in the `wrangler dev` bundle; and
+// shows a round's settlement and serves its R2 bundle objects (W5-D, e2e/tests/free-settle.test.ts).
 //
 // It answers 404, exactly like an unknown path, unless ENVIRONMENT is 'local', FLOCKED_TEST_SEAM_KEY
 // is set (only `pnpm stack:up` sets it, per run) and the request carries that key as a Bearer token,
@@ -93,6 +94,11 @@ const CronSchema = z.strictObject({
 });
 
 const RoundParamsSchema = z.strictObject({ id: UlidSchema });
+const BundleParamsSchema = z.strictObject({
+  id: UlidSchema,
+  mode: z.enum(['free', 'stakes']),
+  file: z.string().regex(/^(manifest|chunk-[0-9]{4,})\.json$/),
+});
 const RevealSchema = z.strictObject({ signature: z.string().regex(/^[0-9a-f]{96}$/) });
 
 function chainOf(env: Env): DrandChain {
@@ -231,7 +237,8 @@ app.post('/cron', validate('json', CronSchema), async (c) => {
 app.get('/rounds/:id', validate('param', RoundParamsSchema), async (c) => {
   const { id } = c.req.valid('param');
   const round = await c.env.DB.prepare(
-    'SELECT r.status, m.status AS free_status, m.commitment_root, m.lock_tx, m.commit_tx FROM rounds r ' +
+    'SELECT r.status, m.status AS free_status, m.commitment_root, m.lock_tx, m.commit_tx, ' +
+      'm.refund_reason, m.bundle_hash, m.revealed_at FROM rounds r ' +
       "JOIN round_modes m ON m.round_id = r.id AND m.mode = 'free' WHERE r.id = ?1",
   )
     .bind(id)
@@ -241,6 +248,9 @@ app.get('/rounds/:id', validate('param', RoundParamsSchema), async (c) => {
       commitment_root: string | null;
       lock_tx: string | null;
       commit_tx: string | null;
+      refund_reason: number | null;
+      bundle_hash: string | null;
+      revealed_at: number | null;
     }>();
   if (!round) throw new HttpError('not_found', 'no such round');
   const { results: anchorEvents } = await c.env.DB.prepare(
@@ -250,10 +260,39 @@ app.get('/rounds/:id', validate('param', RoundParamsSchema), async (c) => {
     .bind(roundKey(id, 'free'))
     .all<{ event: string; tx_hash: string; removed: number }>();
   const { results } = await c.env.DB.prepare(
-    "SELECT id, user_id, stake, commitment, receipt_seq FROM entries WHERE round_id = ?1 AND mode = 'free' ORDER BY receipt_seq",
+    'SELECT id, user_id, stake, commitment, receipt_seq, option_index, valid, void_reason, ' +
+      "ciphertext IS NULL AS archived FROM entries WHERE round_id = ?1 AND mode = 'free' ORDER BY receipt_seq",
   )
     .bind(id)
-    .all<{ id: string; user_id: string; stake: number; commitment: string; receipt_seq: number }>();
+    .all<{
+      id: string;
+      user_id: string;
+      stake: number;
+      commitment: string;
+      receipt_seq: number;
+      option_index: number | null;
+      valid: number | null;
+      void_reason: string | null;
+      archived: number;
+    }>();
+  const settlement = await c.env.DB.prepare(
+    'SELECT outcome, bundle_hash, manifest_r2_key, tx_hash, dust, winners_json FROM settlements ' +
+      "WHERE round_id = ?1 AND mode = 'free' AND superseded_at IS NULL",
+  )
+    .bind(id)
+    .first<{
+      outcome: string;
+      bundle_hash: string | null;
+      manifest_r2_key: string | null;
+      tx_hash: string | null;
+      dust: number;
+      winners_json: string | null;
+    }>();
+  const { results: payouts } = await c.env.DB.prepare(
+    "SELECT user_id, kind, amount FROM payouts WHERE round_id = ?1 AND mode = 'free' ORDER BY user_id",
+  )
+    .bind(id)
+    .all<{ user_id: string; kind: string; amount: number }>();
   return c.json({
     state: await roundStub(c.env, id).getState(),
     status: round.status,
@@ -262,7 +301,20 @@ app.get('/rounds/:id', validate('param', RoundParamsSchema), async (c) => {
       commitmentRoot: round.commitment_root,
       lockTx: round.lock_tx,
       commitTx: round.commit_tx,
+      refundReason: round.refund_reason,
+      bundleHash: round.bundle_hash,
+      revealedAt: round.revealed_at,
     },
+    settlement: settlement && {
+      outcome: settlement.outcome,
+      bundleHash: settlement.bundle_hash,
+      manifestKey: settlement.manifest_r2_key,
+      txHash: settlement.tx_hash,
+      dust: settlement.dust,
+      winners:
+        settlement.winners_json === null ? null : (JSON.parse(settlement.winners_json) as unknown),
+    },
+    payouts: payouts.map((p) => ({ userId: p.user_id, kind: p.kind, amount: p.amount })),
     anchorEvents: anchorEvents.map((e) => ({
       event: e.event,
       txHash: e.tx_hash,
@@ -274,8 +326,20 @@ app.get('/rounds/:id', validate('param', RoundParamsSchema), async (c) => {
       stake: e.stake,
       commitment: e.commitment,
       seq: e.receipt_seq,
+      optionIndex: e.option_index,
+      valid: e.valid === null ? null : e.valid === 1,
+      voidReason: e.void_reason,
+      archived: e.archived === 1,
     })),
   });
+});
+
+/** GET /__test/bundles/:id/:mode/:file: a settlement bundle object from R2, byte for byte. */
+app.get('/bundles/:id/:mode/:file', validate('param', BundleParamsSchema), async (c) => {
+  const { id, mode, file } = c.req.valid('param');
+  const obj = await c.env.BUCKET.get(`bundles/${id}/${mode}/${file}`);
+  if (!obj) throw new HttpError('not_found', 'no such bundle object');
+  return new Response(obj.body, { headers: { 'content-type': 'application/json' } });
 });
 
 /**

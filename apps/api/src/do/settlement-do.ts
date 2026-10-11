@@ -34,7 +34,6 @@ import {
   fetchVerifiedBeacon,
   isBeaconLate,
   relaysFor,
-  type RelayEnv,
 } from '../settlement/beacon.js';
 import { BundleConflictError } from '../settlement/bundle.js';
 import type { BeaconFile } from '../settlement/decrypt.js';
@@ -260,7 +259,7 @@ export class SettlementDO extends DurableObject<Env> implements SettlementDORpc 
     }
 
     if (job.signature === null) {
-      const relays = relaysFor(this.env as RelayEnv, chain);
+      const relays = relaysFor(this.env, chain);
       if (relays instanceof Error) throw relays;
       const got = await fetchVerifiedBeacon({
         chain,

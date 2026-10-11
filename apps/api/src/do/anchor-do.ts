@@ -864,17 +864,27 @@ export class AnchorDO extends DurableObject<Env> implements AnchorDORpc {
     });
   }
 
-  /** Free lock and commit confirmations into `round_modes` (lock_tx, commit_tx). */
+  /**
+   * Free confirmations into D1: lock and commit into `round_modes` (lock_tx, commit_tx), and a
+   * manifest into its settlement record (`settlements.tx_hash`, W5-D), when the record is that bundle.
+   */
   private async writeConfirmations(rows: ItemRow[]): Promise<void> {
     const stmts = rows
-      .filter((r) => r.kind !== 'manifest' && (JSON.parse(r.item_json) as Item).mode === 'free')
-      .map((r) =>
-        this.env.DB.prepare(
+      .filter((r) => (JSON.parse(r.item_json) as Item).mode === 'free')
+      .map((r) => {
+        if (r.kind === 'manifest') {
+          const m = JSON.parse(r.item_json) as AnchorManifestItem;
+          return this.env.DB.prepare(
+            `UPDATE settlements SET tx_hash = ?1 WHERE round_id = ?2 AND mode = 'free'
+               AND superseded_at IS NULL AND bundle_hash = ?3 AND tx_hash IS NULL`,
+          ).bind(r.tx_hash, r.round_id, lower(m.manifestHash));
+        }
+        return this.env.DB.prepare(
           r.kind === 'lock'
             ? "UPDATE round_modes SET lock_tx = ?1 WHERE round_id = ?2 AND mode = 'free' AND lock_tx IS NULL"
             : "UPDATE round_modes SET commit_tx = ?1 WHERE round_id = ?2 AND mode = 'free' AND commit_tx IS NULL",
-        ).bind(r.tx_hash, r.round_id),
-      );
+        ).bind(r.tx_hash, r.round_id);
+      });
     if (stmts.length > 0) await this.env.DB.batch(stmts);
   }
 }

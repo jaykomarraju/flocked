@@ -1,7 +1,8 @@
 # Local stack tests (e2e/stack/README.md): drand in Docker, anvil, the CREATE2 deploy, `wrangler dev`
 # and the cron driver, then the stack tests: one real Free round end to end (smoke), the round
-# lifecycle with no manual step, and the anvil-backed anchor and indexer tests. Runs on integration
-# branches and main only, as the stack takes a minute to start and a round another to reach its beacon.
+# lifecycle with no manual step, a 50-entry Free round settled and anchored, and the anvil-backed
+# anchor and indexer tests. Runs on integration branches and main only, as the stack takes a minute
+# to start and a round another to reach its beacon.
 name: Stack
 
 on:
@@ -39,6 +40,9 @@ jobs:
       # A daily-shaped round through lock → open → close → commit, moved only by the stack's cron
       # driver and the DOs' alarms (W4-D; AC-6, first half).
       - run: pnpm --filter @flocked/e2e --fail-if-no-match exec vitest run tests/lifecycle-open-close.test.ts
+      # A Free round with 50 entries settles after its beacon: the bundle in R2, the ledger applied,
+      # the manifest anchored (W5-D).
+      - run: pnpm --filter @flocked/e2e --fail-if-no-match exec vitest run tests/free-settle.test.ts
       # These sign with the stack's anchor and operator keys and turn automine off or revert
       # snapshots, so each runs on its own step (W4-A, W4-B).
       - run: pnpm --filter @flocked/e2e --fail-if-no-match exec vitest run tests/anchor-tx.test.ts

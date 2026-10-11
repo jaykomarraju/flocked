@@ -151,7 +151,7 @@ const feesOf = (tx: SentTx): Fees => ({
 
 /** TX_MAX_FEE_GWEI (decimal gwei, e.g. "0.5") as wei; the default when unset. */
 export function maxFeePerGasOf(env: object): bigint {
-  // Not in Env yet (W5-D registers it): read untyped.
+  // `Env.TX_MAX_FEE_GWEI`, read structurally so any env-shaped object will do.
   const raw = (env as { TX_MAX_FEE_GWEI?: string }).TX_MAX_FEE_GWEI;
   const text = typeof raw === 'string' ? raw.trim() : '';
   if (text === '') return DEFAULT_MAX_FEE_PER_GAS;

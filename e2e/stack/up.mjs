@@ -58,7 +58,16 @@ const urls = {
   anvil: `http://127.0.0.1:${PORTS.anvil}`,
   drand: `http://127.0.0.1:${PORTS.drand}`,
   farcaster: `http://127.0.0.1:${PORTS.farcaster}`,
+  coinbase: `http://127.0.0.1:${PORTS.coinbase}`,
+  eas: `http://127.0.0.1:${PORTS.eas}`,
 };
+
+/** The service mocks: the Farcaster Quick Auth (W3-A), Coinbase OAuth and API, and EAS (W5-B). */
+const MOCKS = [
+  ['farcaster', 'MOCK_FARCASTER_PORT', PORTS.farcaster],
+  ['coinbase', 'MOCK_COINBASE_PORT', PORTS.coinbase],
+  ['eas', 'MOCK_EAS_PORT', PORTS.eas],
+];
 
 /** Runs a command to completion, output to `.run/logs/<name>.log`; rejects with the log's tail. */
 function run(name, cmd, args, opts = {}) {
@@ -255,12 +264,14 @@ async function main() {
     String(LOCAL_CHAIN_ID),
     ...(forkUrl ? ['--fork-url', forkUrl] : []),
   ]);
-  state.pids.farcaster = start(
-    'farcaster',
-    process.execPath,
-    [join(ROOT, 'e2e', 'mocks', 'farcaster', 'server.mjs')],
-    { env: { ...process.env, MOCK_FARCASTER_PORT: String(PORTS.farcaster) } },
-  );
+  for (const [name, portVar, port] of MOCKS) {
+    state.pids[name] = start(
+      name,
+      process.execPath,
+      [join(ROOT, 'e2e', 'mocks', name, 'server.mjs')],
+      { env: { ...process.env, [portVar]: String(port) } },
+    );
+  }
   save();
 
   const migrations = run(
@@ -354,6 +365,16 @@ async function main() {
     TURNSTILE_SECRET_KEY: TURNSTILE_TEST_SECRET,
     FARCASTER_AUTH_ORIGIN: urls.farcaster,
     FLOCKED_TEST_SEAM_KEY: seamKey,
+    // Settlement fetches beacons from the local drand network (W5-A).
+    DRAND_RELAYS: urls.drand,
+    // Personhood (W5-B): the Coinbase and EAS mocks, and a fresh person-ID key.
+    PERSON_ID_KEY: randomBytes(32).toString('hex'),
+    COINBASE_CLIENT_ID: 'mock-client-id',
+    COINBASE_CLIENT_SECRET: 'mock-client-secret',
+    COINBASE_LOGIN_ORIGIN: urls.coinbase,
+    COINBASE_API_ORIGIN: urls.coinbase,
+    ATTESTATION_NETWORK: 'base',
+    ATTESTATION_RPC_URL: urls.eas,
   });
   if (!existsSync(join(WEB_DIST_DIR, 'index.html'))) {
     ensureDir(WEB_DIST_DIR);
@@ -390,6 +411,8 @@ async function main() {
   state.apiUrl = urls.api;
   state.appOrigin = urls.appOrigin;
   state.farcasterUrl = urls.farcaster;
+  state.coinbaseUrl = urls.coinbase;
+  state.easUrl = urls.eas;
   state.devVars = rel(DEV_VARS_FILE);
   state.logs = rel(LOG_DIR);
   save();
@@ -400,9 +423,11 @@ async function main() {
     async () => (await fetch(`${urls.api}/api/v1/me`)).status === 401,
     { timeoutMs: 90_000, intervalMs: 500 },
   );
-  await waitForProcess('farcaster', state.pids.farcaster, 'the Farcaster mock', () =>
-    getJson(`${urls.farcaster}/health`),
-  );
+  for (const [name] of MOCKS) {
+    await waitForProcess(name, state.pids[name], `the ${name} mock`, () =>
+      getJson(`${urls[name]}/health`),
+    );
+  }
 
   // wrangler dev fires no cron triggers; the driver runs them through the seam (cron.mjs).
   log('starting the cron driver');

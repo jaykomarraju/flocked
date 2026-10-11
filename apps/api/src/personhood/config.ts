@@ -2,9 +2,7 @@
 // scopes, the Coinbase Verifications attestation constants, and the vars and secrets that select
 // them. A missing secret or var is a deployment error: the routes that need it answer 503
 // `unavailable` and log which one is missing (as src/auth/config.ts does).
-//
-// The vars below are not in src/env.ts yet (a registry file, W5-D's): `PersonhoodEnv` adds them as
-// optional fields so this module reads them typed. W5-B's handoff lists them for D.
+// The personhood vars (ATTESTATION_*, COINBASE_*_ORIGIN) are in src/env.ts (W5-D).
 import { API_BASE_PATH } from '@flocked/shared';
 import type { Address, Hex } from 'viem';
 import { appOrigin } from '../auth/config.js';
@@ -12,20 +10,8 @@ import type { Env } from '../env.js';
 import { HttpError } from '../lib/errors.js';
 import { log } from '../lib/log.js';
 
-/** Env as this module reads it: the Worker's, plus the personhood vars D adds to src/env.ts. */
-export type PersonhoodEnv = Env & {
-  /**
-   * Coinbase Verifications network: `base` (default; Coinbase's production attester, which is where
-   * real users' attestations live, staging included) or `base-sepolia` (Coinbase's test attester).
-   */
-  ATTESTATION_NETWORK?: string;
-  /** JSON-RPC for that network. Defaults to BASE_RPC_URL when CHAIN_ID is 8453. */
-  ATTESTATION_RPC_URL?: string;
-  /** Coinbase OAuth origin override (e2e/mocks/coinbase); honoured only when ENVIRONMENT is 'local'. */
-  COINBASE_LOGIN_ORIGIN?: string;
-  /** Coinbase API origin override (e2e/mocks/coinbase); honoured only when ENVIRONMENT is 'local'. */
-  COINBASE_API_ORIGIN?: string;
-};
+/** Env as this module reads it (the Worker's; the alias predates the vars' registration). */
+export type PersonhoodEnv = Env;
 
 /** Coinbase App OAuth 2.0 (docs.cdp.coinbase.com › Coinbase App › OAuth2 integration). */
 export const COINBASE_LOGIN_ORIGIN = 'https://login.coinbase.com';
