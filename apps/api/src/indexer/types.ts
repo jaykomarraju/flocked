@@ -63,6 +63,11 @@ export interface IndexerRpc {
   block(number: number): Promise<RpcBlock | null>;
   logs(address: Hex, fromBlock: number, toBlock: number): Promise<RpcLog[]>;
   transaction(hash: Hex): Promise<RpcTransaction | null>;
+  /**
+   * The contract code at `address` as of `blockNumber` (eth_getCode), '0x' for none. A provider
+   * without that block's state (a non-archive node, for an old block) rejects.
+   */
+  code(address: Hex, blockNumber: number): Promise<Hex>;
 }
 
 /** One mirrored log as handlers see it. */

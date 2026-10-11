@@ -140,6 +140,8 @@ describe('ALERT-8: events the backend did not send', () => {
   });
 
   it('ignores constructor events (a deployment through the CREATE2 factory)', async () => {
+    chain.deployedAt.set(dep.escrow, 1);
+    chain.deployedAt.set(dep.anchor, 2);
     chain.mine(
       [
         escrowEvent(dep.escrow, 'RoleGranted', {
@@ -162,6 +164,55 @@ describe('ALERT-8: events the backend did not send', () => {
     );
     await cycle();
     expect(foreign()).toEqual([]);
+  });
+
+  it('alerts on a factory or creation transaction once the contract already has code', async () => {
+    chain.deployedAt.set(dep.escrow, 1);
+    chain.mine([escrowEvent(dep.escrow, 'Unpaused', { account: CREATE2_FACTORY })], {
+      to: CREATE2_FACTORY,
+    }); // block 1: the deployment itself
+    chain.mineEmpty(3);
+    // Block 5: a role holder deploys a contract through the factory whose constructor calls ours.
+    const wrapped = chain.mine(
+      [
+        escrowEvent(dep.escrow, 'RoleGranted', {
+          role: hash32('GUARDIAN_ROLE'),
+          account: `0x${'0f'.repeat(20)}`,
+          sender: `0x${'0f'.repeat(20)}`,
+        }),
+      ],
+      { to: CREATE2_FACTORY },
+    );
+    chain.deployedAt.set(dep.anchor, 1);
+    const created = chain.mine(
+      [anchorEvent(dep.anchor, 'Skipped', { roundKey: hash32('k'), reason: 1 })],
+      {
+        to: null,
+      },
+    ); // block 6: a contract creation that calls the anchor
+    await cycle();
+    expect(foreign().map((a) => [a.eventName, a.txHash])).toEqual([
+      ['RoleGranted', wrapped.logs[0]!.transactionHash],
+      ['Skipped', created.logs[0]!.transactionHash],
+    ]);
+    expect(foreign()[0]).not.toHaveProperty('deploymentCheck');
+  });
+
+  it('alerts on a constructor event when the provider cannot serve the code before it', async () => {
+    chain.codeDown = new Error('missing trie node');
+    const b = chain.mine(
+      [anchorEvent(dep.anchor, 'ReceiptSignerSet', { signer: EOA_SIGNER, validFrom: 1n })],
+      { to: CREATE2_FACTORY },
+    );
+    const r = await cycle();
+    expect(r.failed).toBeNull(); // dispatch moves on
+    expect(foreign()).toEqual([
+      expect.objectContaining({
+        eventName: 'ReceiptSignerSet',
+        txHash: b.logs[0]!.transactionHash,
+        deploymentCheck: 'unavailable',
+      }),
+    ]);
   });
 
   it('classifies every event of both ABIs exactly once', () => {
