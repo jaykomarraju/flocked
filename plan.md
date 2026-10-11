@@ -310,7 +310,7 @@ Exact library versions are chosen at install time by the session that adds them 
 - `.github/workflows/stack.yml` (from W3-D): the `smoke` job brings up the local stack on pushes to `main` and `w*-integration` and runs each stack test as its own step (from W4-D): `stack-smoke`, `lifecycle-open-close`, `anchor-tx`, `indexer-reorg`. It doesn't run on PRs, so it can't be a required check; Z checks it before merging (3.4 step 3). It runs on `ubuntu-latest`, which becomes Ubuntu 26 on Oct 19, 2026: pin `ubuntu-24.04` if the job breaks.
 - `e2e.yml` (from W7-D) runs the local stack plus Playwright on `w*-integration` and `main`.
 - `deploy.yml` (from W13-D) deploys to staging on `main`, and to production on manual dispatch with a required reviewer.
-- CI must be green before Z merges. `main` is protected by two rulesets (OA-03): no force pushes or deletion for anyone, and the `check`, `contracts` and `properties` jobs required (`static-analysis` can be added, OA-03), with repository admins allowed to bypass so Z can push its `--no-ff` merge after checking CI itself.
+- CI must be green before Z merges. `main` is protected by two rulesets (OA-03): no force pushes or deletion for anyone, and the four CI jobs required (`check`, `contracts`, `properties`, and `static-analysis`, added by W4-Z on Oct 11, 2026 with the owner's approval), with repository admins allowed to bypass so Z can push its `--no-ff` merge after checking CI itself.
 
 ---
 
@@ -410,7 +410,7 @@ External long poles, started early so they stay off the critical path:
 | --- | --- | --- | --- | --- |
 | OA-01 | Open OrbStack once to finish setup (installed by PLAN-0 via Homebrew); confirm `docker run hello-world` works | Local drand network, local stack, e2e | W3 | W1 |
 | OA-02 | Reconnect the Paper desktop app's MCP server to Claude Code so the tools are visible in new sessions. **Done:** W2-C used them (Oct 7–8, 2026); the owner upgraded to Paper Pro after W2-C hit the free plan's weekly MCP call limit | Every design session | W2 | W1 |
-| OA-03 | GitHub: allow Actions; add branch protection on `main` requiring CI. **Done Oct 7, 2026 (W1-Z):** Actions enabled; the owner made the repo public (protection needs a paid plan on private repos); with the owner's approval W1-Z added two rulesets on `main`: "no force push or deletion" (no bypass) and "CI required" (`check`, `contracts`, `properties`; repository admins bypass, so Z can push its `--no-ff` merge) | CI, safe merges | W1 (CI), W2 (protection) | W1 |
+| OA-03 | GitHub: allow Actions; add branch protection on `main` requiring CI. **Done Oct 7, 2026 (W1-Z):** Actions enabled; the owner made the repo public (protection needs a paid plan on private repos); with the owner's approval W1-Z added two rulesets on `main`: "no force push or deletion" (no bypass) and "CI required" (`check`, `contracts`, `properties`; repository admins bypass, so Z can push its `--no-ff` merge). W4-Z (Oct 11, 2026, owner approval) added `static-analysis` to the required checks | CI, safe merges | W1 (CI), W2 (protection) | W1 |
 | OA-04 | Cloudflare: upgrade to Workers Paid (DOs at scale, Queues, `cpu_ms` 60,000) and create staging/production resources access (API token for deploy workflow) | Staging deploy, queue consumer CPU limits | W13 | W10 |
 | OA-05 | Cloudflare: a **second account** for the watcher, plus an API token for it | Watcher deploy | W14 | W11 |
 | OA-06 | Cloudflare Access application protecting `/admin` (and the admin API) on staging and production | Admin console deploy | W14 | W12 |
