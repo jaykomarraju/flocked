@@ -54,7 +54,6 @@ interface RoundRow {
   a_handle: string | null;
   a_display_name: string | null;
   a_avatar_url: string | null;
-  a_prefs_json: string | null;
 }
 
 /** Locked rounds only: before the lock a round's question and config can still change. */
@@ -62,7 +61,7 @@ const ROUND_SELECT = `
   SELECT r.id, r.kind, r.room_id, r.question_id, r.opens_at, r.closes_at, r.beacon_round, r.status,
          r.locked_at, r.config_json, q.prompt AS q_prompt, q.options_json AS q_options_json,
          q.category AS q_category, q.author_user_id AS q_author, a.handle AS a_handle,
-         a.display_name AS a_display_name, a.avatar_url AS a_avatar_url, a.prefs_json AS a_prefs_json
+         a.display_name AS a_display_name, a.avatar_url AS a_avatar_url
   FROM rounds r JOIN questions q ON q.id = r.question_id
   LEFT JOIN users a ON a.id = q.author_user_id
   WHERE r.locked_at IS NOT NULL`;
@@ -230,13 +229,10 @@ function configWire(r: RoundRow, chainRoundId: string | null): RoundConfigWire {
   }
   if (c.stakes) {
     const options = OptionsSchema.parse(JSON.parse(r.q_options_json));
-    const prefs = r.a_prefs_json
-      ? (JSON.parse(r.a_prefs_json) as { creator_payout_wallet?: string | null })
-      : null;
     const creator = lower(c.stakes.creator);
-    // `creator` is the author's payout wallet or the treasury: it is the author's when it is the
-    // wallet the author named.
-    const payout = prefs?.creator_payout_wallet ? lower(prefs.creator_payout_wallet) : null;
+    // The author's payout wallet as frozen at lock (O4; src/scheduler/lock.ts), never the author's
+    // current prefs. A config locked before it was frozen has none: null.
+    const payout = c.stakes.payoutAddress ? lower(c.stakes.payoutAddress) : null;
     out.stakes = {
       chainRoundId: chainRoundId ?? '0',
       opensAt: Math.floor(r.opens_at / 1000),
