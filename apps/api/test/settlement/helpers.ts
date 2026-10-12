@@ -117,8 +117,8 @@ const randomHex = (bytes: number) => bytesToHex(crypto.getRandomValues(new Uint8
 
 /**
  * A locked daily Free round targeting BEACON.round, pending, with `entries` committed by seq and
- * the commitment anchored over the first `anchored` of them (all by default). `mirror` adds the
- * indexer's `Committed` row, which carries the anchored entry count.
+ * the commitment anchored over the first `anchored` of them (all by default). `mirror` (default
+ * true) adds the indexer's `Committed` row, which carries the anchored entry count and root.
  */
 export async function seedFreeRound(
   make: (roundId: string) => Promise<SeedEntry[]>,
@@ -189,27 +189,8 @@ export async function seedFreeRound(
         .bind(r.id, roundId, r.userId, r.stake, r.ct, r.commitment, r.seq, closesAt - 1000),
     ),
   ];
-  if (opts.mirror && commitTx && root) {
-    stmts.push(
-      db
-        .prepare(
-          `INSERT INTO chain_events (chain_id, contract, block_number, block_hash, block_timestamp, tx_hash,
-             log_index, event, args_json, created_at, updated_at)
-           VALUES (31337, ?1, 1, ?2, ?3, ?4, 0, 'Committed', ?5, 0, 0)`,
-        )
-        .bind(
-          `0x${'aa'.repeat(20)}`,
-          randomHex(32),
-          Math.floor(closesAt / 1000) + 10,
-          commitTx,
-          JSON.stringify({
-            roundKey: roundKey(roundId, 'free'),
-            commitmentRoot: root,
-            entryCount: String(anchored.length),
-            totalStake: String(anchored.reduce((s, r) => s + r.stake, 0)),
-          }),
-        ),
-    );
+  if ((opts.mirror ?? true) && commitTx && root) {
+    stmts.push(committedEvent(roundId, commitTx, root, anchored, Math.floor(closesAt / 1000) + 10));
   }
   await db.batch(stmts);
   return {
@@ -225,6 +206,42 @@ export async function seedFreeRound(
     root,
     commitTx,
   };
+}
+
+/** The indexer's mirrored `Committed(roundKey, root, entryCount, totalStake)` row. */
+function committedEvent(
+  roundId: string,
+  commitTx: Hex,
+  root: Hex,
+  anchored: { stake: number }[],
+  blockSec: number,
+): D1PreparedStatement {
+  return env.DB.prepare(
+    `INSERT INTO chain_events (chain_id, contract, block_number, block_hash, block_timestamp, tx_hash,
+       log_index, event, args_json, created_at, updated_at)
+     VALUES (31337, ?1, 1, ?2, ?3, ?4, 0, 'Committed', ?5, 0, 0)`,
+  ).bind(
+    `0x${'aa'.repeat(20)}`,
+    randomHex(32),
+    blockSec,
+    commitTx,
+    JSON.stringify({
+      roundKey: roundKey(roundId, 'free'),
+      commitmentRoot: root,
+      entryCount: String(anchored.length),
+      totalStake: String(anchored.reduce((s, r) => s + r.stake, 0)),
+    }),
+  );
+}
+
+/**
+ * Mirrors the round's `Committed` event later (a round seeded with `mirror: false`): `count`
+ * entries anchored, with `root` (the seeded root by default) as the event's root.
+ */
+export async function mirrorCommitted(r: SeededRound, count: number, root = r.root): Promise<void> {
+  if (!r.commitTx || !root) throw new Error('mirrorCommitted: the round has no commitment');
+  const blockSec = Math.floor(BEACON_TIME_MS / 1000) - 60;
+  await committedEvent(r.roundId, r.commitTx, root, r.entries.slice(0, count), blockSec).run();
 }
 
 /** A round whose entries are valid picks for `options`, by seq. */

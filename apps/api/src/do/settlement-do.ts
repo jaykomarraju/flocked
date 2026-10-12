@@ -235,7 +235,12 @@ export class SettlementDO extends DurableObject<Env> implements SettlementDORpc 
   private async prepare(job: Job): Promise<void> {
     const round = await this.round(job);
     if (round.status !== 'pending' && round.status !== 'revealing') {
-      // Voided, or refunded by rule 7 or 8: nothing to settle.
+      // Our rule-7 refund failed after its pending → refunded update: finish it (refundFree is
+      // idempotent).
+      if (job.mode === 'free' && round.status === 'refunded' && round.refundReason === 7) {
+        return this.refundUnanchored(job, 'retrying the rule-7 refund');
+      }
+      // Voided, or refunded by rule 8: nothing to settle.
       return this.stop(job, `mode is ${round.status}`, 'failed');
     }
     const chain = this.chain();
@@ -378,6 +383,13 @@ export class SettlementDO extends DurableObject<Env> implements SettlementDORpc 
       const resend = job.lastSendAt !== null;
       const round = await this.round(job);
       const missing = await this.sendMissing(job, round.kind === 'room');
+      if (missing.length === 0) {
+        // Every chunk has its result, but the job write after the last one was lost.
+        job.chunksDone = job.chunkKeys.length;
+        job.phase = 'reducing';
+        await this.save(job);
+        return this.reduceAndApply(job);
+      }
       if (resend) {
         job.resends += 1;
         log.warn('settlement_chunks_resent', {

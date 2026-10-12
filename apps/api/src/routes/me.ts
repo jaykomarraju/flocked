@@ -138,7 +138,7 @@ me.post(
 );
 
 // Coinbase personhood (W5-B; src/personhood/). The callback is authenticated by its single-use
-// OAuth state, never by the session: it ignores whatever user the session middleware set.
+// OAuth state, never by the session; a session of another user than the state's is refused.
 me.post('/me/personhood', requireUser, limitUser('writes'), async (c) =>
   c.json(await startPersonhood(c.env, getUser(c).id)),
 );
@@ -148,7 +148,8 @@ me.get(
   limitAuthIp,
   validate('query', PersonhoodCallbackQuerySchema),
   async (c) => {
-    const { outcome } = await completePersonhood(c.env, c.req.valid('query'));
+    const userId = c.get('user')?.id ?? null;
+    const { outcome } = await completePersonhood(c.env, c.req.valid('query'), userId);
     c.header('Cache-Control', 'no-store');
     c.header('Referrer-Policy', 'no-referrer');
     if ((c.req.header('accept') ?? '').includes('application/json')) return c.json(outcome);

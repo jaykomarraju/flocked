@@ -1,8 +1,8 @@
 // `POST /me/personhood` and `GET /me/personhood/callback` (spec "Identity and personhood" ›
 // Personhood › Flow and State). The state is 32 random bytes, sent to Coinbase in the clear and
 // stored only as its SHA-256 in an AuthDO instance with the starting user's ID and the PKCE
-// verifier. The callback consumes it once and attributes the result to that user only, whatever
-// session cookie arrives with it (login CSRF, ID-3). Tokens never outlive the callback.
+// verifier. The callback consumes it once and attributes the result to that user only; one that
+// carries another user's session is refused (login CSRF, ID-3). Tokens never outlive the callback.
 import type {
   PersonhoodCallbackQuery,
   PersonhoodCallbackResponse,
@@ -47,15 +47,22 @@ export async function startPersonhood(
 /**
  * Finishes a Coinbase sign-in. Failures are outcomes, not errors: the browser is redirected back
  * to the app either way, so nothing here throws for a user-caused or Coinbase-caused failure.
+ * `sessionUserId` is the request's signed-in user, if any: a different user than the state's
+ * spends the state and binds nothing; without a session (another browser) the state decides.
  */
 export async function completePersonhood(
   env: PersonhoodEnv,
   query: PersonhoodCallbackQuery,
+  sessionUserId: string | null,
 ): Promise<{ outcome: PersonhoodCallbackResponse; userId: string | null }> {
   const stateHash = await sha256Hex(query.state);
   const consumed = await authDOFor(env, 'oauth', stateHash).consumeOAuthState(stateHash);
   if (!consumed.ok) {
     log.warn('personhood_state_rejected', { reason: consumed.reason });
+    return { outcome: failed('invalid_state'), userId: null };
+  }
+  if (sessionUserId !== null && sessionUserId !== consumed.userId) {
+    log.warn('personhood_state_rejected', { reason: 'other_session' });
     return { outcome: failed('invalid_state'), userId: null };
   }
   const userId = consumed.userId;

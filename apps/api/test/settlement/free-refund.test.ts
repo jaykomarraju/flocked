@@ -152,6 +152,38 @@ describe('SET-1b rule 7: the commitment was not anchored before the beacon', () 
     expect(await ciphertextsKept(r.roundId)).toBe(3);
   });
 
+  it('SET-1b rule 7: a failure after the update is retried by the DO and finishes the refunds once', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    atBeaconPlus(5_000);
+    const r = await seedPicks([0, 1, 1], { mirror: false });
+    await commitFailed(r.roundId);
+    const h = await harness(r.roundId, { apply: 'real' });
+    // The credit write fails once, after the conditional pending → refunded update.
+    vi.spyOn(db(), 'batch').mockImplementationOnce(() =>
+      Promise.reject(new Error('D1 overloaded')),
+    );
+    await h.start();
+    expect(await h.alarm()).toMatchObject({ phase: 'preparing', error: 'D1 overloaded' });
+    expect(await modeRow(r.roundId)).toMatchObject({ status: 'refunded', refund_reason: 7 });
+    expect(await ledgerOf(r.roundId)).toEqual([]);
+
+    // The retry finds the mode refunded by rule 7 and credits; then the RoundDO call fails once.
+    const notify = h.calls.deps.notifyRound;
+    h.calls.deps.notifyRound = () => Promise.reject(new Error('RoundDO overloaded'));
+    expect(await h.alarm()).toMatchObject({ phase: 'preparing', error: 'RoundDO overloaded' });
+    const t = BEACON_TIME_MS + 5_000;
+    await expectRefunded(r, t);
+
+    // The next retry adds no rows and finishes.
+    h.calls.deps.notifyRound = notify;
+    expect(await h.alarm()).toMatchObject({ phase: 'done', error: null });
+    await expectRefunded(r, t);
+    expect(h.calls.results.map((c) => c.result)).toEqual([
+      { outcome: 'refunded', reason: 7, provisional: false },
+    ]);
+    expect(h.sent).toEqual([]);
+  });
+
   it('SET-1b rule 7: applies only while the mode is pending', async () => {
     atBeaconPlus(5_000);
     const r = await seedPicks([0, 1]);

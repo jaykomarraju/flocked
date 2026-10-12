@@ -1,7 +1,7 @@
 // Coinbase sign-in: POST /me/personhood and GET /me/personhood/callback (spec "Identity and
 // personhood" › Personhood), through the real app and session middleware, against a fake Coinbase
-// that checks PKCE. ID-3: the callback attributes only to the OAuth state's user, and a state is
-// single-use.
+// that checks PKCE. ID-3: the callback attributes only to the OAuth state's user (a callback with
+// another user's session is refused), and a state is single-use.
 import { env } from 'cloudflare:test';
 import { MeResponseSchema, PersonhoodCallbackResponseSchema } from '@flocked/shared';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -128,17 +128,48 @@ describe('GET /me/personhood/callback', () => {
     expect(me.stakes.reasons).not.toContain('not_verified');
   });
 
-  it("ID-3 login CSRF: a callback carrying another user's cookie attributes only to the state's user", async () => {
+  it("ID-3 login CSRF: a callback carrying another user's session is refused and binds nothing", async () => {
     const t = personhoodEnv();
     const starter = await account(t);
     const victim = await account(t);
     const { url, state } = await start(t.env, starter.headers);
     const code = t.coinbase.approve(url, person(2));
     // The victim's browser delivers the starter's callback, with the victim's session cookie.
-    const out = await outcome(await callback(t.env, { state, code }, victim.headers));
+    expect(await outcome(await callback(t.env, { state, code }, victim.headers))).toEqual({
+      status: 'failed',
+      reason: 'invalid_state',
+    });
+    const none = { person_id: null, kyc_status: null };
+    expect(await userRow(starter.id)).toMatchObject(none);
+    expect(await userRow(victim.id)).toMatchObject(none);
+    expect(t.coinbase.calls).toEqual([]);
+    // The state is spent: it can't be replayed without the session either.
+    expect(await outcome(await callback(t.env, { state, code }))).toEqual({
+      status: 'failed',
+      reason: 'invalid_state',
+    });
+    expect(await userRow(starter.id)).toMatchObject(none);
+    expect(t.coinbase.calls).toEqual([]);
+  });
+
+  it("ID-3: a callback with no session, or the state's user's own, attributes to the state's user", async () => {
+    const t = personhoodEnv();
+    // No session: the sign-in finished in another browser (the mini app's external browser).
+    const a = await account(t);
+    const one = await start(t.env, a.headers);
+    const out = await outcome(
+      await callback(t.env, { state: one.state, code: t.coinbase.approve(one.url, person(11)) }),
+    );
     expect(out.status).toBe('verified');
-    expect((await userRow(starter.id))?.kyc_status).toBe('verified');
-    expect(await userRow(victim.id)).toMatchObject({ person_id: null, kyc_status: null });
+    expect((await userRow(a.id))?.kyc_status).toBe('verified');
+    // The state's user's own session.
+    const b = await account(t);
+    const two = await start(t.env, b.headers);
+    const code = t.coinbase.approve(two.url, person(12));
+    expect(
+      (await outcome(await callback(t.env, { state: two.state, code }, b.headers))).status,
+    ).toBe('verified');
+    expect((await userRow(b.id))?.kyc_status).toBe('verified');
   });
 
   it('ID-3 replay: a used state fails and changes nothing', async () => {

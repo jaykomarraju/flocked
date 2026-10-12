@@ -1,7 +1,14 @@
 // NFR-6 (the settlement half): re-delivered settle and decrypt messages never double-count, and a
 // re-run writes identical output. Bundle objects are write-once.
-import { createExecutionContext, createMessageBatch, env, getQueueResult } from 'cloudflare:test';
+import {
+  createExecutionContext,
+  createMessageBatch,
+  env,
+  getQueueResult,
+  runInDurableObject,
+} from 'cloudflare:test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { DECRYPT_STALL_MS, type SettlementDO } from '../../src/do/settlement-do.js';
 import { queue } from '../../src/queues/index.js';
 import { bundleChunkKey, manifestKey } from '../../src/settlement/keys.js';
 import { alertSpy, atBeaconPlus, bundleObjects, harness, seedPicks } from './helpers.js';
@@ -49,6 +56,33 @@ describe('NFR-6 idempotent settlement', () => {
     await h.deliver(h.sent);
     expect(await h.alarm()).toMatchObject({ phase: 'done', chunksDone: 5 });
     expect(h.applied).toHaveLength(1);
+  });
+
+  it('NFR-6: a lost job write after the last chunk result is recovered by the watchdog', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    atBeaconPlus(5_000);
+    const r = await seedPicks([0, 1, 1, 0, 1]);
+    const h = await harness(r.roundId, { sizes: { decrypt: 2, bundle: 4 } });
+    await h.start();
+    expect(await h.alarm()).toMatchObject({ phase: 'decrypting', chunksTotal: 3 });
+    await h.deliver(h.sent.slice(0, -1));
+    const before = await runInDurableObject(h.stub, (_o: SettlementDO, state) =>
+      state.storage.get<Record<string, unknown>>('job'),
+    );
+    await h.deliver(h.sent.slice(-1));
+    // The last chunk's result was stored but the job write after it was lost, and nothing has
+    // moved for longer than the stall window.
+    await runInDurableObject(h.stub, async (o: SettlementDO, state) => {
+      const quiet = Date.now() - DECRYPT_STALL_MS - 1_000;
+      await state.storage.put('job', { ...before, lastProgressAt: quiet, lastSendAt: quiet });
+      Reflect.set(o, 'job', undefined);
+    });
+    await h.deliver(h.sent.slice(-1)); // a re-delivery is still counted once
+    expect(await h.stub.status()).toMatchObject({ phase: 'decrypting', chunksDone: 2 });
+
+    expect(await h.alarm()).toMatchObject({ phase: 'done', chunksDone: 3 });
+    expect(h.applied).toHaveLength(1);
+    expect(h.applied[0]?.record).toMatchObject({ n: [2n, 3n] });
   });
 
   it('NFR-6: a re-delivered settle message starts one job', async () => {

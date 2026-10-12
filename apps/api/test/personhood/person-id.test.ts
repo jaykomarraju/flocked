@@ -4,9 +4,9 @@
 // or address in D1 or KV.
 import { env } from 'cloudflare:test';
 import { MeResponseSchema, PersonhoodCallbackResponseSchema } from '@flocked/shared';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { personIdFor } from '../../src/personhood/coinbase.js';
-import { MERGE_PENDING_TTL_MS } from '../../src/personhood/verify.js';
+import { MERGE_PENDING_TTL_MS, applyVerification } from '../../src/personhood/verify.js';
 import { realSession, seedFixture } from '../helpers/index.js';
 import { call } from '../auth/fixtures.js';
 import {
@@ -22,6 +22,10 @@ import {
 
 beforeAll(async () => {
   await seedFixture(env.DB);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 let seq = 0;
@@ -157,6 +161,50 @@ describe('person ID', () => {
     expect(await personIdOf(a.id)).toBe(pid);
   });
 
+  it('ID-2: two concurrent callbacks with different Coinbase accounts bind only one person', async () => {
+    const t = personhoodEnv();
+    const a = await account(t);
+    const p1 = await personIdFor(t.env, person(107).id);
+    const p2 = await personIdFor(t.env, person(108).id);
+    await env.DB.prepare(
+      'INSERT INTO person_tombstones (person_id, daily_stake_cap, created_at) VALUES (?1, ?2, ?3)',
+    )
+      .bind(p2, 5_000_000, Date.now())
+      .run();
+    const location = { country: 'US', region: 'NJ' };
+    // The first callback (p1) finishes between the second one's read and its batch.
+    const db = t.env.DB;
+    const batch = db.batch.bind(db);
+    vi.spyOn(db, 'batch').mockImplementationOnce(async (statements) => {
+      expect(await applyVerification(t.env, a.id, p1, location, Date.now())).toMatchObject({
+        status: 'verified',
+      });
+      return batch(statements);
+    });
+    expect(await applyVerification(t.env, a.id, p2, location, Date.now())).toEqual({
+      status: 'failed',
+      reason: 'person_mismatch',
+    });
+    expect(await personIdOf(a.id)).toBe(p1);
+    const ids = await env.DB.prepare(
+      "SELECT external_id FROM identities WHERE user_id = ?1 AND provider = 'coinbase'",
+    )
+      .bind(a.id)
+      .all<{ external_id: string }>();
+    expect(ids.results.map((r) => r.external_id)).toEqual([p1]);
+    // p2's tombstone was not inherited or consumed.
+    const limits = await env.DB.prepare('SELECT COUNT(*) AS n FROM limits WHERE user_id = ?1')
+      .bind(a.id)
+      .first<{ n: number }>();
+    expect(limits?.n).toBe(0);
+    const left = await env.DB.prepare(
+      'SELECT COUNT(*) AS n FROM person_tombstones WHERE person_id = ?1',
+    )
+      .bind(p2)
+      .first<{ n: number }>();
+    expect(left?.n).toBe(1);
+  });
+
   it('re-verifying with the same Coinbase account refreshes the country and region', async () => {
     const t = personhoodEnv();
     const a = await account(t);
@@ -228,6 +276,41 @@ describe('person tombstone', () => {
       .bind(a.id)
       .first();
     expect(limits).toEqual({ daily_stake_cap: 10_000_000 });
+  });
+
+  it("an inherited pending increase applies only when the account's own cap is not lower", async () => {
+    const t = personhoodEnv();
+    const effectiveAt = Date.now() + 3_600_000;
+    const limitsAfter = async (n: number, ownCap: number) => {
+      const p = person(n);
+      await env.DB.prepare(
+        'INSERT INTO person_tombstones (person_id, daily_stake_cap, pending_cap, pending_cap_effective_at, created_at) VALUES (?1, ?2, ?3, ?4, ?5)',
+      )
+        .bind(await personIdFor(t.env, p.id), 20_000_000, 500_000_000, effectiveAt, Date.now())
+        .run();
+      const a = await account(t);
+      await env.DB.prepare('INSERT INTO limits (user_id, daily_stake_cap) VALUES (?1, ?2)')
+        .bind(a.id, ownCap)
+        .run();
+      expect((await verifyAs(t, a.headers, p)).status).toBe('verified');
+      return env.DB.prepare(
+        'SELECT daily_stake_cap, pending_cap, pending_cap_effective_at FROM limits WHERE user_id = ?1',
+      )
+        .bind(a.id)
+        .first();
+    };
+    // The account lowered its cap to 10 later: the tombstone's raise (20 → 500) must not undo it.
+    expect(await limitsAfter(113, 10_000_000)).toEqual({
+      daily_stake_cap: 10_000_000,
+      pending_cap: null,
+      pending_cap_effective_at: null,
+    });
+    // An account cap of 30: the tombstone's 20 wins, and its pending raise keeps its timer.
+    expect(await limitsAfter(114, 30_000_000)).toEqual({
+      daily_stake_cap: 20_000_000,
+      pending_cap: 500_000_000,
+      pending_cap_effective_at: effectiveAt,
+    });
   });
 
   it('no tombstone: no limits row is created', async () => {

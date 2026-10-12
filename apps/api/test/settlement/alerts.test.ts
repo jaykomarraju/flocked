@@ -24,6 +24,7 @@ import {
   atBeaconPlus,
   fakeRelays,
   harness,
+  mirrorCommitted,
   modeStatus,
   seedPicks,
 } from './helpers.js';
@@ -49,12 +50,15 @@ describe('ALERT-1 settlement failure or reconciliation mismatch', () => {
   it('ALERT-1: an anchored root that is not the tree over D1 fails before any decryption', async () => {
     quiet();
     atBeaconPlus(5_000);
-    const r = await seedPicks([0, 1, 1]);
+    const r = await seedPicks([0, 1, 1], { mirror: false });
+    const bad = `0x${'ab'.repeat(32)}` as const;
     await env.DB.prepare(
       "UPDATE round_modes SET commitment_root = ?2 WHERE round_id = ?1 AND mode = 'free'",
     )
-      .bind(r.roundId, `0x${'ab'.repeat(32)}`)
+      .bind(r.roundId, bad)
       .run();
+    // The onchain root is D1's root; neither is the tree over D1's entries.
+    await mirrorCommitted(r, 3, bad);
     const alerts = alertSpy();
     const h = await harness(r.roundId);
     await h.start();
@@ -63,6 +67,24 @@ describe('ALERT-1 settlement failure or reconciliation mismatch', () => {
     expect(status.error).toMatch(/is not the tree over D1's entries/);
     expect(alerts.codes()).toEqual(['ALERT_SETTLEMENT_FAILED']);
     expect(h.sent).toEqual([]);
+  });
+
+  it("ALERT-1: a mirrored Committed root that differs from D1's fails before any decryption", async () => {
+    quiet();
+    atBeaconPlus(5_000);
+    // D1's root is the tree over D1's entries, but the transaction committed another root.
+    const r = await seedPicks([0, 1, 1], { mirror: false });
+    await mirrorCommitted(r, 3, `0x${'cd'.repeat(32)}`);
+    const alerts = alertSpy();
+    const h = await harness(r.roundId);
+    await h.start();
+    const status = await h.alarm();
+    expect(status.phase).toBe('failed');
+    expect(status.error).toMatch(/onchain root 0x(cd){32} .* differs from D1's/);
+    expect(alerts.codes()).toEqual(['ALERT_SETTLEMENT_FAILED']);
+    expect(await modeStatus(r.roundId)).toBe('pending');
+    expect(h.sent).toEqual([]);
+    expect(h.applied).toEqual([]);
   });
 
   it('ALERT-1: a chunk whose output disagrees with its reported tally fails the reduce', async () => {

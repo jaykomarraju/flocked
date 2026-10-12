@@ -108,7 +108,15 @@ async function pendingMerge(
   return { status: 'merge_pending', merge: view };
 }
 
-/** The bind as one batch: user columns, the coinbase identity, and any tombstone inheritance. */
+/** SQL: the user (parameter `user`) holds the person ID (parameter `person`). */
+const holds = (user: string, person: string) =>
+  `EXISTS (SELECT 1 FROM users WHERE id = ${user} AND person_id = ${person})`;
+
+/**
+ * The bind as one batch: user columns, the coinbase identity, and any tombstone inheritance. The
+ * user update applies only while the account holds no other person ID (a concurrent callback may
+ * have bound one since our read), and the rest only once the account holds this one.
+ */
 function bindStatements(
   db: D1Database,
   userId: string,
@@ -121,7 +129,7 @@ function bindStatements(
     db
       .prepare(
         'UPDATE users SET person_id = ?2, kyc_status = ?3, person_verified_at = ?4, ' +
-          'coinbase_country = ?5, coinbase_region = ?6 WHERE id = ?1',
+          'coinbase_country = ?5, coinbase_region = ?6 WHERE id = ?1 AND (person_id IS NULL OR person_id = ?2)',
       )
       .bind(
         userId,
@@ -133,7 +141,8 @@ function bindStatements(
       ),
     db
       .prepare(
-        "INSERT INTO identities (id, user_id, provider, external_id, verified_at) VALUES (?1, ?2, 'coinbase', ?3, ?4) " +
+        "INSERT INTO identities (id, user_id, provider, external_id, verified_at) SELECT ?1, ?2, 'coinbase', ?3, ?4 " +
+          `WHERE ${holds('?2', '?3')} ` +
           'ON CONFLICT (provider, external_id) DO UPDATE SET verified_at = excluded.verified_at ' +
           'WHERE identities.user_id = excluded.user_id',
       )
@@ -141,22 +150,29 @@ function bindStatements(
   ];
   if (firstBind) {
     // Inherit a deleted account's cap state (no-op without a tombstone). A lower cap always wins;
-    // a cap from either side wins over none; a pending increase is kept with its original timer.
+    // a cap from either side wins over none; a pending increase is kept with its original timer,
+    // unless the account's own cap is lower than the tombstone's (the raise would undo it).
+    const inheritPending =
+      'limits.pending_cap IS NULL AND ' +
+      '(limits.daily_stake_cap IS NULL OR limits.daily_stake_cap >= excluded.daily_stake_cap)';
     statements.push(
       db
         .prepare(
           'INSERT INTO limits (user_id, daily_stake_cap, pending_cap, pending_cap_effective_at) ' +
-            'SELECT ?1, daily_stake_cap, pending_cap, pending_cap_effective_at FROM person_tombstones WHERE person_id = ?2 ' +
+            'SELECT ?1, daily_stake_cap, pending_cap, pending_cap_effective_at FROM person_tombstones ' +
+            `WHERE person_id = ?2 AND ${holds('?1', '?2')} ` +
             'ON CONFLICT (user_id) DO UPDATE SET ' +
             'daily_stake_cap = CASE WHEN limits.daily_stake_cap IS NULL THEN excluded.daily_stake_cap ' +
             'WHEN excluded.daily_stake_cap IS NULL THEN limits.daily_stake_cap ' +
             'ELSE min(limits.daily_stake_cap, excluded.daily_stake_cap) END, ' +
-            'pending_cap = CASE WHEN limits.pending_cap IS NULL THEN excluded.pending_cap ELSE limits.pending_cap END, ' +
-            'pending_cap_effective_at = CASE WHEN limits.pending_cap IS NULL THEN excluded.pending_cap_effective_at ' +
+            `pending_cap = CASE WHEN ${inheritPending} THEN excluded.pending_cap ELSE limits.pending_cap END, ` +
+            `pending_cap_effective_at = CASE WHEN ${inheritPending} THEN excluded.pending_cap_effective_at ` +
             'ELSE limits.pending_cap_effective_at END',
         )
         .bind(userId, personId),
-      db.prepare('DELETE FROM person_tombstones WHERE person_id = ?1').bind(personId),
+      db
+        .prepare(`DELETE FROM person_tombstones WHERE person_id = ?1 AND ${holds('?2', '?1')}`)
+        .bind(personId, userId),
     );
   }
   return statements;
@@ -185,7 +201,9 @@ export async function applyVerification(
 
   const firstBind = me.person_id === null;
   try {
-    await db.batch(bindStatements(db, me.id, personId, location, firstBind, t));
+    const [bound] = await db.batch(bindStatements(db, me.id, personId, location, firstBind, t));
+    // A concurrent callback bound another person to this account since our read.
+    if (bound?.meta.changes === 0) return failed('person_mismatch');
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes('UNIQUE constraint failed: users.person_id')) {
