@@ -2,7 +2,7 @@
 
 **Goal.** Live WebSocket updates and the reveal broadcast at scale. Full identity management (linking, merges, deletion, limits and exclusion). The admin console is designed. A Playwright harness runs complete Free and Stakes lifecycles against the local stack at the API level.
 
-**Base.** Tag `wave-6`. **Migrations reserved:** W7-A `0014`, W7-B `0015`, W7-D `0016`.
+**Base.** Tag `wave-6`. **Migrations reserved:** W7-A `0014`, W7-B `0015`, W6-F1 `0016` (reassigned from W7-D by W6-Z, Oct 12: the `refund_vetoed` hold needs a `settlement_holds` rebuild). W7-D has no number of its own: a schema change it needs goes into `0016` before the merge to `main` (it is applied nowhere yet), with a note in its handoff.
 
 ## Pinned interfaces
 
@@ -15,7 +15,7 @@
 - **Role / size:** build, M.
 - **Objective.** Build WebSocket hibernation in RoundViewerDO shards, which subscribe to the primary RoundDO. The `state` snapshot on connect and reconnect; `counts` coalesced to at most 1 per second; `closed`, `revealing`, `revealed` (Stakes carries `claimsOpenAt` once the proposal is confirmed) and `refunded` (provisional flag for Stakes refund proposals). Room rounds are members only (an auth check at upgrade).
 - **Read first.** `plan.md` §2, §4. `docs/sessions/W6-Z.md`. This section. Spec: "Real-time and the reveal", "Non-functional requirements" (only "Scaling notes", WebSocket bullet).
-- **Owns.** `apps/api/src/ws/**`, `apps/api/src/do/round-viewer-do.ts`, the `broadcast()` body in `round-do.ts` (only that method; note it in the handoff), migration `0014` if needed, `apps/api/test/ws/**`.
+- **Owns.** `apps/api/src/ws/**`, `apps/api/src/do/round-viewer-do.ts`, the `broadcast()` seam in `apps/api/src/rounds/hooks.ts` (the RoundDO calls it; W6-Z corrected the path, Oct 12) and, in `round-do.ts`, only the messages it hands to it (note them in the handoff), migration `0014` if needed, `apps/api/test/ws/**`.
 - **Required tests.** DO-5 (reconnect snapshot). PIPE-1 (WS half: no option data before `revealed`). Coalescing. Shard fan-out with 16 shards and many sockets in the Workers runtime.
 
 ## W7-B: Identities, merges, deletion, limits
@@ -116,4 +116,5 @@
   - merge W6-F1 as a fourth branch (see the W7-D objective);
   - E2E-6 (a vetoed refund proposal followed by a settlement): after a refund veto the coordinator now waits on a settlement hold (W6-F1 O1), so the test releases it through the seam route W6-F1 adds;
   - anvil's clock trails wall time after `indexer-reorg` (`evm_revert`); `stakes-ticket` mines to `opensAt`. The harness's `clock` fixture should mine before any step that depends on chain time;
+  - `wrangler dev` can drop a request under load: on `main` @ `3a2d76f` one of `free-settle`'s 50 entry POSTs answered workerd's non-JSON "Error: Network connection lost" (Stack run 38305750622, attempt 1; the re-run passed, as did the same tree on `w6-integration`). The harness's HTTP helper should report a non-JSON answer clearly and retry a request only where it is idempotent (an entry is: one per user and mode);
   - stack seams to reuse: `POST /__test/rounds/scheduled` (with `stakes` and `free`), `POST /__test/stakes/tickets`, the cron driver, `GET /__test/rounds/:id` (a `stakes` section), `GET /__test/bundles/:id/:mode/:file`; the real `/prepare` → signer → `enter` path runs on the stack (`e2e/tests/stakes-ticket.test.ts`). `stakes-settle` moves anvil's clock 2 h, so only `claims-wallet` runs after it (`e2e/vitest.config.ts`'s sequencer).
