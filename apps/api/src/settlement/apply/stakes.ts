@@ -5,8 +5,8 @@
 //   1. the round is read onchain first: this bundle's proposal already there, or a final round,
 //      means there is nothing to post; another bundle's proposal is an integrity failure;
 //   2. the settlement record of this proposal: `proposal_seq` 0, then one more after each proposal
-//      that landed and is gone, superseding the record before it; each entry's option, validity
-//      and VOID reason; `round_modes.bundle_hash`;
+//      the indexer saw leave the chain (it supersedes the record), superseding the record before
+//      it; each entry's option, validity and VOID reason; `round_modes.bundle_hash`;
 //   3. `propose(n0, n1, nVoid, payoutRoot, bundleHash)` through the operator, at most once per
 //      `propose:<roundId>:<seq>` (src/chain/operator.ts), so a retry polls the same transaction and
 //      never posts twice. The payout tree's leaves are settle's payouts (win, rebate when r > 0,
@@ -61,20 +61,20 @@ function alreadyThere(onchain: EscrowRound, bundleHash: Hex): boolean {
 }
 
 /**
- * The proposal number to post: the latest record's, unless that proposal landed (its operator
- * transaction mined, or its record superseded by the veto handler) and the round is Open again.
+ * The proposal number to post: the latest record's, or the next one once the indexer has marked it
+ * superseded (a vetoed refund proposal, or one a reorg removed). Not on the chain's word alone: a
+ * provider behind our mined proposal would answer Open, and the next proposal would be a second post.
  */
 async function proposalSeq(db: D1Database, roundId: string): Promise<number> {
   const latest = await db
     .prepare(
-      `SELECT s.proposal_seq AS seq, s.superseded_at AS superseded, o.status AS tx
-       FROM settlements s LEFT JOIN operator_txs o ON o.purpose = 'propose:' || s.round_id || ':' || s.proposal_seq
-       WHERE s.round_id = ?1 AND s.mode = 'stakes' ORDER BY s.proposal_seq DESC LIMIT 1`,
+      `SELECT proposal_seq AS seq, superseded_at AS superseded FROM settlements
+       WHERE round_id = ?1 AND mode = 'stakes' ORDER BY proposal_seq DESC LIMIT 1`,
     )
     .bind(roundId)
-    .first<{ seq: number; superseded: number | null; tx: string | null }>();
+    .first<{ seq: number; superseded: number | null }>();
   if (!latest) return 0;
-  return latest.superseded !== null || latest.tx === 'mined' ? latest.seq + 1 : latest.seq;
+  return latest.superseded !== null ? latest.seq + 1 : latest.seq;
 }
 
 const UPDATE_ENTRIES = `
