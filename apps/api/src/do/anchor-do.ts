@@ -22,6 +22,13 @@
 // time is retried. A key resubmitted after it was confirmed is checked onchain again and resent if its
 // write is gone (a reorg; N2). Every confirmation records its transaction and its `round_modes` value
 // (N3). A lock already sent stays in its replacement until closesAt, past its 30 s margin (N4).
+//
+// W6-A: SettlementDO refunds a Free mode whose commit is `failed` (rule 7), so `failed` must be final.
+// A commit with a version already sent can still land in a block stamped before beacon time, so past
+// its deadline it stays open (queued or sent) until the chain's head is stamped at or after beacon
+// time, from which FlockedAnchor refuses it (S5); on the local stack only, a grace past beacon time on
+// the game clock stands in for the head, as for the void (src/lifecycle/void.ts). A confirmed
+// manifest that a reorg removed comes back from the indexer's handler as N2 does (handlers.ts).
 import { flockedAnchorAbi } from '@flocked/abi';
 import { newUlid, roundKey as roundKeyOf } from '@flocked/shared';
 import { DurableObject } from 'cloudflare:workers';
@@ -76,6 +83,12 @@ export const POLL_MS = 2_000;
 const ERROR_RETRY_MS = 10_000;
 /** A manifest that reverted before beacon time (the chain's clock behind ours) waits this long. */
 const MANIFEST_RETRY_SEC = 6;
+/**
+ * Local stack only: how long past beacon time (game clock) a sent commit is failed although the
+ * chain head is still stamped earlier, because anvil mines no empty blocks and its head can lag
+ * indefinitely. Elsewhere only the head decides (S5).
+ */
+export const COMMIT_RESOLVE_GRACE_MS = 20_000;
 
 /** FlockedAnchor `Skipped` reasons. */
 export const SKIP_REASONS: Record<number, string> = {
@@ -111,6 +124,8 @@ interface ItemRow extends Record<string, SqlStorageValue> {
   confirmed_at: number | null;
   detail: string | null;
   alerted: number;
+  /** When its first version was signed (epoch ms), null if none was (S5). */
+  sent_at: number | null;
 }
 
 /** One signed version of the pending transaction: what it writes. */
@@ -192,6 +207,7 @@ CREATE TABLE IF NOT EXISTS items (
   detail       TEXT,
   alerted      INTEGER NOT NULL DEFAULT 0,
   created_at   INTEGER NOT NULL,
+  sent_at      INTEGER,
   PRIMARY KEY (round_key, kind)
 );
 CREATE TABLE IF NOT EXISTS pending (
@@ -219,6 +235,12 @@ export class AnchorDO extends DurableObject<Env> implements AnchorDORpc {
     super(ctx, env);
     this.sql = ctx.storage.sql;
     this.sql.exec(SCHEMA);
+    // `sent_at` (S5) on a table created before it; what is in flight now was sent.
+    const columns = this.sql.exec<{ name: string }>('PRAGMA table_info(items)').toArray();
+    if (!columns.some((c) => c.name === 'sent_at')) {
+      this.sql.exec('ALTER TABLE items ADD COLUMN sent_at INTEGER');
+      this.sql.exec("UPDATE items SET sent_at = created_at WHERE state = 'sent'");
+    }
     this.onTxSent = sentTxRecorder(env);
   }
 
@@ -446,12 +468,18 @@ export class AnchorDO extends DurableObject<Env> implements AnchorDORpc {
     };
   }
 
-  private async readAnchor(c: Pick<Chain, 'client' | 'anchor'>, key: Hex): Promise<OnchainAnchor> {
+  /** The key's FlockedAnchor state, at `blockNumber` when given (else `latest`). */
+  private async readAnchor(
+    c: Pick<Chain, 'client' | 'anchor'>,
+    key: Hex,
+    blockNumber?: bigint,
+  ): Promise<OnchainAnchor> {
     return c.client.readContract({
       address: c.anchor,
       abi: flockedAnchorAbi,
       functionName: 'getAnchor',
       args: [key],
+      ...(blockNumber !== undefined ? { blockNumber } : {}),
     });
   }
 
@@ -504,8 +532,9 @@ export class AnchorDO extends DurableObject<Env> implements AnchorDORpc {
 
   /**
    * Queued items past their deadline fail; sent ones alert once (a late confirmation still counts),
-   * and so do queued ones that a pending version still carries (N4) or that are being checked again
-   * (N2): the alarm's onchain check decides those.
+   * and so do queued ones that a pending version still carries (N4), that are being checked again
+   * (N2), or commits with a version sent before (S5: back in the queue, its nonce taken or its batch
+   * mined without it, it may still land in time): the alarm's onchain check decides those.
    */
   private expire(tSec: number) {
     const due = this.sql
@@ -517,7 +546,13 @@ export class AnchorDO extends DurableObject<Env> implements AnchorDORpc {
     const carried = inFlight(this.pending());
     for (const r of due) {
       const key = r.round_key as Hex;
-      if (r.state === 'queued' && r.detail !== 'recheck' && !carried.has(`${r.kind}:${key}`)) {
+      const wasSent = r.kind === 'commit' && r.sent_at !== null;
+      if (
+        r.state === 'queued' &&
+        r.detail !== 'recheck' &&
+        !wasSent &&
+        !carried.has(`${r.kind}:${key}`)
+      ) {
         this.fail(key, r.kind, 'deadline_passed');
         continue;
       }
@@ -583,8 +618,9 @@ export class AnchorDO extends DurableObject<Env> implements AnchorDORpc {
       await this.record(batch.kind, keys, tx);
       for (const key of keys) {
         this.sql.exec(
-          "UPDATE items SET state = 'sent', tx_hash = ?, detail = NULL WHERE round_key = ? AND kind = ?",
+          "UPDATE items SET state = 'sent', tx_hash = ?, detail = NULL, sent_at = COALESCE(sent_at, ?) WHERE round_key = ? AND kind = ?",
           lastHash(tx),
+          now(this.env),
           key,
           batch.kind,
         );
@@ -673,11 +709,20 @@ export class AnchorDO extends DurableObject<Env> implements AnchorDORpc {
       c.client.getBlock({ blockTag: 'latest' }),
       Promise.all(rows.map((r) => this.readAnchor(c, r.round_key as Hex))),
     ]);
+    const t = now(this.env);
+    const headSec = Number(block.timestamp);
     // The next block's time: the head's, or the game clock when the head is older (anvil mines no
     // empty blocks, so its head can be minutes behind). A commit sent too early is retried.
-    const chainSec = Math.max(Number(block.timestamp), Math.floor(now(this.env) / 1000));
+    const chainSec = Math.max(headSec, Math.floor(t / 1000));
+    // No block from now on can be stamped before `sec`: the head is stamped there already, and later
+    // blocks are stamped no earlier. The game clock alone is not proof, except as the local grace.
+    const headPast = (sec: number) =>
+      headSec >= sec ||
+      (this.env.ENVIRONMENT === 'local' && t >= sec * 1000 + COMMIT_RESOLVE_GRACE_MS);
     const out: ItemRow[] = [];
     const settled: ItemRow[] = [];
+    /** Commits the head has passed beacon time on, unwritten in the read above. */
+    const closed: ItemRow[] = [];
     rows.forEach((r, i) => {
       const a = states[i] as OnchainAnchor;
       const key = r.round_key as Hex;
@@ -697,9 +742,25 @@ export class AnchorDO extends DurableObject<Env> implements AnchorDORpc {
         const m = JSON.parse(r.item_json) as AnchorCommitItem;
         if (a.committedAt !== 0n) return settle(a.committedAt, commitMatches(m, a));
         if (a.lockedAt === 0n) return this.fail(key, kind, 'not_locked');
-        // Past its deadline only a version already sent is still tracked (expire() fails the rest);
-        // at beacon time the contract refuses it.
-        if (chainSec >= m.beaconTimeSec) return this.fail(key, kind, 'outside_window');
+        // Past its deadline only a version already sent is still tracked (expire() fails the rest).
+        // From beacon time the contract refuses it, but `failed` is final for rule 7 (S5): it fails
+        // once the head is past beacon time. Until then a version being replaced keeps it, as a lock
+        // keeps its own until closesAt (N4); any other waits a poll for the head.
+        if (chainSec >= m.beaconTimeSec) {
+          if (headPast(m.beaconTimeSec)) {
+            closed.push(r);
+            return;
+          }
+          if (!carried.has(`${kind}:${key}`)) {
+            this.sql.exec(
+              "UPDATE items SET due_sec = MAX(due_sec, ?), detail = 'awaiting_beacon_head' WHERE round_key = ? AND kind = ?",
+              Math.floor(t / 1000) + POLL_MS / 1000,
+              key,
+              kind,
+            );
+            return;
+          }
+        }
         if (chainSec < m.closesAtSec) return; // the chain's clock hasn't reached close yet
       } else {
         const m = JSON.parse(r.item_json) as AnchorManifestItem;
@@ -711,6 +772,15 @@ export class AnchorDO extends DurableObject<Env> implements AnchorDORpc {
       }
       out.push(r);
     });
+    // Read again at that head, so the state is the head's and not an older node's: written in an
+    // earlier block, or never.
+    for (const r of closed) {
+      const key = r.round_key as Hex;
+      const a = await this.readAnchor(c, key, block.number);
+      const m = JSON.parse(r.item_json) as AnchorCommitItem;
+      if (a.committedAt === 0n) this.fail(key, kind, 'outside_window');
+      else if (this.settleExisting(r, a.committedAt, commitMatches(m, a))) settled.push(r);
+    }
     await this.writeConfirmations(await this.withTxHashes(c, settled));
     return out;
   }

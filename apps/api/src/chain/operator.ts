@@ -5,6 +5,16 @@
 // polls, rebroadcasts or replaces that transaction instead of signing a new one. A call that would
 // revert is refused before anything is signed (gas estimation simulates it).
 //
+// This module is the only owner of the operator key's nonce (W6-A). Its callers run independently
+// (the scheduler tick, RoundDO and SettlementDO alarms), each in its own isolate, so two of them can
+// read the same `pending` count and sign two transactions at one nonce, one of which then replaces or
+// blocks the other. A new nonce is therefore past both the chain's pending count and every nonce in
+// `operator_txs` for the key, and it is claimed in D1 by a conditional write that fails if any other
+// row has reached it; the loser discards its signature (never broadcast) and takes the next one.
+// Replacements (a stuck bump, a cancellation) keep their nonce and claim nothing. A stored nonce no
+// node holds leaves a gap below later ones until it is rebroadcast: `check` does that on the row's
+// next call, and the allocator does it for every row in the gap it allocates above.
+//
 // An abandoned purpose (a `createRound` still pending at opensAt, a `voidRound` abandoned at close)
 // is cancelled (W4-F1 T4): its pending transaction is replaced by a 0-value send to the operator
 // itself at the same nonce, so it can neither land late nor hold up the shared nonce. The scheduler
@@ -96,6 +106,15 @@ const GAS_HEADROOM_PERCENT = 130n;
 const POLL_MS = 1_000;
 /** A plain transfer's gas: the cancellation (T4). */
 const CANCEL_GAS = 21_000n;
+/** New-nonce claims lost to other operator sends before a call gives up (and is retried later). */
+const NONCE_ATTEMPTS = 5;
+
+/** SQL: an `operator_txs` row's key and nonce (`tx_json` is its SentTx). */
+const ROW_FROM = "lower(json_extract(tx_json, '$.from'))";
+const ROW_NONCE = "CAST(json_extract(tx_json, '$.nonce') AS INTEGER)";
+/** SQL: no row but purpose `?1`'s holds nonce `?n` or a later one for the key `?k`. */
+const noNonceFrom = (k: number, n: number) =>
+  `NOT EXISTS (SELECT 1 FROM operator_txs WHERE purpose <> ?1 AND ${ROW_FROM} = lower(?${k}) AND ${ROW_NONCE} >= ?${n})`;
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const lastHash = (tx: SentTx) => tx.hashes[tx.hashes.length - 1] as Hex;
@@ -168,6 +187,95 @@ async function swapTx(db: D1Database, purpose: string, from: SentTx, to: SentTx,
   return r.meta.changes > 0;
 }
 
+/** How a claim of a new nonce went: `changed` means the purpose's row moved first (another run). */
+type Claim = 'claimed' | 'nonce_taken' | 'changed';
+
+/** Stores `tx` as `purpose`'s first transaction, if no other row has reached its nonce. */
+async function insertAtNewNonce(
+  db: D1Database,
+  purpose: string,
+  tx: SentTx,
+  t: number,
+): Promise<Claim> {
+  const r = await db
+    .prepare(
+      `INSERT INTO operator_txs (purpose, status, tx_json, tx_hash, created_at, updated_at)
+       SELECT ?1, 'pending', ?2, NULL, ?3, ?3 WHERE ${noNonceFrom(4, 5)} ON CONFLICT DO NOTHING`,
+    )
+    .bind(purpose, JSON.stringify(tx), t, tx.from, tx.nonce)
+    .run();
+  if (r.meta.changes > 0) return 'claimed';
+  return (await readRow(db, purpose)) ? 'changed' : 'nonce_taken';
+}
+
+/** swapTx to `to`, re-signed at a new nonce, if no other row has reached that nonce. */
+async function swapToNewNonce(
+  db: D1Database,
+  purpose: string,
+  from: SentTx,
+  to: SentTx,
+  t: number,
+): Promise<Claim> {
+  const r = await db
+    .prepare(
+      `UPDATE operator_txs SET tx_json = ?2, updated_at = ?4
+       WHERE purpose = ?1 AND status = 'pending' AND tx_json = ?3 AND ${noNonceFrom(5, 6)}`,
+    )
+    .bind(purpose, JSON.stringify(to), JSON.stringify(from), t, to.from, to.nonce)
+    .run();
+  if (r.meta.changes > 0) return 'claimed';
+  const row = await readRow(db, purpose);
+  return row?.status === 'pending' && row.tx_json === JSON.stringify(from)
+    ? 'nonce_taken'
+    : 'changed';
+}
+
+/**
+ * A new nonce for the operator key: the chain's pending count, or past every nonce stored for the key
+ * if one has reached it (another send signed and not yet seen by this node). Those rows still pending
+ * are rebroadcast first, so a gap left by one no node holds doesn't hold up the new one (an abandoned
+ * call is left to its cancellation).
+ */
+async function newNonce(op: Operator, db: D1Database): Promise<number> {
+  const pending = await op.sender.nextNonce();
+  const { results } = await db
+    .prepare(
+      `SELECT purpose, status, tx_json FROM operator_txs WHERE ${ROW_FROM} = lower(?1) AND ${ROW_NONCE} >= ?2`,
+    )
+    .bind(op.sender.address, pending)
+    .all<OperatorTxRow & { purpose: string }>();
+  let next = pending;
+  for (const r of results) {
+    const tx = JSON.parse(r.tx_json) as StoredTx;
+    next = Math.max(next, tx.nonce + 1);
+    if (r.status === 'pending' && (!isAbandoned(tx) || isCancel(tx))) {
+      await broadcastQuietly(op, tx, labelOf(r.purpose), r.purpose);
+    }
+  }
+  return next;
+}
+
+/**
+ * Signs `intent` at a new nonce and stores it with `claim`, at the next nonce again whenever another
+ * operator send claimed this one first (the losing signature was never broadcast). Null when the
+ * purpose's row changed meanwhile: the caller follows the other run.
+ */
+async function signAtNewNonce(
+  op: Operator,
+  db: D1Database,
+  intent: TxIntent,
+  claim: (tx: SentTx) => Promise<Claim>,
+): Promise<SentTx | null> {
+  for (let i = 0; i < NONCE_ATTEMPTS; i++) {
+    const tx = await op.sender.sign(intent, { nonce: await newNonce(op, db) });
+    const c = await claim(tx);
+    if (c === 'claimed') return tx;
+    if (c === 'changed') return null;
+    log.warn('operator_nonce_contended', { txNonce: tx.nonce });
+  }
+  throw new Error(`operator nonce: claimed by other sends ${NONCE_ATTEMPTS} times`);
+}
+
 async function finish(
   db: D1Database,
   purpose: string,
@@ -214,15 +322,12 @@ async function runOperatorTx(
     } catch (err) {
       return { status: 'refused', error: message(err) };
     }
-    tx = await op.sender.sign(intent, { nonce: await op.sender.nextNonce() });
-    const claimed = await db
-      .prepare(
-        "INSERT INTO operator_txs (purpose, status, tx_json, tx_hash, created_at, updated_at) VALUES (?1, 'pending', ?2, NULL, ?3, ?3) ON CONFLICT DO NOTHING",
-      )
-      .bind(purpose, JSON.stringify(tx), t())
-      .run();
+    const signed = await signAtNewNonce(op, db, intent, (n) =>
+      insertAtNewNonce(db, purpose, n, t()),
+    );
     // Another run signed first: follow its transaction instead.
-    if (claimed.meta.changes === 0) return runOperatorTx(env, deps, purpose, label, data);
+    if (!signed) return runOperatorTx(env, deps, purpose, label, data);
+    tx = signed;
     await broadcastQuietly(op, tx, label, purpose);
   } else {
     tx = JSON.parse(row.tx_json) as StoredTx;
@@ -252,19 +357,25 @@ async function runOperatorTx(
         tx = c.tx;
       }
     } else {
-      let next: SentTx;
+      const sent = tx;
+      let next: SentTx | null;
       try {
         const intent = await intentFor(op, data);
         next =
           c.status === 'stuck'
-            ? await op.sender.sign(intent, { replace: tx, bumpFrom: c.bumpFrom })
-            : await op.sender.sign(intent, { nonce: await op.sender.nextNonce() });
+            ? await op.sender.sign(intent, { replace: sent, bumpFrom: c.bumpFrom })
+            : await signAtNewNonce(op, db, intent, (n) =>
+                swapToNewNonce(db, purpose, sent, n, t()),
+              );
       } catch (err) {
-        // The call would revert now (e.g. opensAt passed); keep polling what was sent.
+        // The call would revert now (e.g. opensAt passed); keep polling what was sent. A nonce taken
+        // by another transaction is still unconfirmed (its receipt can lag), so not a definite answer.
         log.warn('operator_tx_replace_refused', { purpose, error: message(err) });
-        return { status: 'pending', txHash: lastHash(tx) };
+        const unconfirmed = c.status === 'nonce_consumed' ? { nonceTaken: true as const } : {};
+        return { status: 'pending', txHash: lastHash(tx), ...unconfirmed };
       }
-      if (!(await swapTx(db, purpose, tx, next, t()))) {
+      // A re-sign at a new nonce is stored by its claim; a replacement keeps its nonce.
+      if (!next || (c.status === 'stuck' && !(await swapTx(db, purpose, tx, next, t())))) {
         return runOperatorTx(env, deps, purpose, label, data);
       }
       log.warn('operator_tx_replaced', { purpose, reason: c.status, txNonce: next.nonce });
@@ -503,4 +614,32 @@ export function finalize(
     args: [BigInt(i.chainRoundId)],
   });
   return runOperatorTx(env, deps, `finalize:${i.roundId}`, 'operator.finalize', data);
+}
+
+/** `refundTooFew` (permissionless onchain; the backend sends it with the operator key). Once per D1 round. */
+export function refundTooFew(
+  env: OperatorEnv,
+  deps: OperatorDeps,
+  i: { roundId: string; chainRoundId: string },
+): Promise<OperatorTxResult> {
+  const data = encodeFunctionData({
+    abi: flockedEscrowAbi,
+    functionName: 'refundTooFew',
+    args: [BigInt(i.chainRoundId)],
+  });
+  return runOperatorTx(env, deps, `refundTooFew:${i.roundId}`, 'operator.refundTooFew', data);
+}
+
+/** `refundTimeout` (permissionless onchain; the backend sends it with the operator key). Once per D1 round. */
+export function refundTimeout(
+  env: OperatorEnv,
+  deps: OperatorDeps,
+  i: { roundId: string; chainRoundId: string },
+): Promise<OperatorTxResult> {
+  const data = encodeFunctionData({
+    abi: flockedEscrowAbi,
+    functionName: 'refundTimeout',
+    args: [BigInt(i.chainRoundId)],
+  });
+  return runOperatorTx(env, deps, `refundTimeout:${i.roundId}`, 'operator.refundTimeout', data);
 }

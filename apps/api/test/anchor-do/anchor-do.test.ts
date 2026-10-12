@@ -539,3 +539,112 @@ describe('W4-F1 review fixes', () => {
     });
   });
 });
+
+describe('W6-A S5: a sent commit is failed only once the head is past beacon time', () => {
+  /** A commit sent at close + 5 s, before its deadline (the fake mines nothing until told). */
+  async function sentCommit() {
+    const h = await harness();
+    const alerts = alertSpy();
+    const l = lockItem(await insertRound(closeSec), closeSec);
+    lockOnchain(h.fake, l);
+    const c = commitItem(l);
+    h.fake.automine = false;
+    h.at((closeSec + 5) * 1000);
+    await h.stub.submitCommit(c);
+    await h.run();
+    expect((await h.stub.status(c.roundKey)).commit.state).toBe('sent');
+    return { h, alerts, key: c.roundKey, beacon: c.beaconTimeSec };
+  }
+
+  /** Another transaction takes its nonce; on our clock beacon time passed 2 s ago, the head is earlier. */
+  async function nonceTakenAfterBeacon(s: Awaited<ReturnType<typeof sentCommit>>) {
+    s.h.fake.consumeNonce(s.h.anchorer);
+    s.h.at((s.beacon + 2) * 1000);
+    s.h.fake.time = s.beacon - 10;
+    await s.h.run(); // the nonce is seen taken once
+    s.h.fake.mine(); // a later block, stamped before beacon time
+    await s.h.run(); // taken: back in the queue
+  }
+
+  it('back in the queue, it waits for the head however late the game clock is; a head stamped at beacon time fails it', async () => {
+    const s = await sentCommit();
+    const { h, alerts, key, beacon } = s;
+    await nonceTakenAfterBeacon(s);
+    expect((await h.stub.status(key)).commit).toMatchObject({
+      state: 'queued',
+      detail: 'awaiting_beacon_head',
+    });
+    expect(h.fake.sent).toHaveLength(1);
+    expect(alerts.codes()).toEqual(['ALERT_COMMIT_LATE']);
+
+    h.at((beacon + 4) * 1000);
+    h.fake.time = beacon; // no later block can be stamped before beacon time
+    await h.run();
+    expect((await h.stub.status(key)).commit).toMatchObject({
+      state: 'failed',
+      detail: 'outside_window',
+    });
+    expect(h.fake.sent).toHaveLength(1);
+    expect(alerts.codes()).toEqual(['ALERT_COMMIT_LATE']);
+  });
+
+  it('on the local stack only, 20 s past beacon time on the game clock stands in for the head', async () => {
+    const s = await sentCommit();
+    const { h, key, beacon } = s;
+    await nonceTakenAfterBeacon(s);
+    h.at((beacon + 15) * 1000);
+    h.fake.time = beacon - 8; // anvil mines no empty blocks
+    await h.run();
+    expect((await h.stub.status(key)).commit.state).toBe('queued');
+    h.at((beacon + 20) * 1000);
+    h.fake.time = beacon - 8;
+    await h.run();
+    expect((await h.stub.status(key)).commit).toMatchObject({
+      state: 'failed',
+      detail: 'outside_window',
+    });
+  });
+
+  it('stuck, it stays in its replacement past beacon time on the game clock; a late receipt in a block stamped before beacon time confirms it', async () => {
+    const { h, alerts, key, beacon } = await sentCommit();
+    h.at((beacon + 5) * 1000);
+    h.fake.time = beacon - 10;
+    await h.run(); // stuck: replaced at the same nonce
+    expect(h.fake.sent).toHaveLength(2);
+    const call = decodeFunctionData({ abi: flockedAnchorAbi, data: h.fake.sent[1]!.data });
+    expect(call.functionName).toBe('commit');
+    expect(call.args[0]).toEqual([key]);
+    expect((await h.stub.status(key)).commit.state).toBe('sent');
+    expect(alerts.codes()).toEqual(['ALERT_COMMIT_LATE']);
+
+    h.fake.mine(); // stamped beacon − 10
+    await h.run();
+    const replacement = h.fake.sent[1]!.hash;
+    expect((await h.stub.status(key)).commit).toMatchObject({
+      state: 'confirmed',
+      txHash: replacement,
+    });
+    expect(await lockTx(replacement)).toEqual([{ lock_tx: null, commit_tx: replacement }]);
+  });
+
+  it('back in the queue before its deadline (its own receipt not served), it is not failed at the deadline: the chain shows it written', async () => {
+    const { h, alerts, key } = await sentCommit();
+    h.fake.hiddenReceipts.add(h.fake.sent[0]!.hash);
+    h.fake.mine(); // it lands, but the provider serves no receipt
+    await h.run(); // its nonce is used, by no version with a receipt: seen once
+    h.fake.mine();
+    h.fake.failNext.set('eth_call', 1);
+    await h.run(); // taken: back in the queue, and the rebuild's read fails
+    expect((await h.stub.status(key)).commit.state).toBe('queued');
+    expect(alerts.codes()).toEqual(['ALERT_DO_ERROR']);
+
+    h.at((closeSec + 91) * 1000);
+    await h.run();
+    expect((await h.stub.status(key)).commit).toMatchObject({
+      state: 'confirmed',
+      detail: 'already_written',
+    });
+    expect(alerts.codes()).toEqual(['ALERT_DO_ERROR', 'ALERT_COMMIT_LATE']);
+    expect(h.fake.sent).toHaveLength(1);
+  });
+});

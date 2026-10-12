@@ -55,7 +55,12 @@ describe('registrations', () => {
     expect(names('Entered')).toEqual(['alert-unsent-tx', 'foreign-entry', 'stakes-ingest']);
     expect(names('Locked')).toEqual(['alert-unsent-tx', 'anchor-confirmation']);
     expect(names('Committed')).toEqual(['alert-unsent-tx', 'anchor-confirmation']);
-    expect(names('RoundRefunded')).toEqual(['alert-unsent-tx', 'stakes-void']);
+    expect(names('RoundRefunded')).toEqual(['alert-unsent-tx', 'stakes-void', 'stakes-refunded']);
+    // W6-A: the Stakes outcome handlers.
+    expect(names('OutcomeProposed')).toEqual(['alert-unsent-tx', 'stakes-proposal']);
+    expect(names('ProposalVetoed')).toEqual(['alert-unsent-tx', 'stakes-veto']);
+    expect(names('RoundFinalized')).toEqual(['alert-unsent-tx', 'stakes-finalized']);
+    expect(names('ManifestAnchored')).toEqual(['alert-unsent-tx', 'anchor-confirmation']);
   });
 });
 
@@ -299,8 +304,10 @@ describe('ticketed Entered → the RoundDO Stakes counters', () => {
       ticketHash,
       ciphertext: '0x0102',
     });
-    // Rethrown, it would stop dispatch at this row for good.
-    await expect(stakesIngestHandler(evt, env, ctx)).resolves.toBeUndefined();
+    // Rethrown, it would stop dispatch at this row for good. The entry is still stored in D1 (W6-A):
+    // the RoundDO's counters are a display value, D1 the settlement's input.
+    const stmts = await stakesIngestHandler(evt, env, ctx);
+    expect(stmts).toHaveLength(1);
     captured.restore();
     expect(
       captured.alerts.filter((a) => a.roundId === r.locked.roundId && a.code === 'ALERT_DO_ERROR'),
