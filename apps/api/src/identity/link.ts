@@ -11,6 +11,7 @@ import { HttpError } from '../lib/errors.js';
 import { log } from '../lib/log.js';
 import { identityView, loadAccount, type AccountRow, type IdentityRow } from './accounts.js';
 import { createPendingMerge } from './merge.js';
+import { dismissOfferStatement } from './offers.js';
 import type { ProvenIdentity } from './proof.js';
 
 const IDENTITY_COLUMNS = 'id, user_id, provider, external_id, verified_at';
@@ -106,15 +107,21 @@ export async function unlinkIdentity(env: Env, userId: string, identityId: strin
   }
   if (row.verified_at !== null && row.provider === 'wallet') await refuseLockedWallet(db, row);
 
-  // The last-sign-in rule is part of the DELETE, so two concurrent unlinks can't both pass it.
-  const result = await db
-    .prepare(
-      'DELETE FROM identities WHERE id = ?1 AND user_id = ?2 AND (verified_at IS NULL OR ' +
-        `(SELECT count(*) FROM identities WHERE user_id = ?2 AND id <> ?1 AND ${SIGN_IN_SQL}) > 0)`,
-    )
-    .bind(identityId, userId)
-    .run();
-  if (result.meta.changes === 0) {
+  // The last-sign-in rule is part of the DELETE, so two concurrent unlinks can't both pass it. A
+  // dismissed Farcaster offer is remembered, so it isn't offered again.
+  const statements = [
+    db
+      .prepare(
+        'DELETE FROM identities WHERE id = ?1 AND user_id = ?2 AND (verified_at IS NULL OR ' +
+          `(SELECT count(*) FROM identities WHERE user_id = ?2 AND id <> ?1 AND ${SIGN_IN_SQL}) > 0)`,
+      )
+      .bind(identityId, userId),
+  ];
+  if (row.verified_at === null && row.provider === 'wallet') {
+    statements.push(dismissOfferStatement(db, userId, row.external_id));
+  }
+  const [result] = await db.batch(statements);
+  if (result?.meta.changes === 0) {
     throw new HttpError(
       'identity_required',
       'Link another way to sign in (a wallet, Farcaster or a verified email) before removing this one',

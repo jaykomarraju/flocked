@@ -11,7 +11,7 @@ import {
 } from '@flocked/shared';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { withFarcasterWallets } from '../../src/identity/offers.js';
+import { refreshFarcasterOffers, withFarcasterWallets } from '../../src/identity/offers.js';
 import { seedFixture } from '../helpers/index.js';
 import { call, errorCode, siweBody } from '../auth/fixtures.js';
 import {
@@ -206,6 +206,7 @@ describe('Farcaster-verified wallets are offered for linking', () => {
     const fid = 777_000 + Math.floor(Math.random() * 1000);
     const offeredKey = privateKeyToAccount(generatePrivateKey());
     const offered = offeredKey.address.toLowerCase();
+    const second = privateKeyToAccount(generatePrivateKey()).address.toLowerCase();
     const taken = privateKeyToAccount(generatePrivateKey()).address.toLowerCase();
     const holder = await account(base);
     await env.DB.prepare(
@@ -218,7 +219,7 @@ describe('Farcaster-verified wallets are offered for linking', () => {
       ...base,
       env: withFarcasterWallets(base.env, (f) => {
         lookups.push(f);
-        return Promise.resolve([offered, taken]);
+        return Promise.resolve([offered, second, taken]);
       }),
     };
     // The account links its Farcaster account afresh (drop the fixture's FID first).
@@ -241,6 +242,19 @@ describe('Farcaster-verified wallets are offered for linking', () => {
     expect(me.identities.map((i) => i.externalId)).not.toContain(taken);
     // GET /me refreshes at most once a day.
     expect(lookups).toHaveLength(1);
+    // A dismissed offer is not offered again on the next refresh.
+    const offer = me.identities.find((i) => i.externalId === second);
+    const dismiss = await call(
+      t.env,
+      'DELETE',
+      `/me/identities/${offer?.id}`,
+      undefined,
+      a.headers,
+    );
+    expect(dismiss.status).toBe(200);
+    expect(await refreshFarcasterOffers(t.env, a.id, Date.now(), true)).toBe(0);
+    expect(lookups).toHaveLength(2);
+    expect((await identitiesOf(a.id)).map((i) => i.external_id)).not.toContain(second);
     // An offer never signs in to the account (findAccount): SIWE with that wallet creates a new
     // account, which takes the address, and the offer is released.
     const signIn = await call(t.env, 'POST', '/auth/siwe/verify', {

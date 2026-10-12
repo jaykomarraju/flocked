@@ -104,9 +104,10 @@ export async function refreshFarcasterOffers(
   const checked = typeof data.walletsOfferedAt === 'number' ? data.walletsOfferedAt : null;
   if (!force && checked !== null && t - checked < DAY_MS) return 0;
 
+  const dismissed = new Set(Array.isArray(data.dismissedWallets) ? data.dismissedWallets : []);
   let wallets: string[];
   try {
-    wallets = await lookup(fc.external_id);
+    wallets = (await lookup(fc.external_id)).filter((w) => !dismissed.has(w));
   } catch (err) {
     log.warn('farcaster_wallets_unavailable', {
       error: err instanceof Error ? err.message : String(err),
@@ -136,4 +137,22 @@ function parseData(json: string): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+/**
+ * Remembers that the user dismissed the offered wallet `address` (DELETE /me/identities/:id), so
+ * later refreshes don't offer it again: it joins `dismissedWallets` on the Farcaster identity.
+ */
+export function dismissOfferStatement(
+  db: D1Database,
+  userId: string,
+  address: string,
+): D1PreparedStatement {
+  return db
+    .prepare(
+      "UPDATE identities SET data_json = json_set(data_json, '$.dismissedWallets', json(json_insert(" +
+        "COALESCE(json_extract(data_json, '$.dismissedWallets'), '[]'), '$[#]', ?2))) " +
+        "WHERE user_id = ?1 AND provider = 'farcaster' AND verified_at IS NOT NULL",
+    )
+    .bind(userId, address.toLowerCase());
 }
