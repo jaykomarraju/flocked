@@ -178,9 +178,13 @@ export async function readRoundMe(
     const revealed = r.revealed_at !== null;
     let myPayouts: MyPayout[];
     if (r.mode === 'free') {
-      // A win or rebate says which side won: only after the reveal. Refunds need none.
+      // A win, rebate or VOID refund says how the picks fell: only after the reveal. Refunds need
+      // none, but a mode refunded before its reveal may still hold rows a settlement wrote (a void
+      // after applyFree's credits): only its `refund` rows are shown.
       myPayouts = payouts
-        .filter((p) => p.mode === 'free' && (revealed || REFUNDED.has(r.status)))
+        .filter(
+          (p) => p.mode === 'free' && (revealed || (REFUNDED.has(r.status) && p.kind === 'refund')),
+        )
         .map((p) => ({
           kind: p.kind,
           amount: String(p.amount),
