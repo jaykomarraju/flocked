@@ -2,9 +2,9 @@
 # (the API with the ticket signer beside it) and the cron driver, then the stack tests: one real Free
 # round end to end (smoke), the round lifecycle with no manual step, a 50-entry Free round settled
 # and anchored, the anvil-backed anchor and indexer tests, Stakes tickets through the API's signer
-# binding, and a Stakes round settled (last: it moves anvil's clock for good). Runs on integration
-# branches and main only, as the stack takes a minute to start and a round another to reach its
-# beacon.
+# binding, a Stakes round settled (it moves anvil's clock for good, so only steps on its round
+# follow), and that round's claims by wallet. Runs on integration branches and main only, as the
+# stack takes a minute to start and a round another to reach its beacon.
 name: Stack
 
 on:
@@ -52,9 +52,10 @@ jobs:
       - run: pnpm --filter @flocked/e2e --fail-if-no-match exec vitest run tests/indexer-reorg.test.ts
       # Stakes tickets from the signer's code, then through the API's SIGNER binding (W6-B, W6-D).
       - run: pnpm --filter @flocked/e2e --fail-if-no-match exec vitest run tests/stakes-ticket.test.ts
-      # A Stakes round settles (W6-A); it moves anvil's clock 2 h forward for good, so it comes last.
+      # A Stakes round settles (W6-A); it moves anvil's clock 2 h forward for good, so it runs after the rest.
       - run: pnpm --filter @flocked/e2e --fail-if-no-match exec vitest run tests/stakes-settle.test.ts
-      # A later claims-* step (W6-D) goes after stakes-settle and builds on its round.
+      # Builds on stakes-settle's round: claim proofs from /claims?wallet= verify against the onchain root (PIPE-1).
+      - run: pnpm --filter @flocked/e2e --fail-if-no-match exec vitest run tests/claims-wallet.test.ts
       - name: Stack status and drand logs
         if: failure()
         run: |
