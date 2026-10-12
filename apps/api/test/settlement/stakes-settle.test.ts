@@ -11,6 +11,7 @@ import { applyStakes } from '../../src/settlement/apply/stakes.js';
 import { BEACON_TIME_MS, alertSpy } from './helpers.js';
 import { STATUS, chainEventOf, eventsOf } from './stakes-chain.js';
 import {
+  entryRow,
   index,
   seedStakes,
   setGameClock,
@@ -224,6 +225,26 @@ describe('ALERT-1: the entry set is reconciled before anything is posted', () =>
     expect(refunds.map((p) => [p.kind, p.amount])).toEqual(
       r.entries.map(() => ['refund', Number(r.stake)]),
     );
+  });
+});
+
+describe('D1 against the streamed entry set', () => {
+  it('waits while the indexer hasn’t stored every streamed entry, then settles exactly that set', async () => {
+    const r = await seedStakes([0, 1, 1], { d1: false });
+    r.chain.advanceTo(r.closesAt / 1000 + 4);
+    setGameClock(BEACON_TIME_MS + 5_000);
+    const h = await stakesHarness(r);
+    await h.start();
+    expect(await h.alarm()).toMatchObject({ phase: 'preparing' });
+    // Two of the three stored: still waiting, nothing decrypted or posted.
+    await env.DB.batch(r.entries.slice(0, 2).map((e) => entryRow(r.roundId, r.stake, e)));
+    expect(await h.alarm()).toMatchObject({ phase: 'preparing', chunksTotal: 0 });
+    expect(r.chain.calls).toEqual([]);
+    await env.DB.batch(r.entries.slice(2).map((e) => entryRow(r.roundId, r.stake, e)));
+    expect(await h.alarm()).toMatchObject({ phase: 'decrypting' });
+    await h.deliver();
+    expect(await h.alarm()).toMatchObject({ phase: 'proposing' });
+    expect(h.applied[0]?.entries.map((e) => e.account)).toEqual(r.entries.map((e) => e.wallet));
   });
 });
 
