@@ -63,14 +63,22 @@ From the `Components` page. Code follows these unless a sheet says otherwise.
 
 - Hover: the fill changes to `line`. Border and label stay.
 - Pressed: scale 0.97 (`motion.press`). Paper doesn't render transforms, so sheets draw it as a box 3% smaller.
-- Selected (option card, toggle segment, preset, nav item): `ink` fill, `bg` label. The option card's radio also
-  gets a check, so the pick never relies on color alone.
+- Selected (option card, toggle segment, preset, nav item): `ink` fill, `bg` label. The option card's radio and the
+  mode toggle's selected segment also get a check, so the pick never relies on color alone (Oct 12 decision).
+- Secondary pill: `surface` fill (dark: `dark-surface`), 2px ink border, ink label. It is never transparent, so it
+  reads the same on `bg` and on a surface panel (Oct 12 decision).
+- Captions use the caption role: Inter 500, 13/18, `muted` (Oct 12 decision; the kit had Inter 400 ink).
+- Leaderboard rows: the rank slot is 32 wide with `flexShrink: 0`, so a 3-digit rank fits (Oct 12 decision; was
+  28).
+- Sheets and modals that are optional close with a "Not now" text button. The 48px pill stays only where closing is
+  the sheet's main action (claim all) (Oct 12 decision).
 - Disabled: `bg` fill, 2px dashed `muted` border, `muted` label, not focusable.
 - Focus: the foundation ring (2px ink outline, 3px offset), on focus-visible only.
 - Errors are ink, never a color: an error icon, a 600-weight message, and (on fields) a 3px border.
 - Controls get an ink border; read-only boxes (fixed stake, empty state, final-at chip) get a `line` border.
 - The accent appears only on: the primary CTA, the winning option card, the winning split bar and mini split, the
-  UNFLOCKED result line, the live stray-streak pill, and the smug sheep's glint.
+  UNFLOCKED result line, the live stray-streak pill (on a board, only the board's top live streak), and the smug
+  sheep's glint.
 - Scrim: the `scrim` token (`--color-scrim`, light `#141414` at 40%; `--color-dark-scrim`, dark `#000000` at 60%),
   flat, never a blur. In the JSON it's 8-digit hex (`#14141466`, `#00000099`).
 - Percentages follow the Decision log rounding: winner rounds down, loser rounds up, "<1%" and ">99%" at the ends.
@@ -81,7 +89,8 @@ From the `Components` page. Code follows these unless a sheet says otherwise.
 - Mobile: mobile header, content with 16px side padding and 24px gaps, five-tab nav bar. Long screens scroll, so
   their artboards are `fit-content`; overlays and short screens are 844 tall.
 - Tablet and desktop: desktop header (24px side padding on tablet, 64px on desktop) and the mobile content centred
-  in a 560 column. The question goes up to the `display` size (40px), and the countdown and counter share a row.
+  in a 560 column. The header links are Today, Archive, Boards and Rooms; Submit, Queue, Claims and Settings sit in
+  the avatar menu (W7-C removed the "Questions" link, Oct 12 decision). The question goes up to the `display` size (40px), and the countdown and counter share a row.
 - Sheets on mobile become centred 400-wide modals from tablet up (no handle, 2px ink border all round).
 - The 30-day Stakes net sits in the header's balance slot when Stakes is selected.
 - With the 30-day net in the slot, the tablet header only fits if the links don't shrink: header gap 32, links
@@ -98,6 +107,59 @@ From the `Components` page. Code follows these unless a sheet says otherwise.
 - Tablet and desktop header links are Today, Archive, Boards and Rooms. Submit, Queue, Claims and Settings sit in
   the avatar menu; pages reached from it show no active link, and mobile has You active.
 - Rows are 2400 apart, so a long mobile screen (up to ~2300) still takes one row.
+
+## Screen conventions (Admin)
+
+The `Admin` page (W7-C) holds the console at `/admin`, `desktop` (1120) and `tablet` (768) only. Like the app, it
+is light only. Exports are at `exports/admin/<screen>__<state>__<breakpoint>.png`.
+
+- **Build from the kit.** `admin/kit/shell/{desktop,tablet}` hold the chrome and an empty `content` frame;
+  `admin/kit/parts/desktop` holds the named parts (`part/panel`, `part/table`, `part/kpi`, `part/status/*`,
+  `part/modal`, `part/refusal`, `part/field/reason`, `part/chip/*`, `part/json`, `part/toast`, `part/button/*`).
+  They sit at y −1600 and aren't exported.
+- **Desktop:**
+  - A 232-wide rail on `bg` with a 1.5px `line` right border and padding 24. From top to bottom:
+    - the wordmark and a read-only "Admin" chip;
+    - the nav: Live round, Schedule, Question queue, Challenges, Holds (with an open-hold count), Users, Flags and
+      config, Analytics. Items are 40 tall and pill-shaped; the selected item has an ink fill and a `bg` 600 label;
+    - at the bottom, the admin's handle, "Signed in through Cloudflare Access" and "Back to the app".
+  - Content is padded 32 40 48, with a 32 gap.
+- **Tablet:** a 64-tall header (wordmark, chip, handle), then a tab row with the same sections. The row clips at
+  the right edge with the active tab in view: for the last three tabs it is right-aligned and clips at the left.
+  The active tab has a 3px ink underline and a 600 label. Content is padded 24 and two-column layouts stack.
+- **Page head:** the page title in the title role (Fredoka 600 22) with a caption under it; page actions on the
+  right. At most one accent CTA per screen; list and dashboard screens usually have none.
+- **Panels:**
+  - surface fill, 1.5px `line` border, radius 16, padding 24; the head in bodyStrong with an optional caption on
+    the right;
+  - a panel that needs action (interventions, a failing check, a mismatch) has a 2px ink border instead.
+- **Tables:**
+  - a head row in the caption role, rows 48 tall with `line` dividers, cells in the label role;
+  - fixed-width column slots (`flexShrink: 0`), numbers right-aligned with tabular figures;
+  - row actions are 36-tall secondary pills.
+- **Status is never a colour.** A 16px ink icon plus a word:
+  - check-circle for OK;
+  - a triangle with a 600-weight word for attention;
+  - the kit's error icon with a 600 message for failing (and its panel takes the 2px ink border);
+  - a muted dashed circle with a muted word for pending or idle.
+  Where the API has an enum value, the raw value sits beside the word as a caption (`pending`,
+  `refund_vetoed`, `mismatch`), so an operator can match the screen to the logs.
+- **Every action confirms in a modal:**
+  - 480 wide, centred on the `scrim` over the screen it opens from; 2px ink border, radius 16, padding 24;
+  - the title, what happens, a short consequences list, and the required **Reason** field ("Saved to the audit log
+    with your name.", counter to 500);
+  - a full-width CTA, then "Not now".
+  - Destructive confirms use the accent CTA, as Settings' delete does.
+  - An irreversible action (void) takes two steps: the second asks for the game day to be typed.
+  - After the action, a toast gives the audit ID.
+- **Refusals** the spec names (no void after close, no config change after question lock) use the refusal notice:
+  a 2px ink border, the error icon, a 600 message, and what the admin can do instead.
+- **Code-like values** (moderation JSON, hashes, `CC-RR` codes) are Inter: JSON is 13/18 with `white-space: pre` in a
+  read-only box. The design language has no monospace face.
+- **Charts** (Analytics) are monochrome: ink marks, `line` gridlines and caption-role axis labels. Two series are
+  told apart by line style and a direct label, never by colour, and charts never use the accent.
+- **Example data** is shared across the console: Mon, Oct 12, 2026; today's question and counts from Core flow;
+  the admin @shepherd; players @woolgatherer, @ramsay, @baabara, @lambchop, @fleecebeth.
 
 ## Paper MCP notes
 
