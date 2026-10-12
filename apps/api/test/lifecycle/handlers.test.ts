@@ -269,6 +269,44 @@ describe('ticketed Entered → the RoundDO Stakes counters', () => {
     });
     expect(again).toEqual({ counted: false, entrantCount: 2, pool: String(BigInt(stake) * 2n) });
   });
+
+  it('an entry the RoundDO refuses for good (another chain round) alerts and returns (V3)', async () => {
+    const fake = fakeChainAt(T0);
+    const r = await stakesRound(fake);
+    setClock(T0);
+    await r.stub.init(r.locked);
+    // D1 maps another escrow round to this round than the RoundDO was given: a permanent mismatch.
+    const other = String(BigInt(r.chainRoundId) + 1000n);
+    await env.DB.prepare(
+      "UPDATE round_modes SET chain_round_id = ?2 WHERE round_id = ?1 AND mode = 'stakes'",
+    )
+      .bind(r.locked.roundId, other)
+      .run();
+    const user = await createUser(0);
+    const player = '0x00000000000000000000000000000000000000b1' as Hex;
+    const personTag = keccak256(toHex('person-v3'));
+    const ticketHash = keccak256(toHex('ticket-v3'));
+    await env.DB.prepare(
+      'INSERT INTO stakes_tickets (ticket_hash, round_id, person_tag, user_id, wallet, expiry, issued_at) VALUES (?1, ?2, ?3, ?4, ?5, 0, 0)',
+    )
+      .bind(ticketHash, r.locked.roundId, personTag, user, player)
+      .run();
+    const captured = captureAlerts();
+    const evt = chainEvent('escrow', 'Entered', {
+      roundId: other,
+      player,
+      personTag,
+      ticketHash,
+      ciphertext: '0x0102',
+    });
+    // Rethrown, it would stop dispatch at this row for good.
+    await expect(stakesIngestHandler(evt, env, ctx)).resolves.toBeUndefined();
+    captured.restore();
+    expect(
+      captured.alerts.filter((a) => a.roundId === r.locked.roundId && a.code === 'ALERT_DO_ERROR'),
+    ).toMatchObject([{ step: 'ingest_stakes_entry', txHash: evt.txHash }]);
+    expect((await r.stub.getState()).modes.stakes).toMatchObject({ entrantCount: 0 });
+  });
 });
 
 describe('Locked / Committed → round_modes lock_tx / commit_tx', () => {
