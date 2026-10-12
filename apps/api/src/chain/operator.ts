@@ -52,6 +52,11 @@ export interface OperatorDeps {
   /** How long one call waits for the receipt before answering `pending` (default 20 s). */
   waitMs?: number;
   stuckAfterMs?: number;
+  /**
+   * Read the account nonce at this block, not `latest` (W5-F1 C1): the head that proved a void
+   * past close, so a node behind it fails rather than answer that nothing was mined.
+   */
+  nonceBlock?: bigint;
 }
 
 export type OperatorTxResult =
@@ -190,7 +195,11 @@ async function runOperatorTx(
   data: Hex,
 ): Promise<OperatorTxResult> {
   const op = operator(env, deps);
-  if (op instanceof Error) return { status: 'refused', error: op.message };
+  if (op instanceof Error) {
+    // Already sent (W5-F1 C3): only the chain can say whether it was mined, so this is no answer.
+    if (await readRow(env.DB, purpose)) throw op;
+    return { status: 'refused', error: op.message };
+  }
   const db = env.DB;
   const t = () => clockNow(env);
 
@@ -223,7 +232,7 @@ async function runOperatorTx(
 
   const deadline = t() + (deps.waitMs ?? 20_000);
   for (;;) {
-    const c = await op.sender.check(tx, label);
+    const c = await op.sender.check(tx, label, { nonceBlock: deps.nonceBlock });
     if (c.status === 'mined') {
       const status = c.receipt.status === 'success' ? 'mined' : 'reverted';
       await finish(db, purpose, status, c.hash, t());
@@ -330,17 +339,32 @@ export async function cancelOperatorTx(
   return { status: 'pending', txHash: lastHash(next) };
 }
 
-/** The scheduler tick's sweep: one more step for every cancellation still pending (T4). */
+/**
+ * The scheduler tick's sweep: one more step for every cancellation still pending (T4). It also
+ * starts those whose first attempt failed before marking the row (W5-F1 C4): a `createRound` whose
+ * Stakes mode was voided with no chain round, and a `voidRound` whose void was abandoned (the round
+ * closed normally past closesAt, Stakes not voided).
+ */
 export async function driveCancellations(
   env: OperatorEnv,
   deps: OperatorDeps,
 ): Promise<Record<string, string>> {
   const { results } = await env.DB.prepare(
-    `SELECT purpose FROM operator_txs WHERE status = 'pending'
-       AND (json_extract(tx_json, '$.abandoned') = 1
-            OR lower(json_extract(tx_json, '$.to')) = lower(json_extract(tx_json, '$.from')))
-     ORDER BY created_at`,
-  ).all<{ purpose: string }>();
+    `SELECT o.purpose FROM operator_txs o WHERE o.status = 'pending'
+       AND (json_extract(o.tx_json, '$.abandoned') = 1
+            OR lower(json_extract(o.tx_json, '$.to')) = lower(json_extract(o.tx_json, '$.from'))
+            OR (o.purpose LIKE 'createRound:%' AND EXISTS (
+                  SELECT 1 FROM round_modes m
+                  WHERE m.round_id = substr(o.purpose, 13) AND m.mode = 'stakes'
+                    AND m.status = 'voided' AND m.chain_round_id IS NULL))
+            OR (o.purpose LIKE 'voidRound:%' AND EXISTS (
+                  SELECT 1 FROM rounds r JOIN round_modes m ON m.round_id = r.id AND m.mode = 'stakes'
+                  WHERE r.id = substr(o.purpose, 11) AND r.status = 'closed' AND r.closes_at <= ?1
+                    AND m.status <> 'voided')))
+     ORDER BY o.created_at`,
+  )
+    .bind(clockNow(env))
+    .all<{ purpose: string }>();
   const out: Record<string, string> = {};
   for (const { purpose } of results) {
     try {

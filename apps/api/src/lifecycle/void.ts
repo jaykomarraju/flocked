@@ -114,16 +114,17 @@ export async function pushVoid(
 export const VOID_RESOLVE_GRACE_MS = 20_000;
 
 /**
- * True when the chain head is stamped at or after closesAt (FlockedEscrow reverts `voidRound` in any
- * block stamped from then on, and later blocks are stamped no earlier). Throws on an RPC failure.
+ * The chain head's number when it is stamped at or after closesAt (FlockedEscrow reverts `voidRound`
+ * in any block stamped from then on, and later blocks are stamped no earlier), else null. The final
+ * push reads the operator's nonce at it (W5-F1 C1). Throws on an RPC failure.
  */
 export async function chainHeadPastClose(
   env: Env,
   deps: OperatorDeps,
   locked: LockedRound,
-): Promise<boolean> {
+): Promise<bigint | null> {
   const head = await publicClient(env, deps.transport).getBlock({ blockTag: 'latest' });
-  return Number(head.timestamp) >= Math.floor(locked.closesAt / 1000);
+  return Number(head.timestamp) >= Math.floor(locked.closesAt / 1000) ? head.number : null;
 }
 
 /**

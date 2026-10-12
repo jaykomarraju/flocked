@@ -7,7 +7,7 @@
 import { env } from 'cloudflare:test';
 import { LOCKED_CONFIG_DEFAULTS, newUlid } from '@flocked/shared';
 import { firstRoundAtOrAfter } from '@flocked/tlock';
-import { parseGwei, type Hex } from 'viem';
+import { custom, parseGwei, type Hex } from 'viem';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   cancelCreateRound,
@@ -25,7 +25,15 @@ import {
 import { dailySlot, insertDailyRound } from '../../src/scheduler/create.js';
 import { schedulerTick } from '../../src/scheduler/tick.js';
 import { drand } from '../anchor-do/helpers.js';
-import { HOUR, MIN, chainHarness, insertQuestion, modeRows, setClock } from './helpers.js';
+import {
+  HOUR,
+  MIN,
+  chainHarness,
+  failFirstMark,
+  insertQuestion,
+  modeRows,
+  setClock,
+} from './helpers.js';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -287,6 +295,95 @@ describe('T4: abandoned operator transactions are cancelled', () => {
     fake.mine();
     const report = await schedulerTick(env, deps);
     expect(report.cancellations[`createRound:${id}`]).toBe('cancelled');
+    expect(fake.roundCount).toBe(0n);
+  });
+});
+
+describe('W5-F1: bumps from a version a node accepted but does not serve (C2)', () => {
+  it('getTransaction never finds it, every rebroadcast succeeds: once stale, a bumped replacement is signed, under the cap', async () => {
+    const t = Date.UTC(2027, 6, 9, 12, 0, 0);
+    const { fake, deps } = await chainHarness(t);
+    setClock(t);
+    fake.automine = false;
+    // A node that forwards the transaction (or answers "already known") but never serves it back.
+    const inner = fake.transport({}).request as unknown as (a: {
+      method: string;
+      params: unknown[];
+    }) => Promise<unknown>;
+    const transport = custom(
+      {
+        request: ({ method, params }: { method: string; params?: unknown }) =>
+          method === 'eth_getTransactionByHash'
+            ? Promise.resolve(null)
+            : inner({ method, params: (params ?? []) as unknown[] }),
+      },
+      { retryCount: 0 },
+    );
+    const d: OperatorDeps = { ...deps.operator, transport };
+    Object.assign(env, { TX_MAX_FEE_GWEI: '1.5' }); // room for one bump over the ~1.2 gwei estimate
+    try {
+      const roundId = newUlid();
+      const call = () => createRound(env, d, { roundId, cfg: cfg(t) });
+      expect((await call()).status).toBe('pending');
+      expect((await call()).status).toBe('pending'); // rebroadcast, not stale yet
+      expect(fake.sent).toHaveLength(1);
+      for (let i = 1; i <= 4; i++) {
+        setClock(t + i * 13_000);
+        expect((await call()).status).toBe('pending');
+      }
+      expect(fake.sent).toHaveLength(2);
+      const [v1, v2] = fake.sent as [(typeof fake.sent)[number], (typeof fake.sent)[number]];
+      expect(v2.nonce).toBe(v1.nonce);
+      expect(v2.maxPriorityFeePerGas).toBeGreaterThanOrEqual(
+        (v1.maxPriorityFeePerGas * 125n) / 100n,
+      );
+      expect(v2.maxFeePerGas).toBe(parseGwei('1.5')); // a 25 % bump, capped
+      fake.mine();
+      expect(await call()).toMatchObject({ status: 'mined', txHash: v2.hash });
+    } finally {
+      delete (env as { TX_MAX_FEE_GWEI?: string }).TX_MAX_FEE_GWEI;
+    }
+  });
+});
+
+describe('W5-F1: a cancellation whose first attempt failed is still made (C4)', () => {
+  it('a createRound whose cancel throws at opensAt is cancelled by the sweep, and never lands', async () => {
+    const slot = dailySlot('2027-07-10');
+    const id = (await insertDailyRound(env.DB, slot)) as string;
+    const qId = await insertQuestion({ status: 'scheduled' });
+    await env.DB.prepare('UPDATE rounds SET question_id = ?2, config_json = ?3 WHERE id = ?1')
+      .bind(
+        id,
+        qId,
+        JSON.stringify({
+          beaconDelay: 120,
+          free: { ...LOCKED_CONFIG_DEFAULTS.free, awardRecipient: null },
+          stakes: {
+            ...LOCKED_CONFIG_DEFAULTS.stakes,
+            creator: '0x000000000000000000000000000000000000dead',
+          },
+        }),
+      )
+      .run();
+    const lockAt = slot.opensAt - 6 * HOUR;
+    const { fake, deps } = await chainHarness(lockAt);
+    setClock(lockAt);
+    fake.automine = false;
+    expect((await schedulerTick(env, deps)).stakes[id]).toBe('pending');
+
+    // At opensAt Stakes is voided, and its cancellation dies before it marks the row.
+    setClock(slot.opensAt + MIN);
+    fake.time = slot.opensAt / 1000 - 30;
+    failFirstMark(`createRound:${id}`);
+    const report = await schedulerTick(env, deps);
+    expect((await modeRows(id)).find((m) => m.mode === 'stakes')?.status).toBe('voided');
+    // The tick's sweep finds it all the same and replaces it at its nonce.
+    expect(report.cancellations[`createRound:${id}`]).toBe('pending');
+    const last = fake.sent[fake.sent.length - 1]!;
+    expect(last).toMatchObject({ nonce: fake.sent[0]!.nonce, to: fake.sent[0]!.from, data: '0x' });
+
+    fake.mine();
+    expect((await schedulerTick(env, deps)).cancellations[`createRound:${id}`]).toBe('cancelled');
     expect(fake.roundCount).toBe(0n);
   });
 });

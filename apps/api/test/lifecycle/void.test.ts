@@ -4,13 +4,18 @@
 // then every mode is voided with refund reason 4 and every Free stake comes back. A void that misses
 // close is abandoned and every mode follows the normal close path.
 import { env, runInDurableObject } from 'cloudflare:test';
+import { custom, toHex, type Hex } from 'viem';
+import { generatePrivateKey } from 'viem/accounts';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { VOID_REFUSED_ALERT_AFTER } from '../../src/do/round-do.js';
+import { driveCancellations } from '../../src/chain/operator.js';
+import { VOID_REFUSED_ALERT_AFTER, type RoundDO } from '../../src/do/round-do.js';
 import { recordSentTx } from '../../src/indexer/sent.js';
 import { stakesVoidHandler } from '../../src/lifecycle/handlers.js';
 import type { RpcResult, EnterFreeResponse } from '../../src/do/types.js';
 import { VOID_RESOLVE_GRACE_MS } from '../../src/lifecycle/void.js';
+import type { FakeChain } from '../anchor-do/fake-chain.js';
 import { captureAlerts } from '../indexer/helpers.js';
+import { failFirstMark } from '../scheduler/helpers.js';
 import {
   alarmAt,
   balance,
@@ -44,6 +49,34 @@ afterEach(() => {
   queues?.restore();
   queues = null;
 });
+
+type Rpc = (method: string, params: unknown[]) => Promise<unknown>;
+
+/**
+ * Points the RoundDO's operator at the fake chain through `route`, which answers each call itself or
+ * passes it on with `chain`: a provider whose nodes are not all at the same block (W5-F1 C1).
+ */
+async function splitRpc(
+  r: TestRound,
+  fake: FakeChain,
+  route: (method: string, params: unknown[], chain: Rpc) => Promise<unknown>,
+): Promise<void> {
+  const inner = fake.transport({}).request as unknown as (a: {
+    method: string;
+    params: unknown[];
+  }) => Promise<unknown>;
+  const chain: Rpc = (method, params) => inner({ method, params });
+  const transport = custom(
+    {
+      request: ({ method, params }: { method: string; params?: unknown }) =>
+        route(method, (params ?? []) as unknown[], chain),
+    },
+    { retryCount: 0 },
+  );
+  await runInDurableObject(r.stub, (i: RoundDO) => {
+    i.operatorDeps = { transport, waitMs: 0 };
+  });
+}
 
 async function enter(r: TestRound, userId: string, stake = '25', ciphertext?: string) {
   return r.stub.enterFree({
@@ -458,5 +491,152 @@ describe('W4-F1: permanent handler conditions alert and return (V3)', () => {
       captured.alerts.filter((a) => a.roundId === r.locked.roundId && a.code === 'ALERT_DO_ERROR'),
     ).toMatchObject([{ step: 'stakes_void_mode_result' }]);
     expect((await modeRow(r.locked.roundId, 'stakes'))?.status).toBe('voided');
+  });
+});
+
+describe('W5-F1: a void is abandoned at close only on proof', () => {
+  it('a voidRound a node shows in a block before closesAt confirms the void, though the nonce read lags (C1)', async () => {
+    queues = recordQueues();
+    const closesAt = Date.UTC(2026, 9, 12, 1, 0, 0);
+    const fake = fakeChainAt(closesAt - 10_000);
+    const r = await stakesRound(fake, { opensAt: closesAt - 24 * 3_600_000 });
+    setClock(closesAt - 10_000);
+    await r.stub.init(r.locked);
+    fake.automine = false;
+    await r.stub.requestVoid();
+    await alarmAt(r.stub, closesAt - 9_000);
+    const voidTx = fake.sent[0]!;
+    // Mined in a block stamped before closesAt; then the head moves past closesAt.
+    fake.time = Math.floor(closesAt / 1000) - 5;
+    fake.mine();
+    fake.time = Math.floor(closesAt / 1000) + 1;
+
+    // The node that answers nonce reads is behind that block, whatever block is asked; the one that
+    // answers eth_getTransactionByHash has the voidRound in its block.
+    await splitRpc(r, fake, async (method, params, chain) => {
+      if (method === 'eth_getTransactionCount') return toHex(voidTx.nonce);
+      if (method !== 'eth_getTransactionByHash') return chain(method, params);
+      const tx = (await chain(method, params)) as Record<string, unknown> | null;
+      const receipt = fake.receipts.get(params[0] as Hex);
+      if (!tx || !receipt) return tx;
+      const { blockHash, blockNumber, transactionIndex } = receipt;
+      return { ...tx, blockHash, blockNumber, transactionIndex };
+    });
+    await alarmAt(r.stub, closesAt);
+    expect(await voidRecord(r.stub)).toMatchObject({
+      state: 'confirmed',
+      applied: true,
+      txHash: voidTx.hash,
+    });
+    for (const mode of ['free', 'stakes'] as const) {
+      expect((await modeRow(r.locked.roundId, mode))?.status).toBe('voided');
+    }
+  });
+
+  it('a nonce read from a node behind the head that proved close is no proof (C1)', async () => {
+    queues = recordQueues();
+    const closesAt = Date.UTC(2026, 9, 13, 1, 0, 0);
+    const fake = fakeChainAt(closesAt - 10_000);
+    const r = await stakesRound(fake, { opensAt: closesAt - 24 * 3_600_000 });
+    setClock(closesAt - 10_000);
+    await r.stub.init(r.locked);
+    fake.automine = false;
+    await r.stub.requestVoid();
+    await alarmAt(r.stub, closesAt - 9_000);
+    const voidTx = fake.sent[0]!;
+    const behind = fake.block;
+    fake.time = Math.floor(closesAt / 1000) - 5;
+    fake.mine();
+    fake.time = Math.floor(closesAt / 1000) + 1;
+
+    // The head comes from an up-to-date node; nonce and receipt reads from one still at `behind`,
+    // which holds the voidRound in its mempool and knows no later block.
+    let lagging = true;
+    await splitRpc(r, fake, async (method, params, chain) => {
+      if (lagging && method === 'eth_getTransactionCount') {
+        const tag = params[1] as string;
+        if (tag === 'latest' || tag === 'pending') return toHex(voidTx.nonce);
+        if (BigInt(tag) > behind) throw new Error('header not found');
+      }
+      if (lagging && method === 'eth_getTransactionReceipt') return null;
+      return chain(method, params);
+    });
+    await alarmAt(r.stub, closesAt);
+    expect(await voidRecord(r.stub)).toMatchObject({ state: 'requested' });
+    expect((await readMeta(r.stub))?.done).not.toContain('close');
+
+    // Caught up: the void is confirmed.
+    lagging = false;
+    await alarmAt(r.stub, closesAt + 3_000);
+    expect(await voidRecord(r.stub)).toMatchObject({
+      state: 'confirmed',
+      applied: true,
+      txHash: voidTx.hash,
+    });
+  });
+
+  it('a sent voidRound whose operator config breaks at close is not abandoned on that refusal (C3)', async () => {
+    queues = recordQueues();
+    const closesAt = Date.UTC(2026, 9, 14, 1, 0, 0);
+    const fake = fakeChainAt(closesAt - 10_000);
+    const r = await stakesRound(fake, { opensAt: closesAt - 24 * 3_600_000 });
+    setClock(closesAt - 10_000);
+    await r.stub.init(r.locked);
+    fake.automine = false;
+    await r.stub.requestVoid();
+    await alarmAt(r.stub, closesAt - 9_000);
+    expect(fake.pool.size).toBe(1); // sent: its operator_txs row exists
+
+    // A redeploy leaves TX_MAX_FEE_GWEI invalid; at close the head is stamped past closesAt.
+    fake.time = Math.floor(closesAt / 1000) + 1;
+    Object.assign(env, { TX_MAX_FEE_GWEI: 'abc' });
+    try {
+      await alarmAt(r.stub, closesAt);
+      expect(await voidRecord(r.stub)).toMatchObject({ state: 'requested' });
+      expect((await readMeta(r.stub))?.done).not.toContain('close');
+    } finally {
+      delete (env as { TX_MAX_FEE_GWEI?: string }).TX_MAX_FEE_GWEI;
+    }
+
+    // Fixed: the push answers definitely again (unmined, and it can only revert now).
+    await alarmAt(r.stub, closesAt + 3_000);
+    expect(await voidRecord(r.stub)).toMatchObject({ state: 'abandoned' });
+  });
+
+  it('a voidRound whose cancel fails when the void is abandoned is cancelled by the sweep (C4)', async () => {
+    queues = recordQueues();
+    // Its own operator account: the sweep also moves this file's other cancellations.
+    Object.assign(env, { OPERATOR_KEY: generatePrivateKey() });
+    const closesAt = Date.UTC(2026, 9, 15, 1, 0, 0);
+    const fake = fakeChainAt(closesAt - 10_000);
+    const r = await stakesRound(fake, { opensAt: closesAt - 24 * 3_600_000 });
+    setClock(closesAt - 10_000);
+    await r.stub.init(r.locked);
+    fake.automine = false;
+    await r.stub.requestVoid();
+    await alarmAt(r.stub, closesAt - 9_000);
+    const voidTx = fake.sent[0]!;
+
+    // At close the head is past closesAt with voidRound unmined: abandoned. Its cancellation dies
+    // before it marks the row.
+    fake.time = Math.floor(closesAt / 1000) + 1;
+    const spy = failFirstMark(`voidRound:${r.locked.roundId}`);
+    try {
+      await alarmAt(r.stub, closesAt);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(await voidRecord(r.stub)).toMatchObject({ state: 'abandoned' });
+    const ours = () => fake.sent.filter((x) => x.from === voidTx.from);
+    expect(ours()).toHaveLength(1);
+
+    // The tick's sweep finds it all the same and replaces it at its nonce.
+    const purpose = `voidRound:${r.locked.roundId}`;
+    const deps = { transport: fake.transport, waitMs: 0 };
+    expect((await driveCancellations(env, deps))[purpose]).toBe('pending');
+    expect(ours()[1]).toMatchObject({ nonce: voidTx.nonce, to: voidTx.from, data: '0x' });
+    fake.mine();
+    expect((await driveCancellations(env, deps))[purpose]).toBe('cancelled');
+    expect(fake.escrowRounds.get(BigInt(r.chainRoundId))?.open).toBe(true);
   });
 });

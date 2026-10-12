@@ -788,11 +788,15 @@ export class RoundDO extends DurableObject<Env> implements RoundDORpc {
   }
 
   /** One push of `voidRound`. Never throws: a thrown error is a pending, indefinite step. */
-  private async pushVoid(m: Meta, t: number): Promise<VoidStep> {
+  private async pushVoid(
+    m: Meta,
+    t: number,
+    deps = this.operatorDeps ?? operatorDeps(this.env),
+  ): Promise<VoidStep> {
     const v = m.void as VoidRecord;
     let step: VoidStep;
     try {
-      step = await pushVoid(this.env, this.operatorDeps ?? operatorDeps(this.env), m.locked);
+      step = await pushVoid(this.env, deps, m.locked);
     } catch (err) {
       step = { status: 'pending', txHash: v.txHash, detail: String(err), definite: false };
     }
@@ -837,17 +841,18 @@ export class RoundDO extends DurableObject<Env> implements RoundDORpc {
   private async resolveVoidAtClose(m: Meta, t: number): Promise<void> {
     const v = m.void as VoidRecord;
     const deps = this.operatorDeps ?? operatorDeps(this.env);
-    let headPast = false;
+    let head: bigint | null = null;
     if (m.locked.modes.includes('stakes')) {
       try {
-        headPast = await chainHeadPastClose(this.env, deps, m.locked);
+        head = await chainHeadPastClose(this.env, deps, m.locked);
       } catch (err) {
         log.warn('void_head_unreadable', { roundId: m.locked.roundId, error: String(err) });
       }
     }
-    const step = await this.pushVoid(m, t);
+    // The nonce is read at that head (W5-F1 C1): a node behind it can't answer "not mined".
+    const step = await this.pushVoid(m, t, head === null ? deps : { ...deps, nonceBlock: head });
     if (step.status === 'confirmed') return;
-    if (!voidAbandonable(this.env, m.locked, t, headPast, step)) {
+    if (!voidAbandonable(this.env, m.locked, t, head !== null, step)) {
       throw new RetryLater(
         VOID_RETRY_MS,
         'the void is unresolved until the chain proves it missed',
