@@ -6,7 +6,8 @@
 //     domain, which the signer derives from its own vars;
 //   * a `stakes_tickets` row with that hash exists (apps/api commits it before calling), and its
 //     wallet, person tag, expiry and round's escrow round ID are the request's;
-//   * the ticket has not expired.
+//   * the ticket has not expired, and its expiry is at most the ticket lifetime (5 minutes) plus a
+//     small slack ahead (W6-F1 R12): a recorded row with a far expiry is never signed.
 // Only then does it sign the digest. It writes nothing and logs no person tag. This file has no
 // Workers types, so e2e/tests/stakes-ticket.test.ts signs through it on the local stack.
 import { addressesFor, LOCAL_CHAIN_ID } from '@flocked/abi';
@@ -29,6 +30,12 @@ export interface SignerDeps {
   /** Unix seconds now. */
   nowSec: number;
 }
+
+/** Tickets expire 5 minutes after issue (spec "Identity and personhood" › Entry tickets). */
+export const TICKET_LIFETIME_SEC = 300;
+
+/** How far past the lifetime an expiry may still be, for clock skew between apps/api and here. */
+export const EXPIRY_SLACK_SEC = 60;
 
 const UINT = /^(0|[1-9][0-9]{0,77})$/;
 const ADDRESS = /^0x[0-9a-f]{40}$/;
@@ -103,6 +110,9 @@ export async function signTicket(
     throw new TicketRefused('row_mismatch');
   }
   if (row.expiry <= deps.nowSec) throw new TicketRefused('expired');
+  if (row.expiry > deps.nowSec + TICKET_LIFETIME_SEC + EXPIRY_SLACK_SEC) {
+    throw new TicketRefused('expiry_too_far');
+  }
 
   const signature = await privateKeyToAccount(deps.key).sign({ hash: digest });
   return { signature: signature.toLowerCase() as Hex };
