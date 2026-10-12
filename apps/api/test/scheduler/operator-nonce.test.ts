@@ -4,7 +4,7 @@
 import { env } from 'cloudflare:test';
 import { newUlid } from '@flocked/shared';
 import { firstRoundAtOrAfter } from '@flocked/tlock';
-import type { Hex } from 'viem';
+import { custom, type Hex } from 'viem';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createRound,
@@ -144,14 +144,27 @@ describe('W6-A: one owner of the operator nonce', () => {
       nonceTaken: true,
     });
     fake.block += 1n;
-    // x's re-sign and z's first send read the pending count together, before either is stored.
-    const d = { ...deps.operator, transport: stalePendingNonce(fake, 2) };
+    // x's re-sign and z's first send read the pending count together, before either is stored,
+    // and z stores its transaction first (x's fee lookup is slower): only x's claim can keep them
+    // apart.
+    const stale = stalePendingNonce(fake, 2);
+    const request = stale({}).request as (a: { method: string; params?: unknown }) => unknown;
+    const slowFees = custom(
+      {
+        request: async (a: { method: string; params?: unknown }) => {
+          if (a.method === 'eth_maxPriorityFeePerGas') {
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          }
+          return request(a);
+        },
+      },
+      { retryCount: 0 },
+    );
     await Promise.all([
-      createRound(env, d, { roundId: x, cfg: cfg(t) }),
-      createRound(env, d, { roundId: z, cfg: cfg(t) }),
+      createRound(env, { ...deps.operator, transport: slowFees }, { roundId: x, cfg: cfg(t) }),
+      createRound(env, { ...deps.operator, transport: stale }, { roundId: z, cfg: cfg(t) }),
     ]);
-    const nonces = [await nonceOf(`createRound:${x}`), await nonceOf(`createRound:${z}`)];
-    expect(new Set(nonces).size).toBe(2);
-    expect([...nonces].sort((p, q) => p - q)).toEqual([1, 2]);
+    expect(await nonceOf(`createRound:${z}`)).toBe(1);
+    expect(await nonceOf(`createRound:${x}`)).toBe(2);
   });
 });
