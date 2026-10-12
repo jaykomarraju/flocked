@@ -7,6 +7,11 @@
 // that round's day, and the next daily round (closing tomorrow) starts a fresh day. Each round
 // counts once: an entry and a ticket for the same round are one stake (the contract allows one
 // entry per person per round).
+//
+// An unused ticket counts while it is live (until expiry + 30 s) and, after that, until the indexer
+// has processed past its expiry (O2, Oct 12; spec "Identity and personhood" › Entry tickets): an
+// entry made with it at the last second may be onchain but not yet indexed, and the ticket is marked
+// used only when the `Entered` handler runs. See indexedThroughSec for "processed".
 import { addGameDays, dailyClosesAt, gameDayOf } from '@flocked/shared';
 
 /** The cap when the user has set none: 100 USDC per game day (USDC base units). */
@@ -40,8 +45,44 @@ export function effectiveDailyCap(row: LimitsCapRow | null, t: number): bigint {
 }
 
 /**
+ * A lower bound on the time (Unix seconds) through which the indexer has processed the escrow's
+ * logs, or null when that isn't known yet (no position, or no escrow event mirrored at or below it):
+ *   - its stored position (`indexer_state.last_block_number`) is stamped at least the newest
+ *     mirrored escrow event at or below it plus one second per block after that one (block times
+ *     rise by at least a second per block; Base's rise by two, so the bound trails by up to half
+ *     the time since that event);
+ *   - and every mirrored event before the oldest one not yet handed to its handlers is handled
+ *     (dispatch runs in chain order), so it is processed only to one second before that event's
+ *     block: an `Entered` there has not marked its ticket used yet.
+ */
+export async function indexedThroughSec(
+  db: D1Database,
+  chainId: number,
+  escrow: string,
+): Promise<number | null> {
+  const row = await db
+    .prepare(
+      `SELECT
+         (SELECT e.block_timestamp + (s.last_block_number - e.block_number) FROM chain_events e
+          WHERE e.chain_id = s.chain_id AND e.contract = s.contract AND e.removed = 0
+            AND e.block_number <= s.last_block_number
+          ORDER BY e.block_number DESC LIMIT 1) AS position_sec,
+         (SELECT MIN(p.block_timestamp) FROM chain_events p
+          WHERE p.chain_id = s.chain_id AND p.dispatched_revision IS NOT p.revision) AS pending_sec
+       FROM indexer_state s WHERE s.chain_id = ?1 AND s.contract = ?2`,
+    )
+    .bind(chainId, escrow.toLowerCase())
+    .first<{ position_sec: number | null; pending_sec: number | null }>();
+  if (row?.position_sec == null) return null;
+  return row.pending_sec == null
+    ? row.position_sec
+    : Math.min(row.position_sec, row.pending_sec - 1);
+}
+
+/**
  * What `userId` already has staked on `gameDay` outside `roundId`: one stake per round that has an
- * indexed Stakes entry from the user, a used ticket, or a live one.
+ * indexed Stakes entry from the user, a used ticket, a live one, or an unused one the indexer has
+ * not processed past (`throughSec`, from indexedThroughSec; null counts every unused ticket).
  */
 export async function stakedOnGameDay(
   db: D1Database,
@@ -49,6 +90,7 @@ export async function stakedOnGameDay(
   gameDay: string,
   roundId: string,
   nowSec: number,
+  throughSec: number | null,
 ): Promise<bigint> {
   // Every round of that New York date closes strictly between the neighbouring days' 21:00 closes.
   const lo = dailyClosesAt(addGameDays(gameDay, -1)) * 1000;
@@ -59,9 +101,9 @@ export async function stakedOnGameDay(
         'WHERE r.id <> ?2 AND r.closes_at > ?3 AND r.closes_at < ?4 AND r.id IN (' +
         "SELECT round_id FROM entries WHERE user_id = ?1 AND mode = 'stakes' " +
         'UNION SELECT round_id FROM stakes_tickets WHERE user_id = ?1 AND game_day = ?5 ' +
-        'AND (used_tx IS NOT NULL OR expiry + ?7 > ?6))',
+        'AND (used_tx IS NOT NULL OR expiry + ?7 > ?6 OR ?8 IS NULL OR expiry >= ?8))',
     )
-    .bind(userId, roundId, lo, hi, gameDay, nowSec, TICKET_REISSUE_GRACE_SEC)
+    .bind(userId, roundId, lo, hi, gameDay, nowSec, TICKET_REISSUE_GRACE_SEC, throughSec)
     .all<{ closes_at: number; stake: string | number | null }>();
   return results
     .filter((r) => gameDayOf(Math.floor(r.closes_at / 1000)) === gameDay)
