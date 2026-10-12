@@ -664,6 +664,70 @@ describe('0013 (W6-D)', () => {
   });
 });
 
+describe('0016 (W6-F1 O1)', () => {
+  const insert =
+    'INSERT INTO settlement_holds (round_id, mode, reason, tx_hash, created_at, released_at, released_by) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)';
+  const rows = () =>
+    env.DB.prepare(
+      "SELECT round_id, mode, reason, tx_hash, created_at, released_at, released_by FROM settlement_holds WHERE round_id LIKE 'r-0016%' ORDER BY round_id, mode, reason",
+    )
+      .all()
+      .then((r) => r.results);
+
+  it('settlement_holds takes refund_vetoed (no tx_hash), with the same columns, key and checks', async () => {
+    const { results } = await env.DB.prepare('SELECT name FROM d1_migrations').all<{
+      name: string;
+    }>();
+    expect(results.map((r) => r.name)).toContain('0016_refund_vetoed_hold.sql');
+    await env.DB.prepare(insert)
+      .bind('r-0016-a', 'stakes', 'refund_vetoed', null, 1, null, null)
+      .run();
+    expect(
+      await rejects(insert, 'r-0016-b', 'stakes', 'refund_vetoed', '0xabc', 1, null, null),
+    ).toContain('CHECK constraint failed: settlement_holds_tx');
+    expect(
+      await rejects(insert, 'r-0016-a', 'stakes', 'refund_vetoed', null, 2, null, null),
+    ).toContain('UNIQUE');
+    expect(
+      await rejects(insert, 'r-0016-b', 'stakes', 'refund_vetoed', null, 1, 5, null),
+    ).toContain('CHECK constraint failed: settlement_holds_release');
+    expect(await rejects(insert, 'r-0016-b', 'stakes', 'other', null, 1, null, null)).toContain(
+      'CHECK constraint failed',
+    );
+    expect((await columnsOf('settlement_holds')).map((c) => [c.name, c.pk])).toEqual([
+      ['round_id', 1],
+      ['mode', 2],
+      ['reason', 3],
+      ['tx_hash', 0],
+      ['created_at', 0],
+      ['released_at', 0],
+      ['released_by', 0],
+    ]);
+    expect((await indexesOf('settlement_holds')).map((i) => [i.origin, i.columns])).toEqual([
+      ['pk', ['round_id', 'mode', 'reason']],
+    ]);
+    const strict = await env.DB.prepare(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'settlement_holds'",
+    ).first<{ sql: string }>();
+    expect(strict?.sql).toMatch(/\)\s*STRICT$/);
+  });
+
+  it('the rebuild keeps every row as it was', async () => {
+    await env.DB.batch([
+      env.DB.prepare(insert).bind('r-0016-c', 'stakes', 'foreign_entry', '0xfe', 10, 20, 'admin-1'),
+      env.DB.prepare(insert).bind('r-0016-c', 'free', 'void_rate', null, 11, null, null),
+      env.DB.prepare(insert).bind('r-0016-d', 'stakes', 'refund_vetoed', null, 12, 30, 'admin-2'),
+    ]);
+    const before = await rows();
+    // 0016's statements once more, on the rebuilt table: the same columns, so the rows carry over.
+    const m = env.TEST_MIGRATIONS.find((x) => x.name === '0016_refund_vetoed_hold.sql');
+    if (!m) throw new Error('0016 is not a migration');
+    await env.DB.batch(m.queries.map((q) => env.DB.prepare(q)));
+    expect(await rows()).toEqual(before);
+    expect(before).toHaveLength(4);
+  });
+});
+
 describe('fixture', () => {
   it('seeds against the schema', async () => {
     const f = await seedFixture(env.DB);

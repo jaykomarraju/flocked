@@ -148,3 +148,75 @@ describe('with the key, in local', () => {
     expect((await seam('/cron', { cron: '5 5 5 5 5' })).status).toBe(400);
   });
 });
+
+describe('W6-F1 O1: POST /holds/release (the guardian’s admin action, locally)', () => {
+  const hold = (roundId: string) =>
+    env.DB.prepare(
+      "SELECT released_at, released_by FROM settlement_holds WHERE round_id = ?1 AND mode = 'stakes' AND reason = 'refund_vetoed'",
+    )
+      .bind(roundId)
+      .first<{ released_at: number | null; released_by: string | null }>();
+  const audits = (roundId: string) =>
+    env.DB.prepare(
+      'SELECT actor, actor_user_id, action, target, data_json, created_at FROM audit_log WHERE target = ?1',
+    )
+      .bind(roundId)
+      .all<Record<string, unknown>>()
+      .then((r) => r.results);
+
+  it('answers 404 without the key and leaves the hold open', async () => {
+    const roundId = newUlid();
+    await env.DB.prepare(
+      "INSERT INTO settlement_holds (round_id, mode, reason, tx_hash, created_at) VALUES (?1, 'stakes', 'refund_vetoed', NULL, 1)",
+    )
+      .bind(roundId)
+      .run();
+    const body = { roundId, mode: 'stakes', reason: 'refund_vetoed' };
+    await expectNotFound(await seam('/holds/release', body, null));
+    Object.assign(env, { ENVIRONMENT: 'staging' });
+    await expectNotFound(await seam('/holds/release', body));
+    expect(await hold(roundId)).toEqual({ released_at: null, released_by: null });
+    expect(await audits(roundId)).toEqual([]);
+  });
+
+  it('with the key, releases an open hold and writes its audit_log row; 404 when none is open', async () => {
+    const roundId = newUlid();
+    await env.DB.prepare(
+      "INSERT INTO settlement_holds (round_id, mode, reason, tx_hash, created_at) VALUES (?1, 'stakes', 'refund_vetoed', NULL, 1)",
+    )
+      .bind(roundId)
+      .run();
+    await seam('/clock', { nowMs: T });
+    const body = { roundId, mode: 'stakes', reason: 'refund_vetoed' };
+    const res = await seam('/holds/release', body);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      roundId,
+      mode: 'stakes',
+      reason: 'refund_vetoed',
+      releasedAt: T,
+      releasedBy: 'test-seam',
+    });
+    expect(await hold(roundId)).toEqual({ released_at: T, released_by: 'test-seam' });
+    expect(await audits(roundId)).toEqual([
+      {
+        actor: 'admin',
+        actor_user_id: null,
+        action: 'settlement_hold_released',
+        target: roundId,
+        data_json: JSON.stringify({
+          mode: 'stakes',
+          reason: 'refund_vetoed',
+          releasedBy: 'test-seam',
+        }),
+        created_at: T,
+      },
+    ]);
+
+    // Released already, or never held: nothing to release, and no second audit row.
+    await expectNotFound(await seam('/holds/release', body));
+    await expectNotFound(await seam('/holds/release', { ...body, reason: 'void_rate' }));
+    expect(await audits(roundId)).toHaveLength(1);
+    expect((await seam('/holds/release', { ...body, reason: 'other' })).status).toBe(400);
+  });
+});
