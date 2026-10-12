@@ -53,6 +53,26 @@
 - **Required tests.** SET-1b (rules 7, 8). NFR-6 (re-running apply yields identical rows and no double ledger rows). A local-stack test: a Free round with ~50 entries from multiple users settles, the bundle is anchored, and balances match.
 - **Emits.** W5-Z prompt.
 
+## W5-F1: Wave-5 review fixes (added and run by W5-Z, Oct 12, 2026)
+
+- **Why.** Wave 5 was green, but W5-Z's three adversarial reviews found defects no test caught. W6-A edits the same files (`settlement-do.ts`, `prepare.ts`, `chain/operator.ts`), so a fix session alongside wave 6 would collide. The owner chose to have W5-Z run the fixes before merging (plan.md 2.6, Oct 12). Two subagents worked on `w5-f1-settlement` and `w5-f1-chain` off `w5-integration` @ `4cda979`. Each fix has a test that fails without it, and each was mutation-checked. Both branches were merged back with `--no-ff`. No migration, and no `contracts/` change.
+- **Settlement:**
+  - S1 (high): a rule-7 refund that fails after its `pending → refunded` update is finished on retry;
+  - S2: the anchored root is checked against the mirrored `Committed` event, not only D1's copy;
+  - S3: settlement waits until the `Committed` event is mirrored, so it never decides the anchored set without its count;
+  - S4: the decrypt watchdog recovers a lost job write after the last chunk result.
+- **Personhood:**
+  - P1 (owner decision): a callback carrying another user's session is refused;
+  - P2: two concurrent callbacks with different Coinbase accounts bind only one person;
+  - P3: an inherited pending cap raise never overrides a lower cap the account set.
+- **Chain and void:**
+  - C1: a void mined before closesAt is not abandoned on a lagging nonce read, and the final push reads the nonce at the proving head;
+  - C2: a version that nodes accept but never return is still bumped once stale (`SentTx.acceptedAt`);
+  - C3: an operator failure after a send is indefinite, not `refused`;
+  - C4: the tick's sweep retries a failed cancellation;
+  - C5: a test for V3's `ingestStakesEntry` branch.
+- **Left open (carry-over to W6-A):** S5, rule 7 trusting an AnchorDO `failed` state, and a void abandoned when its receipt lags across two reads (`wave-6.md`, "Carry-over from W5-Z").
+
 ## W5-Z checklist
 
 - PIPE-4, ID-2, ID-3, SET-1b (7, 8), SET-4 (pipeline), ALERT-1/5 detection proven.
