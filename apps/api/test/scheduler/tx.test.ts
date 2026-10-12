@@ -7,7 +7,7 @@
 import { env } from 'cloudflare:test';
 import { LOCKED_CONFIG_DEFAULTS, newUlid } from '@flocked/shared';
 import { firstRoundAtOrAfter } from '@flocked/tlock';
-import { parseGwei, type Hex } from 'viem';
+import { custom, parseGwei, type Hex } from 'viem';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   cancelCreateRound,
@@ -288,5 +288,52 @@ describe('T4: abandoned operator transactions are cancelled', () => {
     const report = await schedulerTick(env, deps);
     expect(report.cancellations[`createRound:${id}`]).toBe('cancelled');
     expect(fake.roundCount).toBe(0n);
+  });
+});
+
+describe('W5-F1: bumps from a version a node accepted but does not serve (C2)', () => {
+  it('getTransaction never finds it, every rebroadcast succeeds: once stale, a bumped replacement is signed, under the cap', async () => {
+    const t = Date.UTC(2027, 6, 9, 12, 0, 0);
+    const { fake, deps } = await chainHarness(t);
+    setClock(t);
+    fake.automine = false;
+    // A node that forwards the transaction (or answers "already known") but never serves it back.
+    const inner = fake.transport({}).request as unknown as (a: {
+      method: string;
+      params: unknown[];
+    }) => Promise<unknown>;
+    const transport = custom(
+      {
+        request: ({ method, params }: { method: string; params?: unknown }) =>
+          method === 'eth_getTransactionByHash'
+            ? Promise.resolve(null)
+            : inner({ method, params: (params ?? []) as unknown[] }),
+      },
+      { retryCount: 0 },
+    );
+    const d: OperatorDeps = { ...deps.operator, transport };
+    Object.assign(env, { TX_MAX_FEE_GWEI: '1.5' }); // room for one bump over the ~1.2 gwei estimate
+    try {
+      const roundId = newUlid();
+      const call = () => createRound(env, d, { roundId, cfg: cfg(t) });
+      expect((await call()).status).toBe('pending');
+      expect((await call()).status).toBe('pending'); // rebroadcast, not stale yet
+      expect(fake.sent).toHaveLength(1);
+      for (let i = 1; i <= 4; i++) {
+        setClock(t + i * 13_000);
+        expect((await call()).status).toBe('pending');
+      }
+      expect(fake.sent).toHaveLength(2);
+      const [v1, v2] = fake.sent as [(typeof fake.sent)[number], (typeof fake.sent)[number]];
+      expect(v2.nonce).toBe(v1.nonce);
+      expect(v2.maxPriorityFeePerGas).toBeGreaterThanOrEqual(
+        (v1.maxPriorityFeePerGas * 125n) / 100n,
+      );
+      expect(v2.maxFeePerGas).toBe(parseGwei('1.5')); // a 25 % bump, capped
+      fake.mine();
+      expect(await call()).toMatchObject({ status: 'mined', txHash: v2.hash });
+    } finally {
+      delete (env as { TX_MAX_FEE_GWEI?: string }).TX_MAX_FEE_GWEI;
+    }
   });
 });

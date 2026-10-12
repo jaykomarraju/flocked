@@ -57,6 +57,11 @@ export interface SentTx {
    * ours mined (T3). It is `nonce_consumed` only once seen again in a later block.
    */
   nonceTakenAt?: number;
+  /**
+   * When a rebroadcast by `check` first had the latest version accepted though no node served it
+   * back (epoch ms; W5-F1 C2). It is stuck `stuckAfterMs` after this.
+   */
+  acceptedAt?: number;
 }
 
 /** EIP-1559 fees, in wei. */
@@ -319,9 +324,10 @@ export class TxSender {
    * Where `tx` stands. The account's nonce is read first, so receipts are read only once something
    * was mined at `tx.nonce`. A latest version no node holds (dropped, or a broadcast that never
    * arrived) is rebroadcast as it is, `onTxSent` first; a held one becomes `stuck` once it is
-   * `stuckAfterMs` old. With `replaceNow` (a cancellation, T4), an unmined `tx` is `stuck` at once
-   * and nothing is rebroadcast. With `nonceBlock`, the nonce is read at that block, not `latest`
-   * (W5-F1 C1): a node behind it fails rather than answer that nothing was mined.
+   * `stuckAfterMs` old, and so does one a rebroadcast had a node accept that long ago (W5-F1 C2).
+   * With `replaceNow` (a cancellation, T4), an unmined `tx` is `stuck` at once and nothing is
+   * rebroadcast. With `nonceBlock`, the nonce is read at that block, not `latest` (W5-F1 C1): a
+   * node behind it fails rather than answer that nothing was mined.
    */
   async check(
     tx: SentTx,
@@ -352,7 +358,7 @@ export class TxSender {
     const pending = (): TxCheck => (next ? { status: 'pending', tx: next } : { status: 'pending' });
     const stale = opts.replaceNow === true || this.opts.now() - tx.signedAt >= this.stuckAfterMs;
 
-    const held = await this.heldVersion(tx);
+    let held = await this.heldVersion(tx);
     if (held?.mined) {
       // In a block, though the nonce read says otherwise: the reads reached different nodes
       // (W5-F1 C1). Mined, or, while its receipt isn't served, unconfirmed as a taken nonce is.
@@ -368,7 +374,15 @@ export class TxSender {
       // The latest version reached no node (a lost broadcast, or a crash before it): send it again.
       try {
         await this.broadcast(tx, label);
-        return pending();
+        // A node accepted it (W5-F1 C2). One that forwards it, or answers "already known", without
+        // serving it back must not keep it from ever being bumped: it counts as held once it has
+        // been accepted for `stuckAfterMs`.
+        const t = this.opts.now();
+        if (tx.acceptedAt === undefined) {
+          return { status: 'pending', tx: { ...(next ?? tx), acceptedAt: t } };
+        }
+        if (t - tx.acceptedAt < this.stuckAfterMs) return pending();
+        held = { hash: latestHash(tx), fees: feesOf(tx), mined: false };
       } catch (err) {
         log.warn('tx_rebroadcast_failed', {
           from: this.address,
