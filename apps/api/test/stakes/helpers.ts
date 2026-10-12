@@ -68,7 +68,7 @@ export function clockAt(t: StakesTest, ms: number): void {
 export function stakesTest(vars: Partial<Env> = {}): StakesTest {
   const signer = new FakeSigner();
   const p = personhoodEnv({ PERSON_TAG_KEY: TEST_PERSON_TAG_KEY, ...vars });
-  const e = p.env as Env;
+  const e = p.env;
   Object.assign(e, {
     SIGNER: signer,
     CHAIN_ID: env.CHAIN_ID,
