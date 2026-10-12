@@ -65,6 +65,49 @@ describe('registrations', () => {
 });
 
 describe('the guardian void: Stakes voided, Free continues', () => {
+  it('writes a refund payouts row per ticketed Stakes entry, once (W6-D: every Stakes refund does)', async () => {
+    queues = recordQueues();
+    const fake = fakeChainAt(T0);
+    const r = await stakesRound(fake);
+    setClock(T0);
+    await r.stub.init(r.locked);
+    const user = await createUser(0);
+    const wallet = '0x00000000000000000000000000000000000000d1';
+    const stake = Number(r.locked.config.stakes?.stake);
+    await env.DB.prepare(
+      `INSERT INTO entries (id, round_id, mode, user_id, wallet, person_tag, stake, commitment,
+         tx_hash, block_number, log_index, created_at)
+       VALUES ('01J00000000000000000000VD1', ?1, 'stakes', ?2, ?3, ?4, ?5, ?6, ?7, 10, 0, ?8)`,
+    )
+      .bind(
+        r.locked.roundId,
+        user,
+        wallet,
+        keccak256(toHex('person-void')),
+        stake,
+        keccak256(toHex('ct-void')),
+        keccak256(toHex('tx-void')),
+        T0,
+      )
+      .run();
+    const evt = chainEvent('escrow', 'RoundRefunded', { roundId: r.chainRoundId, reason: '4' });
+    const refunds = () =>
+      env.DB.prepare(
+        "SELECT user_id, wallet, kind, amount, claimed_at FROM payouts WHERE round_id = ?1 AND mode = 'stakes'",
+      )
+        .bind(r.locked.roundId)
+        .all()
+        .then((x) => x.results);
+    await commitStatements(await stakesVoidHandler(evt, env, ctx));
+    const first = await refunds();
+    expect(first).toEqual([
+      { user_id: user, wallet, kind: 'refund', amount: stake, claimed_at: null },
+    ]);
+    // A re-dispatch (a new revision) writes nothing more.
+    await commitStatements(await stakesVoidHandler({ ...evt, revision: 2 }, env, ctx));
+    expect(await refunds()).toEqual(first);
+  });
+
   it('a reason-4 RoundRefunded the backend did not send voids Stakes only', async () => {
     queues = recordQueues();
     const fake = fakeChainAt(T0);

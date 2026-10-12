@@ -389,6 +389,17 @@ export const stakesVoidHandler: EventHandler = async (evt, env) => {
          WHERE round_id = ?1 AND mode = 'stakes' AND status IN ('pending', 'revealing')`,
       )
       .bind(roundId, VOID_REFUND_REASON, evt.blockTimestampSec * 1000),
+    // A `refund` payout per ticketed entry, as every other Stakes refund writes
+    // (indexer/handlers/stakes.ts). Dispatch is in chain order, so every `Entered` before the void is
+    // ingested already (W6-D).
+    db
+      .prepare(
+        `INSERT INTO payouts (round_id, mode, user_id, wallet, kind, amount, claimed_at, claim_tx)
+         SELECT e.round_id, 'stakes', e.user_id, lower(e.wallet), 'refund', e.stake, NULL, NULL
+         FROM entries e WHERE e.round_id = ?1 AND e.mode = 'stakes' AND e.user_id IS NOT NULL
+         ON CONFLICT DO NOTHING`,
+      )
+      .bind(roundId),
   ];
 };
 
