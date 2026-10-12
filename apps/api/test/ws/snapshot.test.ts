@@ -227,3 +227,44 @@ describe('DO-5: a reconnect gets a fresh state', () => {
     await closeAll([w]);
   });
 });
+
+describe('the snapshot a shard keeps (at most one D1 read per shard per second)', () => {
+  it('is patched by counts, dropped by any other message, and read again after a second', async () => {
+    setClock(OPENS_AT + 5 * 24 * HOUR);
+    const r = await createRound({ kind: 'daily', opensAt: OPENS_AT + 5 * 24 * HOUR - HOUR });
+    const id = r.locked.roundId;
+    await r.stub.init(r.locked);
+    const shard = viewerStub(env, id, 3);
+    const sub = { roundId: id, shard: 3, shardCount: 16, membersOnly: false };
+    const read = async () => (await shard.subscribe(sub)).modes.free;
+    expect(await read()).toMatchObject({ status: 'pending', entrantCount: 0 });
+
+    // Kept: a D1 change with no message isn't seen within the second...
+    await env.DB.prepare(
+      "UPDATE round_modes SET status = 'revealing' WHERE round_id = ?1 AND mode = 'free'",
+    )
+      .bind(id)
+      .run();
+    expect(await read()).toMatchObject({ status: 'pending' });
+    // ...counts are patched into it...
+    await shard.broadcast({
+      type: 'counts',
+      roundId: id,
+      modes: { free: { entrantCount: 7, pool: '70' } },
+    });
+    expect(await read()).toMatchObject({ status: 'pending', entrantCount: 7, pool: '70' });
+    // ...and any other message drops it: the next read is fresh.
+    await shard.broadcast({ type: 'revealing', roundId: id, mode: 'free' });
+    expect(await read()).toMatchObject({ status: 'revealing', entrantCount: 0 });
+
+    // Without a message, a kept snapshot is read again once a second has passed.
+    await env.DB.prepare(
+      "UPDATE round_modes SET status = 'refunded', refund_reason = 8, final_at = ?2 WHERE round_id = ?1 AND mode = 'free'",
+    )
+      .bind(id, OPENS_AT + 5 * 24 * HOUR)
+      .run();
+    expect(await read()).toMatchObject({ status: 'revealing' });
+    await new Promise((resolve) => setTimeout(resolve, 1_100));
+    expect(await read()).toMatchObject({ status: 'refunded', refundReason: 8 });
+  });
+});
