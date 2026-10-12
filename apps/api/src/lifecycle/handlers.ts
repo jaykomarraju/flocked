@@ -46,7 +46,8 @@ const isPermanent = (err: unknown) =>
 /**
  * Ticketed `Entered` → its `entries` row, its ticket marked used (`stakes_tickets.used_tx`, which the
  * daily cap and the one-ticket-per-person rule read; W6-D), and the RoundDO's Stakes counters. A
- * removal deletes the row, clears the mark and un-counts it; removals are dispatched before additions,
+ * removal deletes the row and its unclaimed `refund` payout (R11), clears the mark and un-counts it;
+ * removals are dispatched before additions,
  * so a log re-mined elsewhere is then added again with its new block fields (and an addition at a slot
  * already stored updates them). Foreign entries are entered.ts's.
  */
@@ -93,6 +94,19 @@ export const stakesIngestHandler: EventHandler = async (evt, env) => {
           'UPDATE OR IGNORE stakes_tickets SET used_tx = ?2 WHERE ticket_hash = ?1 AND used_tx IS NULL',
         )
         .bind(m.args.ticketHash, evt.txHash);
+  // R11 (W6-F1): a removed entry takes the `refund` payout written for it (a void's) with it; the
+  // refund's own re-mined event writes it again for the entries still on the chain. A claimed one
+  // stays: the claim's removal, dispatched first (newest first), clears its mark.
+  const refund = evt.removed
+    ? [
+        db
+          .prepare(
+            `DELETE FROM payouts WHERE round_id = ?1 AND mode = 'stakes' AND user_id = ?2
+               AND wallet = lower(?3) AND kind = 'refund' AND claimed_at IS NULL`,
+          )
+          .bind(m.roundId, m.userId, m.args.player),
+      ]
+    : [];
   if (evt.removed) log.warn('stakes_entry_removed', { txHash: evt.txHash, logIndex: evt.logIndex });
   try {
     await env.ROUND.get(env.ROUND.idFromName(m.roundId)).ingestStakesEntry({
@@ -119,7 +133,7 @@ export const stakesIngestHandler: EventHandler = async (evt, env) => {
       txHash: evt.txHash,
     });
   }
-  return [stmt, ticket];
+  return [stmt, ticket, ...refund];
 };
 
 /**

@@ -9,7 +9,9 @@
 //      equal FlockedEscrow's `entryCount` and `roundBalance` at the close block;
 //   4. a mismatch alerts (ALERT_SETTLEMENT_FAILED) and reads everything again from the second
 //      provider; a mismatch there too is final: nothing is posted, the round stays Open, and the
-//      72-hour timeout is the backstop.
+//      72-hour timeout is the backstop. A primary that can't serve `getRound` at the close block (no
+//      archive state) is a provider failure, and the second provider reads everything again too
+//      (W6-F1 R5).
 // The files are working files (docs/bundle-format.md › Working files): deterministic, so a step that
 // runs again rewrites them with the same bytes.
 import type { Hex, PublicClient } from 'viem';
@@ -32,6 +34,7 @@ import {
   readEscrowRound,
   type EnteredLog,
   type EscrowDeps,
+  type EscrowRound,
   type Provider,
 } from './escrow.js';
 
@@ -218,7 +221,28 @@ export async function advanceEntrySet(
     return { status: 'wait', ms, detail };
   }
 
-  const onchain = await readEscrowRound(client, escrow, chainRoundId, s.closeBlock.number);
+  let onchain: EscrowRound;
+  try {
+    onchain = await readEscrowRound(client, escrow, chainRoundId, s.closeBlock.number);
+  } catch (err) {
+    // R5 (W6-F1): a provider without the close block's state (no archive node) fails this read on
+    // every retry. A provider failure, not a verdict: the second provider reads everything again,
+    // as after a mismatch (without the integrity alert). On the second provider it is retried.
+    if (s.provider !== 'primary' || providerClient(env, 'fallback', ctx.deps) === null) throw err;
+    log.warn('stakes_reconcile_read_failed', {
+      roundId: round.roundId,
+      provider: s.provider,
+      closeBlock: s.closeBlock.number,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    toFallback(s);
+    return {
+      status: 'wait',
+      ms: 0,
+      detail:
+        'primary: getRound at the close block failed; reading again from the fallback provider',
+    };
+  }
   const sum = BigInt(stake) * BigInt(s.count);
   if (
     onchain.entryCount === s.count &&
@@ -252,12 +276,13 @@ export async function advanceEntrySet(
     next: fallback ? 'fallback' : 'none',
   });
   if (fallback) {
-    Object.assign(s, {
-      ...newEntrySet(),
-      provider: 'fallback',
-      safeHeadAlerted: s.safeHeadAlerted,
-    });
+    toFallback(s);
     return { status: 'wait', ms: 0, detail: `${detail}; reading again from the fallback provider` };
   }
   return { status: 'mismatch', detail };
+}
+
+/** Starts the entry set over on the second provider (everything is read again from it). */
+function toFallback(s: EntrySetState): void {
+  Object.assign(s, { ...newEntrySet(), provider: 'fallback', safeHeadAlerted: s.safeHeadAlerted });
 }
