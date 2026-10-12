@@ -74,3 +74,12 @@
 ## Carry-over from W2-Z (Oct 8, 2026)
 
 - **W10-A:** share pages `/s/:shareId` and card images are served at the site root (Decision log, Oct 8), but `apps/api/wrangler.jsonc` `run_worker_first` covers only `/api/*`. Add the share and card paths (W10-A notes it for W10-D, which owns `wrangler.jsonc`).
+
+## Carry-over from W6-Z (Oct 12, 2026)
+
+- **W10-A:**
+  - `/rounds/:id/card/*` already sits behind `requireRoundAccess` (`routes/rounds.ts`, W6-D); keep it;
+  - Cards and notifications is frozen (OA-D4, Oct 12). Each card artboard's notes band names its satori primitives (flexbox, no grid). Inline each sheep pose and the flock as one SVG (they contain inner `transform`s); fonts as TTF (Fredoka 600/700, Inter 500/600/700); the square flock is small;
+  - long questions and amounts: step the question and result lines down 4 px until they fit (floors 32 px and 56 px; owner decision, Oct 12). `og`/`embed` fit about 75 question characters on 2 lines; prompts go to 120;
+  - the accent may mark the streak pill and the smug sheep's glint, as well as the winning bar and UNFLOCKED (Design_Language "Share cards", Oct 12); the wordmark URL is `flocked.xyz`.
+- **W10-C:** `AddressSchema` is lowercase-only, so the client lowercases `?wallet=` before `GET /claims?wallet=`. Since W6-F1, `?wallet=` also lists the wallet's own room-round payouts (amount and proof only).

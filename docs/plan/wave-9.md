@@ -85,3 +85,11 @@
 
 - **W9-A:** a Free outcome's notifications (and W10-A's cards) are enqueued where its D1 outputs become durable: `applyFree` and `refundFree` in `apps/api/src/settlement/apply/free.ts`, and `applyVoid` in `apps/api/src/lifecycle/void.ts` for rule 4. No outcome hook exists yet.
 - **W9-B:** read `docs/bundle-format.md` (`bundleFormat` 1). Free chunks carry receipt fields, not signatures. A refunded Free mode has a payout tree over its refunds, and the creator award is not a leaf. Modes refunded before the reveal (rules 4, 7, 8) publish no bundle (Decision log, Oct 12).
+
+## Carry-over from W6-Z (Oct 12, 2026)
+
+- **W9-A:**
+  - Stakes notifications (W6-A built Stakes settlement but sent none): `outcome` for settlements and every Stakes refund reason, and `claim_ready` once claims open;
+  - the `outcome` payload gains `refundReason: RefundReasonCodeSchema.nullable()` (owner decision, Oct 12; `packages/shared/src/queues.ts`); the consumer derives the player's side's share from the tally (`formatShare`), not from the payload;
+  - the copy is `packages/shared/src/copy/notifications.ts` (frozen with OA-D4): "Got flocked again." after a loss on the previous game day; the outcome email shows no card image for now; Free refunds keep "stake back" (rules 1–4) and "Points returned" (7–8);
+  - the domain in emails and links is `flocked.xyz` (owner decision, Oct 12).

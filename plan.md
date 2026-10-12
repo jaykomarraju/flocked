@@ -81,7 +81,7 @@ Files that make up the plan:
 - **Blocked.** A session blocked on an owner action or a spec question stops, writes `blocked`, and tells the owner exactly what it needs. It never fakes a credential and never stubs around a launch gate. Mocks for external services in tests are fine; production code paths never fall back to a mock.
 - **D checks first.** D reads the three handoffs before merging. If any isn't `complete`, D stops and emits the continuation prompts to run first, plus a fresh D prompt.
 - **Z never merges a red wave.** Small fixes (roughly < 50 lines, no new behaviour) it makes itself. Anything larger becomes a fix session `W{n}-F{k}` on `w{n}-integration`. Z emits that prompt plus a fresh Z prompt (`W{n}-Z.2`) to run after it.
-- **Review findings on a green wave** (owner decision, Oct 11, 2026). When the wave is green and its review finds defects that no test catches, the owner may let Z merge and run the fix session alongside the next wave instead. `W{n}-F{k}` then branches from the tag `wave-{n}`, owns paths that the next wave's A, B and C don't touch, and the next D merges it as a fourth branch. W4-F1 is the first.
+- **Review findings on a green wave** (owner decision, Oct 11, 2026). When the wave is green and its review finds defects that no test catches, the owner may let Z merge and run the fix session alongside the next wave instead. `W{n}-F{k}` then branches from the tag `wave-{n}`, owns paths that the next wave's A, B and C don't touch, and the next D merges it as a fourth branch. W4-F1 is the first; W6-F1 (Oct 12, 2026, alongside W7-A/B/C) the second.
 - **When the next wave would edit the same files** (owner decision, Oct 12, 2026), the owner may instead let Z run the fix session itself before merging: Z (or its subagents) fixes on branches off `w{n}-integration`, each fix with a test that fails without it, merges them back, re-runs every check, and records the fix session in the wave file and the wave summary. W5-F1 is the first.
 
 ### 2.7 Spec and design changes
@@ -279,9 +279,9 @@ Exact library versions are chosen at install time by the session that adds them 
 | `pnpm contracts:test` | `forge test --root contracts` (unit, fuzz, invariant, vectors). The CI profile runs as `FOUNDRY_PROFILE=ci forge test` in `contracts/` (doubled fuzz and invariant runs; Foundry 1.7 has no `--profile` flag) |
 | `pnpm contracts:build` | `forge build --root contracts && node packages/abi/scripts/gen.mjs` (ABI codegen into `packages/abi`) |
 | `pnpm spec "<heading>" [--sub "<label>"]` | Prints one `## ` section of `Product_Spec.md` (or one bold sub-block of it) |
-| `pnpm stack:up` / `pnpm stack:down` / `pnpm stack:status` | Local stack (W3-D, `e2e/stack/README.md`): drand network, anvil 31337 (forks Base only with `STACK_FORK_URL`), CREATE2 deploy, D1 migrations, `wrangler dev --local`, the Farcaster, Coinbase and EAS mocks (W5-D; ports 8790 and 8791), and the cron driver (`e2e/stack/cron.mjs`, W4-D: `wrangler dev` fires no cron triggers, so it posts `POST /__test/cron` every 5 s). Writes `e2e/stack/.dev.vars` and `.state.json` (gitignored). `stack:status` has `cron`, `coinbase` and `eas` rows. Needs Docker (OrbStack) and Foundry on `PATH`; up ~18 s cold |
+| `pnpm stack:up` / `pnpm stack:down` / `pnpm stack:status` | Local stack (W3-D, `e2e/stack/README.md`): drand network, anvil 31337 (forks Base only with `STACK_FORK_URL`), CREATE2 deploy, D1 migrations, `wrangler dev --local`, the Farcaster, Coinbase and EAS mocks (W5-D; ports 8790 and 8791), and the cron driver (`e2e/stack/cron.mjs`, W4-D: `wrangler dev` fires no cron triggers, so it posts `POST /__test/cron` every 5 s). From W6-D the same `wrangler dev` also runs the ticket signer (`apps/signer`) as a second config (`e2e/stack/.run/signer/`, with its own `.dev.vars` linked to `.run/ticket-signer.dev.vars`; `--env-file` reaches only the first config), so the API's `SIGNER` binding resolves in process; the API's `.dev.vars` gains a fresh `PERSON_TAG_KEY` each run and never holds `TICKET_SIGNER_KEY` (NFR-7); `up` seeds the local `config` table with `mode.stakes.enabled = true` and `geo.stakes.allow = ["US"]`. Writes `e2e/stack/.dev.vars`, `.state.json` and `.run/` (gitignored). `stack:status` has `cron`, `coinbase`, `eas` and `signer` rows. Needs Docker (OrbStack) and Foundry on `PATH`; up ~18 s cold |
 | `pnpm --filter @flocked/e2e exec vitest run tests/stack-smoke.test.ts` | Stack smoke: a real Free round end to end on the running stack (~70 s) |
-| `pnpm --filter @flocked/e2e exec vitest run` | Every stack test on the running stack, one file at a time (`fileParallelism: false`; ~5.5 min in wave 5): smoke, `lifecycle-open-close`, `anchor-tx`, `indexer-reorg` (W4-D), `free-settle` (W5-D: a 50-entry Free round settles, anchors its bundle and pays out; ~3 min) |
+| `pnpm --filter @flocked/e2e exec vitest run` | Every stack test on the running stack, one file at a time (`fileParallelism: false`), in CI's order through `e2e/vitest.config.ts`'s sequencer (~10 min in wave 6): `stack-smoke`, `lifecycle-open-close`, `free-settle` (W5-D: a 50-entry Free round settles, anchors its bundle and pays out; ~3 min), `anchor-tx`, `indexer-reorg` (W4-D), `stakes-ticket` (W6-B, W6-D: the real `/prepare` → signer → `enter` path), `stakes-settle` (W6-A: a Stakes round proposes and finalizes; it moves anvil's clock 2 h for good, so only `claims-wallet` may follow it), `claims-wallet` (W6-D: claim proofs by wallet verify against the onchain root, and a claim drops the round) |
 | `pnpm e2e` | Playwright against the local stack (from W7-D) |
 | `pnpm e2e:ui` | Playwright UI tests with screenshot comparisons (from W8-C) |
 
@@ -308,7 +308,7 @@ Exact library versions are chosen at install time by the session that adds them 
 
 - `.github/workflows/ci.yml` (from W1-A): on push and PR, four jobs. `check`: install with the frozen lockfile, `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm format:check`, the settle and tlock vector-freshness checks, and the design-tokens schema test. `contracts` (from W1-D): Foundry v1.7.1, `forge soldeer install`, `forge fmt --check`, `forge build`, the ABI freshness check (`node ../packages/abi/scripts/gen.mjs --check`), `FOUNDRY_PROFILE=ci forge test`. `properties` (from W1-D): settle's and tlock's property tests with `FAST_CHECK_RUNS=10000`, selected by file path (tlock: `test/plaintext.test.ts` and `test/classify.properties.test.ts`, the second from W3-D). Every `pnpm --filter` step uses `--fail-if-no-match` (W2-D), so a renamed package can't make a step pass on nothing. `static-analysis` (from W4-D, on `ubuntu-24.04`): slither 0.11.6 `--fail-medium`, aderyn 0.6.8 failing on any high (`jq -e '.issue_count.high == 0'`), and the NatSpec check; a new medium or high fails until it is fixed or triaged in `docs/audit/static-analysis.md` with an inline suppression.
 - A fresh worktree needs `pnpm install` and `(cd contracts && forge soldeer install)` before `pnpm check` (Soldeer dependencies are gitignored).
-- `.github/workflows/stack.yml` (from W3-D): the `smoke` job brings up the local stack on pushes to `main` and `w*-integration` and runs each stack test as its own step (from W4-D; five steps from W5-D): `stack-smoke`, `lifecycle-open-close`, `free-settle`, `anchor-tx`, `indexer-reorg`. It doesn't run on PRs, so it can't be a required check; Z checks it before merging (3.4 step 3). It runs on `ubuntu-latest`, which becomes Ubuntu 26 on Oct 19, 2026: pin `ubuntu-24.04` if the job breaks.
+- `.github/workflows/stack.yml` (from W3-D): the `smoke` job brings up the local stack on pushes to `main` and `w*-integration` and runs each stack test as its own step (from W4-D; eight steps from W6-D, with `timeout-minutes: 30`): `stack-smoke`, `lifecycle-open-close`, `free-settle`, `anchor-tx`, `indexer-reorg`, `stakes-ticket`, `stakes-settle`, `claims-wallet` (`stakes-settle` moves anvil's clock 2 h, so only `claims-wallet` follows it). It doesn't run on PRs, so it can't be a required check; Z checks it before merging (3.4 step 3). It runs on `ubuntu-latest`, which becomes Ubuntu 26 on Oct 19, 2026: pin `ubuntu-24.04` if the job breaks.
 - `e2e.yml` (from W7-D) runs the local stack plus Playwright on `w*-integration` and `main`.
 - `deploy.yml` (from W13-D) deploys to staging on `main`, and to production on manual dispatch with a required reviewer.
 - CI must be green before Z merges. `main` is protected by two rulesets (OA-03): no force pushes or deletion for anyone, and the four CI jobs required (`check`, `contracts`, `properties`, and `static-analysis`, added by W4-Z on Oct 11, 2026 with the owner's approval), with repository admins allowed to bypass so Z can push its `--no-ff` merge after checking CI itself.
@@ -415,7 +415,7 @@ External long poles, started early so they stay off the critical path:
 | OA-04 | Cloudflare: upgrade to Workers Paid (DOs at scale, Queues, `cpu_ms` 60,000) and create staging/production resources access (API token for deploy workflow) | Staging deploy, queue consumer CPU limits | W13 | W10 |
 | OA-05 | Cloudflare: a **second account** for the watcher, plus an API token for it | Watcher deploy | W14 | W11 |
 | OA-06 | Cloudflare Access application protecting `/admin` (and the admin API) on staging and production | Admin console deploy | W14 | W12 |
-| OA-07 | Domain: DNS on Cloudflare for app, staging, and email sending (SPF/DKIM/DMARC via Cloudflare Email Service) | Email notifications, share URLs | W14 | W12 |
+| OA-07 | Domain: DNS on Cloudflare for app, staging, and email sending (SPF/DKIM/DMARC via Cloudflare Email Service). The domain is `flocked.xyz` (owner, Oct 12, 2026, W6-Z): cards, emails and share URLs show it | Email notifications, share URLs | W14 | W12 |
 | OA-08 | Base RPC (two providers for reconciliation), bundler, paymaster keys for Sepolia and mainnet; record which are in hand | Indexer/settlement in staging; paymaster | W14 | W12 |
 | OA-09 | Coinbase Developer Platform OAuth app (scopes `wallet:user:read`, `identity:user:address:read`), redirect URIs for staging and prod: `${APP_ORIGIN}/api/v1/me/personhood/callback` (W5-B) | Real Coinbase sign-in in staging | W14 | W8 |
 | OA-10 | Anthropic API key in staging/prod secrets (key exists) | Moderation in staging | W14 | W13 |
@@ -428,7 +428,7 @@ External long poles, started early so they stay off the critical path:
 | OA-17 | Admin multisig (Safe) and a separate guardian multisig on Base Sepolia and Base; quorum and signers | Contract deploy roles | W14 (Sepolia), W16 (Base) | W10 |
 | OA-18 | Guardian paging channel (e.g. PagerDuty or Opsgenie) and on-call rota; guardian charter document | Watcher paging; guardian policy | W14 | W11 |
 | OA-19 | Independently hosted dead-man's switch (e.g. healthchecks.io or Cronitor) that pages if watcher verdicts stop | Missing-verdict alert | W14 | W11 |
-| OA-20 | **Gate 3: contract audit.** Book an auditor now; send the package from W4-C after W4-Z; receive the report. **Package ready (W4-Z, Oct 11, 2026):** `docs/audit/package.md` (with `threat-model.md` and `static-analysis.md`), contracts at tag `audit-candidate-1` (`contracts/src` as of `36d115c`). **Not booked as of Oct 12, 2026 (W5-Z):** booking is now the critical path for W15, which needs the report; `contracts/src` is still unchanged from the tag | Mainnet deploy | Report by W15 | **W1** |
+| OA-20 | **Gate 3: contract audit.** Book an auditor now; send the package from W4-C after W4-Z; receive the report. **Package ready (W4-Z, Oct 11, 2026):** `docs/audit/package.md` (with `threat-model.md` and `static-analysis.md`), contracts at tag `audit-candidate-1` (`contracts/src` as of `36d115c`). **Not booked as of Oct 12, 2026 (W5-Z, and again at W6-Z):** booking is the critical path for W15, which needs the report; `contracts/src` is still unchanged from the tag (checked on `main` after the wave-6 merge) | Mainnet deploy | Report by W15 | **W1** |
 | OA-21 | **Gate 1: legal sign-off.** First jurisdictions for `geo.stakes.allow`, skill-contest vs wager position, ToS, privacy policy, responsible-play resources, age rules per region | ToS/privacy text (W12-B); production launch | Text by W12; sign-off by W16 | **W1** |
 | OA-22 | **Gate 2: Coinbase personhood.** Confirm `GET /v2/user/personal-details` returns data only for ID-verified accounts. W5-B built to Coinbase's documented shape; the body's shape, how an unverified account is answered, the scope `identity:user:address:read` and `CB-VERSION` are assumptions that W14-A checks with the real OAuth app (OA-09) on staging, using one ID-verified and one unverified account (owner decision, Oct 12, 2026) | Stakes in production (Free launches without it) | W16 | **W1** |
 | OA-23 | **Gate 4: load-test sign-off** on the W14-D report (or send the fan-out design back) | Production launch | W16 | W14 |
@@ -501,11 +501,12 @@ Legend: ⬜ not started · 🟡 in progress · ✅ complete · ⛔ blocked. Z se
 | W5-D | Free settlement apply | M | ✅ |
 | W5-F1 | Wave-5 review fixes (run inside W5-Z, before the merge) | M | ✅ |
 | W5-Z | Consolidate wave 5 | M | ✅ |
-| W6-A | Stakes settlement | M | ⬜ |
-| W6-B | Ticket signer + `/prepare` | M | ⬜ |
-| W6-C | Design: share cards + notifications | M | ⬜ |
-| W6-D | Read APIs, claims, reveal gating | M | ⬜ |
-| W6-Z | Consolidate wave 6 | S | ⬜ |
+| W6-A | Stakes settlement | M | ✅ |
+| W6-B | Ticket signer + `/prepare` | M | ✅ |
+| W6-C | Design: share cards + notifications (+ W6-C.2) | M | ✅ |
+| W6-D | Read APIs, claims, reveal gating | M | ✅ |
+| W6-Z | Consolidate wave 6 | M | ✅ |
+| W6-F1 | Wave-6 review fixes (alongside W7-A/B/C; W7-D merges it) | M | ⬜ |
 | W7-A | WebSocket hub + viewer shards | M | ⬜ |
 | W7-B | Identities, merges, deletion, limits | M | ⬜ |
 | W7-C | Design: admin console | M | ⬜ |
@@ -577,7 +578,7 @@ Legend: ⬜ not started · 🟡 in progress · ✅ complete · ⛔ blocked. Z se
 | OA-17 | Admin + guardian multisigs | W14/W16 | ⬜ |
 | OA-18 | Guardian paging + charter | W14 | ⬜ |
 | OA-19 | Dead-man's switch | W14 | ⬜ |
-| OA-20 | Gate 3: audit (package ready at `audit-candidate-1`; auditor not booked as of Oct 12, 2026; critical path for W15) | W15 | ⬜ |
+| OA-20 | Gate 3: audit (package ready at `audit-candidate-1`; auditor not booked as of Oct 12, 2026, W6-Z; critical path for W15) | W15 | ⬜ |
 | OA-21 | Gate 1: legal sign-off (+ ToS/privacy text by W12) | W16 | 🟡 |
 | OA-22 | Gate 2: Coinbase personhood (policy confirmed; response shape checked by W14-A) | W16 | 🟡 |
 | OA-23 | Gate 4: load-test sign-off | W16 | ⬜ |
@@ -587,7 +588,7 @@ Legend: ⬜ not started · 🟡 in progress · ✅ complete · ⛔ blocked. Z se
 | OA-D1 | Freeze: foundations | W8 | ✅ |
 | OA-D2 | Freeze: core round flow | W9 | ⬜ |
 | OA-D3 | Freeze: profiles, boards, rooms, settings, verify | W11 | ⬜ |
-| OA-D4 | Freeze: share cards + notifications | W10 | ⬜ |
+| OA-D4 | Freeze: share cards + notifications (frozen Oct 12, 2026; W7-C swaps the URL to `flocked.xyz`) | W10 | ✅ |
 | OA-D5 | Freeze: admin console | W12 | ⬜ |
 | OA-27 | Final mascot art (optional) | — | ⬜ |
 

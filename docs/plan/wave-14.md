@@ -63,3 +63,7 @@
 
 - **W14-A:** confirm the Coinbase API shape with the real OAuth app (OA-09) on staging, with one ID-verified and one unverified account: the `/v2/user/personal-details` body (`parsePersonalDetails` in `apps/api/src/personhood/coinbase.ts`), how an unverified account is answered, the scope `identity:user:address:read`, and `CB-VERSION`. Fix the parser if needed. OA-22 stays 🟡 until this passes.
 - **Later (any wave with stack capacity):** a personhood stack test; the Coinbase and EAS mocks run on the stack since W5-D.
+
+## Carry-over from W6-Z (Oct 12, 2026)
+
+- **W14-C (runbooks):** the guardian-veto runbook covers a vetoed refund proposal: the coordinator opens a settlement hold, the fix is deployed, and the guardian releases the `refund_vetoed` hold (owner decision, Oct 12); `refundTimeout` at closesAt + 72 h is the backstop.

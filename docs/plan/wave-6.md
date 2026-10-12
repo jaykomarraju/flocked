@@ -60,6 +60,34 @@
 - **Required tests.** PIPE-1 (API and bundle halves). AC-2 (API part): a test walks every GET route before and after the reveal and asserts no option-level data leaks pre-reveal. Claim proofs from `/claims?wallet=` verify against the onchain root in an anvil test.
 - **Emits.** W6-Z prompt.
 
+## W6-F1: Wave-6 review fixes (added by W6-Z, Oct 12, 2026; alongside W7-A/B/C, merged by W7-D)
+
+- **Why.** Wave 6 was green, but W6-Z's three adversarial reviews found defects no test caught, and five owner decisions (Oct 12) need small code changes. Wave 7's A, B and C don't edit these files, so the owner chose the Oct 11 option (plan.md 2.6): W6-Z merged wave 6, and W6-F1 runs alongside W7-A/B/C from the tag `wave-6`. W7-D merges it as a fourth branch.
+- **Role / size:** fix, M. Branch `w6-f1-review-fixes`, worktree `../flocked-w6-f1`. No migration (none is reserved; if one is unavoidable, use `0017` and say so in the handoff, and W7-Z shifts wave 8's numbers). No change to `contracts/src` (the audit candidate).
+- **Owns.** `apps/api/src/chain/operator.ts`, `src/indexer/handlers/stakes.ts`, `src/settlement/{apply/free,apply/stakes,stakes/entry-set}.ts`, `src/do/settlement-do.ts`, `src/read/{cache,proofs,me,claims}.ts`, `src/routes/entries.ts`, `src/rounds/entry.ts`, `src/lifecycle/handlers.ts`, `src/stakes/{cap,prepare}.ts`, `src/personhood/age.ts`, `src/scheduler/lock.ts`, `src/local/seam.ts` (one route), `apps/signer/src/**`, and their tests. Not `src/do/round-do.ts`'s `broadcast()`, `src/ws/**` (W7-A), `src/routes/me.ts`, `src/identity/**`, `src/limits/**` (W7-B), or `e2e/**` (W7-D).
+- **Review fixes** (each with a test that fails without it):
+  - R1 (high, after a reorg): the operator nonce allocator (`newNonce`) puts a new nonce past every stored row for the key, whatever its status, so a mined or reverted transaction that a reorg drops leaves a gap no send fills, and every later operator send (createRound, voidRound, propose, finalize, refunds) stalls. Only `pending` rows may push the next nonce up; a finished row at a nonce at or above the chain's pending count frees that nonce.
+  - R2 (medium): a proposal re-mined after its removal was handled (the removal and the re-add in different polls) leaves D1 at `revealing` with no payouts, and `RoundFinalized` then finds no record. On an `OutcomeProposed` add with no current record, un-supersede the latest record with the same bundle hash.
+  - R3: removals of `ProposalVetoed`, `RoundFinalized` and `RoundRefunded` only alert. Restore the D1 state a re-mined or replaced event needs (at least: a dropped veto must not leave `refund` payouts beside a later `RoundFinalized`).
+  - R4: `applyStakes` rewrites every entry row on each call (every ~23 s while a propose is pending). Skip the writes when this `seq`'s record already exists with the same bundle hash.
+  - R5: reconciliation reads `getRound` at the close block; a provider without that historical state errors, which is retried but never moves to the fallback provider. Treat it as a provider failure: re-read from `BASE_RPC_URL_FALLBACK`.
+  - R6: `applyFree`'s credit integrity checks (`creditsOf`) run after the `revealed_at` update, so a credit bug leaves a round revealed but never paid. Compute the credits before the reveal.
+  - R7: the edge cache keys on the full URL, and unknown query parameters pass validation, so `?x=<random>` bypasses the cache (and `/claims?wallet=` rebuilds payout trees each time). Key on the path plus the validated, sorted query.
+  - R8: `/claims?wallet=` compares the rebuilt payout root only with the manifest's. Also check it against the root recorded from the chain (`settlements` / `round_modes.bundle_hash` from `OutcomeProposed`).
+  - R9: after a reorg removes `OutcomeProposed`, Stakes `revealed_at` stays set and `/me` serves proofs for a proposal not onchain. Gate Stakes proofs on the status too.
+  - R10: `POST /rounds/:id/entries` tells a signed-in non-member that a room round exists (`not_member`, after Turnstile); answer 404 like the read routes.
+  - R11: an `Entered` removal deletes the entry but leaves any `refund` payouts row written for it. Delete it too.
+  - R12: the signer signs any expiry. Refuse an expiry more than the ticket lifetime plus a small slack ahead.
+  - R13: the per-person-per-round branch of the ticket insert requires `used_tx IS NULL`, so a second-wallet ticket can be issued for an entered round (the escrow rejects the entry). Drop that condition.
+- **Owner decisions (Oct 12, 2026; spec edited by W6-Z):**
+  - O1: after a guardian veto of a refund proposal, the coordinator alerts and opens a settlement hold (reason `refund_vetoed`, PK `(round_id, mode, reason)`; a second refund veto of the same round reuses the released row, so reopen it); it proposes again only once the guardian releases it (the admin action, like any hold). `refundTimeout` at closesAt + 72 h stays the backstop. Add a keyed seam route that releases a hold (`src/local/seam.ts`, local only) for W7-D's E2E-6; the admin API (W11-A) releases it in staging and production.
+  - O2: the daily cap counts an unused ticket until the indexer has processed past its expiry, not only until expiry + 30 s.
+  - O3: `geo.stakes.age21`: when the request has no region code and an entry names a region of the request's country, 21 is required.
+  - O4: the Stakes `payoutAddress` is frozen into the round's `config_json` at lock (`scheduler/lock.ts`) and read from there.
+  - O5: `GET /claims?wallet=` also lists the wallet's own unclaimed room-round payouts with only the chain round ID, amount and proof: no question, room or other members' data.
+- **Optional, if the budget allows:** a kill-switch refusal from the signer mid-request answers `stakes_disabled`, not 503; a failed DELETE after a signer failure is retried.
+- **Required tests.** One per item above, each mutation-checked. `pnpm check`, `pnpm format:check` and the stack tests in CI order stay green.
+
 ## W6-Z checklist
 
 - ID-5, SET-1b (5, 6), PIPE-1 (API, bundles), ALERT-3, AC-4 (API half) proven.
