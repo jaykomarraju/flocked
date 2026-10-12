@@ -137,6 +137,13 @@ export const TosStateSchema = z.object({
   acceptedVersion: z.string().min(1).nullable(),
   acceptedAt: EpochMsSchema.nullable(),
   ageAttestedAt: EpochMsSchema.nullable(),
+  /**
+   * The age the Stakes age checkbox names ("I'm 18 or older", or 21 where `geo.stakes.age21` lists
+   * the verified country or the request's region; spec "Compliance and responsible play"). `POST
+   * /me/tos` records an attestation of this age. The API always sends it (W6-B); it is optional only
+   * until the shared API fixtures carry it.
+   */
+  ageRequired: z.union([z.literal(18), z.literal(21)]).optional(),
 });
 export type TosState = z.infer<typeof TosStateSchema>;
 

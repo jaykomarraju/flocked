@@ -111,13 +111,14 @@ export const ENDPOINTS: readonly EndpointDef[] = [
   { method: 'GET', path: '/me/referrals', module: 'me', auth: 'user', request: null, response: me.ReferralsResponseSchema },
   // rounds, entries, stakes
   { method: 'GET', path: '/rounds/today', module: 'rounds', auth: 'none', request: null, response: rounds.RoundsTodayResponseSchema },
-  { method: 'GET', path: '/rounds/:id', module: 'rounds', auth: 'none', request: null, response: rounds.RoundDetailResponseSchema, params: IdParamsSchema },
+  { method: 'GET', path: '/rounds/:id', module: 'rounds', auth: 'optional', request: null, response: rounds.RoundDetailResponseSchema, params: IdParamsSchema },
   { method: 'GET', path: '/rounds', module: 'rounds', auth: 'none', request: null, response: rounds.RoundsArchiveResponseSchema, query: rounds.RoundsArchiveQuerySchema },
   { method: 'POST', path: '/rounds/:id/entries', module: 'entries', auth: 'user', request: entries.CreateEntryRequestSchema, response: entries.CreateEntryResponseSchema, params: IdParamsSchema },
   { method: 'POST', path: '/rounds/:id/entries/stakes/prepare', module: 'stakes', auth: 'user', request: entries.StakesPrepareRequestSchema, response: entries.StakesPrepareResponseSchema, params: IdParamsSchema },
   { method: 'GET', path: '/rounds/:id/me', module: 'entries', auth: 'user', request: null, response: entries.RoundMeResponseSchema, params: IdParamsSchema },
-  { method: 'GET', path: '/rounds/:id/verify', module: 'rounds', auth: 'none', request: null, response: rounds.RoundVerifyResponseSchema, params: IdParamsSchema },
-  { method: 'GET', path: '/rounds/:id/ws', module: 'rounds', auth: 'none', request: null, response: WsServerMessageSchema, params: IdParamsSchema, responseType: 'websocket' },
+  { method: 'GET', path: '/rounds/:id/verify', module: 'rounds', auth: 'optional', request: null, response: rounds.RoundVerifyResponseSchema, params: IdParamsSchema },
+  { method: 'GET', path: '/rounds/:id/bundles/:mode/:file', module: 'rounds', auth: 'optional', request: null, response: rounds.BundleObjectResponseSchema, params: rounds.BundleObjectParamsSchema },
+  { method: 'GET', path: '/rounds/:id/ws', module: 'rounds', auth: 'optional', request: null, response: WsServerMessageSchema, params: IdParamsSchema, responseType: 'websocket' },
   // claims
   { method: 'GET', path: '/claims', module: 'claims', auth: 'optional', request: null, response: claims.ClaimsResponseSchema, query: claims.ClaimsQuerySchema },
   // questions
@@ -135,7 +136,7 @@ export const ENDPOINTS: readonly EndpointDef[] = [
   // cards
   { method: 'GET', path: '/s/:shareId', module: 'cards', auth: 'none', request: null, response: cards.SharePageResponseSchema, params: cards.SharePageParamsSchema, responseType: 'html' },
   { method: 'GET', path: `/cards/:shareId/${PNG_VARIANT}`, module: 'cards', auth: 'none', request: null, response: cards.CardImageResponseSchema, params: cards.CardImageParamsSchema, responseType: 'png' },
-  { method: 'GET', path: `/rounds/:id/card/${PNG_VARIANT}`, module: 'cards', auth: 'none', request: null, response: cards.RoundCardResponseSchema, params: cards.RoundCardParamsSchema, responseType: 'png' },
+  { method: 'GET', path: `/rounds/:id/card/${PNG_VARIANT}`, module: 'cards', auth: 'optional', request: null, response: cards.RoundCardResponseSchema, params: cards.RoundCardParamsSchema, responseType: 'png' },
   // me (deletion), push, limits
   { method: 'DELETE', path: '/me', module: 'me', auth: 'user', request: null, response: me.DeleteMeResponseSchema },
   { method: 'POST', path: '/push/subscribe', module: 'push', auth: 'user', request: push.PushSubscribeRequestSchema, response: push.PushSubscribeResponseSchema },

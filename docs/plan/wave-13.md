@@ -92,3 +92,17 @@
   - a retention job deletes the private working files `settlement/{roundId}/{mode}/` once a mode is final, and the D1 ciphertexts of Free modes refunded before the reveal 30 days after the refund (Decision log, Oct 12);
   - `docs/runbooks/secrets.md`: `PERSON_ID_KEY` is at least 32 bytes of hex (`openssl rand -hex 32`) and can never be rotated; `ATTESTATION_RPC_URL` is a Base mainnet RPC in every environment (a secret if it embeds a key);
   - `TX_MAX_FEE_GWEI` per environment (W5-D set `"5"` everywhere in `wrangler.jsonc`).
+
+## Carry-over from W6-Z (Oct 12, 2026)
+
+- **W13-A:** ALERT-3 (safe head not past the close block at beacon + 60 s) and the Stakes reconciliation alerts (ALERT-1) are detected (W6-A); route and page them. A guardian veto of a refund proposal raises `ALERT_DO_ERROR` step `refund_proposal_vetoed`.
+- **W13-B (load):**
+  - the `RoundFinalized` payouts insert is one `INSERT … SELECT` per round (100k entries in one statement);
+  - `/claims` and `/me` rebuild a Stakes payout tree and a Free commitment tree per isolate (an LRU of 8): a cold-start cost per round at 100k entries. Consider caching proofs in R2.
+- **W13-C:**
+  - claimed foreign entries (no `payouts` row) stay listed by `GET /claims?wallet=` after their claim: accepted as a low risk (owner decision, Oct 12), re-check it;
+  - retention: Stakes `entered-*.json` working files in R2 and Stakes ciphertexts in D1 are kept (archival is Free only). Decide their retention with the privacy rules.
+- **W13-D (secrets runbook and deploy config):**
+  - `PERSON_TAG_KEY` (API secret): rotate only between rounds, since a mid-round rotation gives a person a second tag in that round;
+  - `TICKET_SIGNER_KEY` lives in `apps/signer` only (`wrangler secret put TICKET_SIGNER_KEY --env <env>`); the API's service binding `SIGNER` names `flocked-signer-staging` / `flocked-signer`;
+  - `BASE_RPC_URL_FALLBACK` is the Stakes reconciliation re-read: set it in staging and production, from a second provider (OA-08).

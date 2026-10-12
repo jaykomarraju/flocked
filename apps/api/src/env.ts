@@ -11,6 +11,7 @@ import type {
   RoundViewerDO,
   SettlementDO,
 } from './do/index.js';
+import type { TicketSignerRpc } from './stakes/signer.js';
 
 /** `ENVIRONMENT` var (plan 4.4). */
 export type Environment = 'local' | 'staging' | 'production';
@@ -45,6 +46,12 @@ export interface Env {
   EMAIL: SendEmail;
   /** Static assets for apps/web. */
   ASSETS: Fetcher;
+  /**
+   * The ticket signer (apps/signer; W6-B): one RPC method, `signTicket`. The API never holds
+   * TICKET_SIGNER_KEY (NFR-7). Optional in the type so a deployment without the binding answers 503
+   * on `/prepare` instead of failing every request.
+   */
+  SIGNER?: TicketSignerRpc;
 
   // Vars (all strings, as wrangler passes them).
   ENVIRONMENT: Environment;

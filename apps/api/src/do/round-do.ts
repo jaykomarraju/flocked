@@ -1,8 +1,8 @@
 // RoundDO: one per round (spec "Real-time and the reveal" › RoundDO responsibilities). W3-B: init,
 // the Free commit protocol (enterFree), getState and the alarm chain with close and the commitment
 // root. W4-D: the two-phase void (requestVoid, then voidRound from the alarm; src/lifecycle/void.ts),
-// the Stakes counters (ingestStakesEntry; W6-A builds the rest of Stakes ingestion) and the
-// receiving side of onModeResult. Still a stub: the WebSocket hub in fetch (W7-A; `broadcast` in
+// the Stakes counters (ingestStakesEntry; W6-A: un-counting a reorged entry, and starting Stakes
+// settlement at close) and the receiving side of onModeResult. Still a stub: the WebSocket hub in fetch (W7-A; `broadcast` in
 // src/rounds/hooks.ts is its seam).
 //
 // Commit protocol (enterFree), first failure wins:
@@ -379,15 +379,45 @@ export class RoundDO extends DurableObject<Env> implements RoundDORpc {
     if (!/^[0-9]+$/.test(evt.stake)) throw new RangeError('ingestStakesEntry: stake is not a uint');
     const sql = this.ctx.storage.sql;
     const txHash = evt.txHash.toLowerCase();
-    // No await between the check and the insert, so the pair is atomic in the DO.
-    const seen =
-      sql
-        .exec(
-          'SELECT 1 FROM stakes_entries WHERE tx_hash = ? AND log_index = ?',
+    // No await between the check and the write, so the pair is atomic in the DO.
+    const stored = sql
+      .exec<{ stake: string; block_number: number }>(
+        'SELECT stake, block_number FROM stakes_entries WHERE tx_hash = ? AND log_index = ?',
+        txHash,
+        evt.logIndex,
+      )
+      .toArray()[0];
+    const seen = stored !== undefined;
+    if (evt.removed) {
+      // A reorged-out entry is un-counted; a re-mined one comes back as a new event (W6-A).
+      if (stored) {
+        sql.exec(
+          'DELETE FROM stakes_entries WHERE tx_hash = ? AND log_index = ?',
           txHash,
           evt.logIndex,
-        )
-        .toArray().length > 0;
+        );
+        this.stakesCounts = {
+          entrantCount: this.stakesCounts.entrantCount - 1,
+          pool: this.stakesCounts.pool - BigInt(stored.stake),
+        };
+        this.broadcastCounts(m);
+      }
+      return {
+        counted: false,
+        entrantCount: this.stakesCounts.entrantCount,
+        pool: this.stakesCounts.pool.toString(),
+      };
+    }
+    if (stored && stored.block_number !== evt.blockNumber) {
+      // The same log in another block (a re-add after a reorg): keep the new block fields.
+      sql.exec(
+        'UPDATE stakes_entries SET block_number = ?, created_at = ? WHERE tx_hash = ? AND log_index = ?',
+        evt.blockNumber,
+        evt.blockTimestampSec * 1000,
+        txHash,
+        evt.logIndex,
+      );
+    }
     if (!seen) {
       sql.exec(
         'INSERT INTO stakes_entries (tx_hash, log_index, player, user_id, stake, commitment, block_number, created_at) ' +
@@ -997,6 +1027,15 @@ export class RoundDO extends DurableObject<Env> implements RoundDORpc {
     await this.env.DB.prepare("UPDATE rounds SET status = 'closed' WHERE id = ?1")
       .bind(l.roundId)
       .run();
+    if (l.modes.includes('stakes') && m.modeStatus.stakes !== 'voided') {
+      // Stakes settlement starts now: it streams the `Entered` logs up to the close block while
+      // the beacon is pending (W6-A). Idempotent; the beacon-time message is the fallback.
+      await this.env.QUEUE_SETTLE.send({
+        roundId: l.roundId,
+        mode: 'stakes',
+        idempotencyKey: settleKey(l.roundId, 'stakes'),
+      });
+    }
     if (l.modes.includes('free') && m.modeStatus.free !== 'voided' && !m.freeClose) {
       m.freeClose = await this.buildFreeClose(m, t);
       await this.save();

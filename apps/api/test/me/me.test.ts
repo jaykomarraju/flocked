@@ -223,6 +223,7 @@ describe('POST /me/tos', () => {
       acceptedVersion: TOS,
       acceptedAt: Number(fixed.FLOCKED_TEST_CLOCK),
       ageAttestedAt: Number(fixed.FLOCKED_TEST_CLOCK),
+      ageRequired: 18,
     });
     const { body: view } = await me(s.headers, fixed);
     expect(view?.stakes.reasons).toEqual(['not_verified', 'geo_blocked', 'stakes_disabled']);

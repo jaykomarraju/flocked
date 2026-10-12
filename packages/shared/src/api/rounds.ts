@@ -18,6 +18,7 @@ import {
   HandleSchema,
   Hex32Schema,
   LimitQuerySchema,
+  ModeSchema,
   ModeStatusSchema,
   OptionIndexSchema,
   RefundReasonCodeSchema,
@@ -134,9 +135,10 @@ export const SettlementViewSchema = z.object({
   dust: DecimalBigintSchema,
   payoutRoot: Hex32Schema.nullable(),
   bundleHash: Hex32Schema.nullable(),
-  /** Stakes proposal transaction. */
+  /** Free: the manifest anchor transaction. Stakes: the proposal transaction. */
   txHash: Hex32Schema.nullable(),
-  settledAt: EpochMsSchema,
+  /** Free: when the settlement was applied. Stakes: when it was finalized; null while proposed. */
+  settledAt: EpochMsSchema.nullable(),
 });
 export type SettlementView = z.infer<typeof SettlementViewSchema>;
 
@@ -275,3 +277,21 @@ export const RoundVerifyResponseSchema = z.object({
   modes: perModeSchema(VerifyBundleSchema),
 });
 export type RoundVerifyResponse = z.infer<typeof RoundVerifyResponseSchema>;
+
+/** A bundle object's file name (docs/bundle-format.md): the manifest or a chunk. */
+export const BundleFileSchema = z.string().regex(/^(manifest|chunk-\d{4})\.json$/);
+
+/** GET /rounds/:id/bundles/:mode/:file: the object `/verify` lists, by round, mode and file name. */
+export const BundleObjectParamsSchema = z.object({
+  id: UlidSchema,
+  mode: ModeSchema,
+  file: BundleFileSchema,
+});
+export type BundleObjectParams = z.infer<typeof BundleObjectParamsSchema>;
+
+/**
+ * One bundle object, served byte for byte as stored (a JSON object; docs/bundle-format.md), so
+ * keccak256 of the body matches the manifest's hash or `bundleHash`. 404 until the mode reveals.
+ */
+export const BundleObjectResponseSchema = z.record(z.string(), z.unknown());
+export type BundleObjectResponse = z.infer<typeof BundleObjectResponseSchema>;

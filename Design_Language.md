@@ -87,7 +87,7 @@ Core flow (amounts, addresses, dates and times are examples):
 - Self-excluded: "You're on a break until Nov 7.", "No picks in either mode until then, and no game notifications.", "Claims and refunds still work"
 
 ## Share cards
-- Follow the same tokens: bg background, ink text, and the accent only on the winning bar and the "UNFLOCKED" line.
+- Follow the same tokens: bg background, ink text, and the accent only on the winning bar, the "UNFLOCKED" line, the streak pill and the smug sheep's glint.
 - Layout: question on top, split bars in the middle, a big result line, then the mascot pose, handle, and wordmark at the bottom.
 - The card must read at thumbnail size in a feed. The result line must be legible at 25% scale.
 

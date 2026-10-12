@@ -1,5 +1,6 @@
 // Route module `entries`: Free entries and the caller's entries. POST /rounds/:id/entries is W3-B's
-// (the RoundDO commit protocol answers it); GET /rounds/:id/me is still a 501 stub (W6).
+// (the RoundDO commit protocol answers it); GET /rounds/:id/me is W6-D's (src/read/me.ts), gated
+// like every round read (room rounds for members only; nothing per option before the reveal).
 //
 // Before the RoundDO, the route applies two anti-abuse rules (spec "Anti-abuse"; W4-A):
 //   * Turnstile on the user's first Free entry of the game day (the New York date of the round's
@@ -25,6 +26,9 @@ import { HttpError } from '../lib/errors.js';
 import { log } from '../lib/log.js';
 import { verifyTurnstile } from '../lib/turnstile.js';
 import { validate } from '../lib/validate.js';
+import { accessFor } from '../read/access.js';
+import { PRIVATE_CACHE_CONTROL } from '../read/cache.js';
+import { readRoundMe } from '../read/me.js';
 import { recordPriorTransactions } from '../rounds/grant.js';
 import { stubEndpoints } from './stub.js';
 
@@ -116,5 +120,13 @@ app.post(
     return c.json(result.value, 201);
   },
 );
+
+/** GET /rounds/:id/me: the caller's entries, receipts, proofs, result, payouts and cards. */
+app.get('/rounds/:id/me', requireUser, validate('param', IdParamsSchema), async (c) => {
+  const { id } = c.req.valid('param');
+  await accessFor(c, id);
+  const body = await readRoundMe(c.env, id, getUser(c).id);
+  return c.json(body, 200, { 'Cache-Control': PRIVATE_CACHE_CONTROL });
+});
 
 export const entries = stubEndpoints(app, 'entries');

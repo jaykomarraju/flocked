@@ -1,25 +1,34 @@
 // Lifecycle handlers for the chain indexer (wave-4 pinned interfaces: registered through
 // src/indexer/handlers.ts, called once per event revision in chain order). W4-D:
-//   - ticketed `Entered` → RoundDO.ingestStakesEntry (the counters; W6-A builds the rest of Stakes
-//     ingestion, including undoing a reorged entry);
-//   - `Locked` / `Committed` → `round_modes.lock_tx` / `commit_tx` for the Free mode (the AnchorDO sets
-//     them from its receipts too; this is the canonical-chain confirmation). A reorged-out write is
-//     cleared and handed back to the AnchorDO, which checks the chain again and resends it if it is
-//     gone (W4-F1 N2);
+//   - ticketed `Entered` → its `entries` row with the ciphertext, which Stakes settlement reads, and
+//     RoundDO.ingestStakesEntry (the counters). W6-A: a removed entry loses its row and is un-counted,
+//     and the same log in another block updates the row's block fields;
+//   - `Locked` / `Committed` → `round_modes.lock_tx` / `commit_tx` for the Free mode, and
+//     `ManifestAnchored` → the settlement record's `tx_hash` (W6-A; the AnchorDO sets them from its
+//     receipts too; this is the canonical-chain confirmation). A reorged-out write is cleared and
+//     handed back to the AnchorDO, which checks the chain again and resends it if it is gone (W4-F1
+//     N2; W6-A for the manifest);
 //   - `RoundRefunded` reason 4 → the Stakes mode is voided. From a transaction the backend didn't send
 //     it is a guardian void ("Round lifecycle": Stakes voided, Free continues; ALERT-8 already fired
 //     in src/indexer/policy.ts), and the RoundDO is told through onModeResult. From the backend's own
 //     voidRound it confirms the admin void, which the RoundDO applies to every mode itself, unless the
 //     RoundDO had abandoned that void: then Free goes on unvoided, which alerts (W4-F1 V1).
+// The Stakes outcome handlers (src/indexer/handlers/stakes.ts) are registered here too (W6-A).
 // Handlers never throw for a permanent condition (they alert and return; W4-F1 V3): dispatch stops
 // at the first failure.
-import { roundKey } from '@flocked/shared';
+import { newUlid, roundKey } from '@flocked/shared';
 import { beaconTime, chainFromEnv } from '@flocked/tlock';
-import { keccak256, type Hex } from 'viem';
+import { hexToBytes, keccak256, type Hex } from 'viem';
 import { ANCHOR_SINGLETON } from '../chain/client.js';
-import type { AnchorCommitItem, AnchorLockItem } from '../do/types.js';
+import type {
+  AnchorCommitItem,
+  AnchorKey,
+  AnchorLockItem,
+  AnchorManifestItem,
+} from '../do/types.js';
 import type { Env } from '../env.js';
 import { resolveEntered } from '../indexer/entered.js';
+import { registerStakesHandlers } from '../indexer/handlers/stakes.js';
 import type { HandlerRegistry } from '../indexer/registry.js';
 import { isSentTx } from '../indexer/sent.js';
 import type { ChainEvent, EventHandler } from '../indexer/types.js';
@@ -34,16 +43,57 @@ const isNotFound = (err: unknown) => message(err).startsWith('not_found');
 const isPermanent = (err: unknown) =>
   err instanceof RangeError || /^(ingestStakesEntry|onModeResult):/.test(message(err));
 
-/** Ticketed `Entered` → the RoundDO's Stakes counters. Foreign entries are entered.ts's. */
+/**
+ * Ticketed `Entered` → its `entries` row, its ticket marked used (`stakes_tickets.used_tx`, which the
+ * daily cap and the one-ticket-per-person rule read; W6-D), and the RoundDO's Stakes counters. A
+ * removal deletes the row, clears the mark and un-counts it; removals are dispatched before additions,
+ * so a log re-mined elsewhere is then added again with its new block fields (and an addition at a slot
+ * already stored updates them). Foreign entries are entered.ts's.
+ */
 export const stakesIngestHandler: EventHandler = async (evt, env) => {
   if (evt.contractKind !== 'escrow') return;
-  if (evt.removed) {
-    // Undoing a counted entry is W6-A's (with the chunk files); the count is only a display value.
-    log.warn('stakes_entry_removed', { txHash: evt.txHash, logIndex: evt.logIndex });
-    return;
-  }
   const m = await resolveEntered(env.DB, evt);
   if (m.roundId === null || m.userId === null || m.stake === null) return;
+  const db = env.DB;
+  const createdAt = evt.blockTimestampSec * 1000;
+  const stmt = evt.removed
+    ? db
+        .prepare('DELETE FROM entries WHERE tx_hash = ?1 AND log_index = ?2 AND foreign_entry = 0')
+        .bind(evt.txHash, evt.logIndex)
+    : db
+        .prepare(
+          `INSERT INTO entries (id, round_id, mode, user_id, foreign_entry, wallet, person_tag, stake,
+             ciphertext, commitment, tx_hash, block_number, log_index, created_at)
+           VALUES (?1, ?2, 'stakes', ?3, 0, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+           ON CONFLICT (tx_hash, log_index) DO UPDATE SET block_number = excluded.block_number,
+             created_at = excluded.created_at`,
+        )
+        .bind(
+          newUlid(createdAt),
+          m.roundId,
+          m.userId,
+          m.args.player,
+          m.args.personTag,
+          Number(m.stake),
+          hexToBytes(m.args.ciphertext),
+          keccak256(m.args.ciphertext),
+          evt.txHash,
+          evt.blockNumber,
+          evt.logIndex,
+          createdAt,
+        );
+  // OR IGNORE: the escrow takes one entry per person tag and round, so another used ticket for the
+  // same (round, person) can't exist; if it ever did, the entry is still stored.
+  const ticket = evt.removed
+    ? db
+        .prepare('UPDATE stakes_tickets SET used_tx = NULL WHERE ticket_hash = ?1 AND used_tx = ?2')
+        .bind(m.args.ticketHash, evt.txHash)
+    : db
+        .prepare(
+          'UPDATE OR IGNORE stakes_tickets SET used_tx = ?2 WHERE ticket_hash = ?1 AND used_tx IS NULL',
+        )
+        .bind(m.args.ticketHash, evt.txHash);
+  if (evt.removed) log.warn('stakes_entry_removed', { txHash: evt.txHash, logIndex: evt.logIndex });
   try {
     await env.ROUND.get(env.ROUND.idFromName(m.roundId)).ingestStakesEntry({
       roundId: m.roundId,
@@ -58,6 +108,7 @@ export const stakesIngestHandler: EventHandler = async (evt, env) => {
       blockNumber: evt.blockNumber,
       logIndex: evt.logIndex,
       blockTimestampSec: evt.blockTimestampSec,
+      ...(evt.removed ? { removed: true } : {}),
     });
   } catch (err) {
     if (!isNotFound(err) && !isPermanent(err)) throw err;
@@ -68,6 +119,7 @@ export const stakesIngestHandler: EventHandler = async (evt, env) => {
       txHash: evt.txHash,
     });
   }
+  return [stmt, ticket];
 };
 
 /**
@@ -87,8 +139,11 @@ async function liveAgain(db: D1Database, evt: ChainEvent, key?: Hex): Promise<bo
   return row !== null;
 }
 
-/** The app round whose Free round key is `key`, from the lock's `closesAt`; null if none. */
-async function freeRoundOfKey(db: D1Database, evt: ChainEvent, key: Hex): Promise<string | null> {
+/**
+ * The app round and mode whose round key is `key`, from the lock's `closesAt`; null if none. Only Free
+ * keys are locked on FlockedAnchor (Stakes posts its bundle hash in its escrow proposal).
+ */
+async function roundOfKey(db: D1Database, evt: ChainEvent, key: Hex): Promise<AnchorKey | null> {
   let closesAtSec: string | null;
   if (evt.event === 'Locked') {
     closesAtSec = String(evt.args.closesAt);
@@ -106,19 +161,24 @@ async function freeRoundOfKey(db: D1Database, evt: ChainEvent, key: Hex): Promis
   if (closesAtSec === null || !/^[0-9]+$/.test(closesAtSec)) return null;
   const { results } = await db
     .prepare(
-      "SELECT r.id FROM rounds r JOIN round_modes m ON m.round_id = r.id AND m.mode = 'free' WHERE r.closes_at = ?1",
+      'SELECT r.id, m.mode FROM rounds r JOIN round_modes m ON m.round_id = r.id WHERE r.closes_at = ?1',
     )
     .bind(Number(closesAtSec) * 1000)
-    .all<{ id: string }>();
-  return results.find((r) => roundKey(r.id, 'free') === key)?.id ?? null;
+    .all<{ id: string; mode: AnchorKey['mode'] }>();
+  const found = results.find((r) => roundKey(r.id, r.mode) === key);
+  return found ? { roundKey: key, roundId: found.id, mode: found.mode } : null;
 }
 
-/** `Locked` / `Committed` → the Free mode's lock_tx / commit_tx. */
+/**
+ * `Locked` / `Committed` → the Free mode's lock_tx / commit_tx; `ManifestAnchored` → the settlement
+ * record's tx_hash, for the round key's mode (W6-A).
+ */
 export const anchorConfirmationHandler: EventHandler = async (evt, env) => {
   if (evt.contractKind !== 'anchor') return;
   const key = String(evt.args.roundKey).toLowerCase() as Hex;
-  const roundId = await freeRoundOfKey(env.DB, evt, key);
-  if (roundId === null) {
+  const round = await roundOfKey(env.DB, evt, key);
+  // lock_tx and commit_tx are the Free mode's.
+  if (round === null || (evt.event !== 'ManifestAnchored' && round.mode !== 'free')) {
     log.info('anchor_event_unknown_key', {
       chainEvent: evt.event,
       roundKey: key,
@@ -126,20 +186,14 @@ export const anchorConfirmationHandler: EventHandler = async (evt, env) => {
     });
     return;
   }
-  const column = evt.event === 'Locked' ? 'lock_tx' : 'commit_tx';
+  const roundId = round.roundId;
   const db = env.DB;
   if (evt.removed) {
-    // Re-mined elsewhere: the same transaction wrote it, so lock_tx / commit_tx stand.
+    // Re-mined elsewhere: the same transaction wrote it, so its record stands.
     if (await liveAgain(db, evt, key)) return;
     log.warn('anchor_write_reorged', { roundId, chainEvent: evt.event, txHash: evt.txHash });
-    await resubmitWrite(env, evt, roundId, key);
-    return [
-      db
-        .prepare(
-          `UPDATE round_modes SET ${column} = NULL WHERE round_id = ?1 AND mode = 'free' AND ${column} = ?2`,
-        )
-        .bind(roundId, evt.txHash),
-    ];
+    await resubmitWrite(env, evt, round);
+    return [anchorRecord(db, evt, round, null)];
   }
   if (evt.event === 'Committed') {
     const row = await db
@@ -158,21 +212,59 @@ export const anchorConfirmationHandler: EventHandler = async (evt, env) => {
     }
   }
   log.info('anchor_write_confirmed', { roundId, chainEvent: evt.event, txHash: evt.txHash });
-  return [
-    db
-      .prepare(
-        `UPDATE round_modes SET ${column} = ?2 WHERE round_id = ?1 AND mode = 'free' AND ${column} IS NULL`,
-      )
-      .bind(roundId, evt.txHash),
-  ];
+  return [anchorRecord(db, evt, round, evt.txHash)];
 };
 
 /**
- * N2: a reorged-out `Locked` / `Committed` goes back to the AnchorDO, rebuilt from the removed event
- * (it carries the values written). The AnchorDO reads the chain: still written (re-mined), it stays
- * confirmed; gone, it is sent again while its window is open, and alerts once it can't be.
+ * The D1 record of an anchor write: set to `txHash` where it is unset, or cleared (null) where it is
+ * the event's transaction. `Locked` / `Committed`: the Free mode's lock_tx / commit_tx.
+ * `ManifestAnchored`: the settlement record of that bundle (the AnchorDO sets it only while unset).
  */
-async function resubmitWrite(env: Env, evt: ChainEvent, roundId: string, key: Hex): Promise<void> {
+function anchorRecord(
+  db: D1Database,
+  evt: ChainEvent,
+  round: AnchorKey,
+  txHash: Hex | null,
+): D1PreparedStatement {
+  if (evt.event === 'ManifestAnchored') {
+    const bundle = String(evt.args.manifestHash).toLowerCase();
+    if (txHash === null) {
+      return db
+        .prepare(
+          'UPDATE settlements SET tx_hash = NULL WHERE round_id = ?1 AND mode = ?2 AND bundle_hash = ?3 AND tx_hash = ?4',
+        )
+        .bind(round.roundId, round.mode, bundle, evt.txHash);
+    }
+    return db
+      .prepare(
+        `UPDATE settlements SET tx_hash = ?4 WHERE round_id = ?1 AND mode = ?2
+           AND superseded_at IS NULL AND bundle_hash = ?3 AND tx_hash IS NULL`,
+      )
+      .bind(round.roundId, round.mode, bundle, txHash);
+  }
+  const column = evt.event === 'Locked' ? 'lock_tx' : 'commit_tx';
+  if (txHash === null) {
+    return db
+      .prepare(
+        `UPDATE round_modes SET ${column} = NULL WHERE round_id = ?1 AND mode = 'free' AND ${column} = ?2`,
+      )
+      .bind(round.roundId, evt.txHash);
+  }
+  return db
+    .prepare(
+      `UPDATE round_modes SET ${column} = ?2 WHERE round_id = ?1 AND mode = 'free' AND ${column} IS NULL`,
+    )
+    .bind(round.roundId, txHash);
+}
+
+/**
+ * N2: a reorged-out `Locked` / `Committed` / `ManifestAnchored` goes back to the AnchorDO, rebuilt
+ * from the removed event (it carries the values written) and D1's round. The AnchorDO reads the
+ * chain: still written (re-mined), it stays confirmed; gone, it is sent again while its window is
+ * open (a manifest's stays open), and alerts once it can't be.
+ */
+async function resubmitWrite(env: Env, evt: ChainEvent, round: AnchorKey): Promise<void> {
+  const { roundKey: key, roundId } = round;
   const a = evt.args;
   const anchor = env.ANCHOR.get(env.ANCHOR.idFromName(ANCHOR_SINGLETON));
   try {
@@ -189,16 +281,27 @@ async function resubmitWrite(env: Env, evt: ChainEvent, roundId: string, key: He
       await anchor.submitLock([item]);
       return;
     }
-    const round = await env.DB.prepare('SELECT closes_at, beacon_round FROM rounds WHERE id = ?1')
+    const row = await env.DB.prepare('SELECT closes_at, beacon_round FROM rounds WHERE id = ?1')
       .bind(roundId)
       .first<{ closes_at: number; beacon_round: number | null }>();
-    if (!round?.beacon_round) throw new Error('the round has no beacon round');
+    if (!row?.beacon_round) throw new Error('the round has no beacon round');
     const chain = chainFromEnv({
       DRAND_CHAIN_HASH: env.DRAND_CHAIN_HASH,
       DRAND_PUBLIC_KEY: env.DRAND_PUBLIC_KEY,
       DRAND_GENESIS: env.DRAND_GENESIS,
       DRAND_PERIOD: env.DRAND_PERIOD,
     });
+    if (evt.event === 'ManifestAnchored') {
+      const item: AnchorManifestItem = {
+        roundKey: key,
+        roundId,
+        mode: round.mode,
+        manifestHash: String(a.manifestHash).toLowerCase() as Hex,
+        beaconTimeSec: beaconTime(chain, row.beacon_round),
+      };
+      await anchor.submitManifest(item);
+      return;
+    }
     const item: AnchorCommitItem = {
       roundKey: key,
       roundId,
@@ -206,9 +309,9 @@ async function resubmitWrite(env: Env, evt: ChainEvent, roundId: string, key: He
       root: String(a.commitmentRoot) as Hex,
       entryCount: Number(a.entryCount),
       totalStake: String(a.totalStake),
-      closesAtSec: Math.floor(round.closes_at / 1000),
-      beaconRound: round.beacon_round,
-      beaconTimeSec: beaconTime(chain, round.beacon_round),
+      closesAtSec: Math.floor(row.closes_at / 1000),
+      beaconRound: row.beacon_round,
+      beaconTimeSec: beaconTime(chain, row.beacon_round),
     };
     await anchor.submitCommit(item);
   } catch (err) {
@@ -286,6 +389,17 @@ export const stakesVoidHandler: EventHandler = async (evt, env) => {
          WHERE round_id = ?1 AND mode = 'stakes' AND status IN ('pending', 'revealing')`,
       )
       .bind(roundId, VOID_REFUND_REASON, evt.blockTimestampSec * 1000),
+    // A `refund` payout per ticketed entry, as every other Stakes refund writes
+    // (indexer/handlers/stakes.ts). Dispatch is in chain order, so every `Entered` before the void is
+    // ingested already (W6-D).
+    db
+      .prepare(
+        `INSERT INTO payouts (round_id, mode, user_id, wallet, kind, amount, claimed_at, claim_tx)
+         SELECT e.round_id, 'stakes', e.user_id, lower(e.wallet), 'refund', e.stake, NULL, NULL
+         FROM entries e WHERE e.round_id = ?1 AND e.mode = 'stakes' AND e.user_id IS NOT NULL
+         ON CONFLICT DO NOTHING`,
+      )
+      .bind(roundId),
   ];
 };
 
@@ -317,6 +431,7 @@ export function registerLifecycleHandlers(registry: HandlerRegistry): HandlerReg
   registry.register('Entered', 'stakes-ingest', stakesIngestHandler);
   registry.register('Locked', 'anchor-confirmation', anchorConfirmationHandler);
   registry.register('Committed', 'anchor-confirmation', anchorConfirmationHandler);
+  registry.register('ManifestAnchored', 'anchor-confirmation', anchorConfirmationHandler);
   registry.register('RoundRefunded', 'stakes-void', stakesVoidHandler);
-  return registry;
+  return registerStakesHandlers(registry);
 }

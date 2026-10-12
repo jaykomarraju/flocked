@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 export const STACK_DIR = dirname(fileURLToPath(import.meta.url));
 export const ROOT = join(STACK_DIR, '..', '..');
 export const API_DIR = join(ROOT, 'apps', 'api');
+export const SIGNER_DIR = join(ROOT, 'apps', 'signer');
 export const CONTRACTS_DIR = join(ROOT, 'contracts');
 export const COMPOSE_FILE = join(STACK_DIR, 'docker-compose.yml');
 export const STATE_FILE = join(STACK_DIR, '.state.json');
@@ -17,6 +18,10 @@ export const DEV_VARS_FILE = join(STACK_DIR, '.dev.vars');
 export const RUN_DIR = join(STACK_DIR, '.run');
 export const LOG_DIR = join(RUN_DIR, 'logs');
 export const PERSIST_DIR = join(RUN_DIR, 'wrangler');
+/** The ticket signer's env (TICKET_SIGNER_KEY, LOCAL_DEPLOYMENT); never the API's (NFR-7). */
+export const SIGNER_VARS_FILE = join(RUN_DIR, 'ticket-signer.dev.vars');
+/** The signer's wrangler config as the stack runs it (a copy of apps/signer's; up.mjs). */
+export const SIGNER_RUN_DIR = join(RUN_DIR, 'signer');
 /** Written by contracts/script/Deploy.s.sol on chain 31337 (gitignored). */
 export const DEPLOYMENT_FILE = join(CONTRACTS_DIR, 'deployments', '31337.json');
 /** `wrangler dev` needs the assets directory to exist; apps/web does not build into it yet. */
@@ -66,11 +71,11 @@ export function writeState(state) {
   writeFileSync(STATE_FILE, `${JSON.stringify(state, null, 2)}\n`);
 }
 
-/** Parses `.dev.vars` (dotenv: KEY=value, values optionally single-quoted). */
-export function readDevVars() {
-  if (!existsSync(DEV_VARS_FILE)) return null;
+/** Parses `.dev.vars` or another `writeDevVars` file (dotenv: KEY=value, optionally single-quoted). */
+export function readDevVars(file = DEV_VARS_FILE) {
+  if (!existsSync(file)) return null;
   const vars = {};
-  for (const line of readFileSync(DEV_VARS_FILE, 'utf8').split('\n')) {
+  for (const line of readFileSync(file, 'utf8').split('\n')) {
     const m = /^([A-Z0-9_]+)=(.*)$/.exec(line);
     if (!m) continue;
     const raw = m[2];
@@ -79,18 +84,59 @@ export function readDevVars() {
   return vars;
 }
 
-/** Writes `.dev.vars` (mode 0600). Values are single-quoted, so JSON survives dotenv parsing. */
-export function writeDevVars(vars) {
+/**
+ * Writes a dotenv file of vars and secrets (mode 0600): the API's `.dev.vars` by default. Values are
+ * single-quoted, so JSON survives dotenv parsing.
+ */
+export function writeDevVars(vars, file = DEV_VARS_FILE) {
   const lines = [
     '# Written by `pnpm stack:up` (e2e/stack/up.mjs); regenerated with fresh keys on every run.',
-    '# Local only, gitignored. `wrangler dev --env-file` loads it over wrangler.jsonc vars.',
+    '# Local only, gitignored. `wrangler dev` loads it over wrangler.jsonc vars.',
     ...Object.entries(vars).map(([k, v]) => {
       const s = String(v);
       if (s.includes("'") || s.includes('\n')) throw new Error(`${k}: unsupported character`);
       return `${k}='${s}'`;
     }),
   ];
-  writeFileSync(DEV_VARS_FILE, `${lines.join('\n')}\n`, { mode: 0o600 });
+  writeFileSync(file, `${lines.join('\n')}\n`, { mode: 0o600 });
+}
+
+/** Parses JSON with comments and trailing commas (a wrangler.jsonc). */
+export function parseJsonc(text) {
+  const strip = (src, onChar) => {
+    let out = '';
+    for (let i = 0; i < src.length; i++) {
+      const c = src[i];
+      if (c === '"') {
+        let j = i + 1;
+        while (j < src.length && src[j] !== '"') j += src[j] === '\\' ? 2 : 1;
+        out += src.slice(i, j + 1);
+        i = j;
+      } else {
+        const skip = onChar(src, i);
+        if (skip === undefined) out += c;
+        else i = skip;
+      }
+    }
+    return out;
+  };
+  // Comments first (a line comment keeps its newline), then commas before a closing bracket.
+  const noComments = strip(text, (s, i) => {
+    if (s[i] === '/' && s[i + 1] === '/') {
+      const end = s.indexOf('\n', i);
+      return (end === -1 ? s.length : end) - 1;
+    }
+    if (s[i] === '/' && s[i + 1] === '*') {
+      const end = s.indexOf('*/', i + 2);
+      if (end === -1) throw new Error('unterminated comment');
+      return end + 1;
+    }
+    return undefined;
+  });
+  const noTrailingCommas = strip(noComments, (s, i) =>
+    s[i] === ',' && /^\s*[}\]]/.test(s.slice(i + 1)) ? i : undefined,
+  );
+  return JSON.parse(noTrailingCommas);
 }
 
 export function ensureDir(p) {

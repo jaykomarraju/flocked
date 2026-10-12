@@ -120,6 +120,9 @@
   ],
   "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "flocked-local" }],
   "kv_namespaces": [{ "binding": "KV", "id": "00000000000000000000000000000000" }],
+  // The ticket signer (apps/signer; W6-B), reached only through this RPC binding. The API never
+  // holds TICKET_SIGNER_KEY (NFR-7). Locally the stack runs both Workers in one `wrangler dev`.
+  "services": [{ "binding": "SIGNER", "service": "flocked-signer-local" }],
   "analytics_engine_datasets": [{ "binding": "ANALYTICS", "dataset": "flocked_events_local" }],
   "vectorize": [{ "binding": "VECTORIZE", "index_name": "flocked-questions-local" }],
   "ai": { "binding": "AI" },
@@ -215,6 +218,7 @@
       ],
       "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "flocked-staging" }],
       "kv_namespaces": [{ "binding": "KV", "id": "OWNER_SUPPLIED_STAGING_KV_NAMESPACE_ID" }],
+      "services": [{ "binding": "SIGNER", "service": "flocked-signer-staging" }],
       "analytics_engine_datasets": [
         { "binding": "ANALYTICS", "dataset": "flocked_events_staging" },
       ],
@@ -311,6 +315,7 @@
       ],
       "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "flocked-production" }],
       "kv_namespaces": [{ "binding": "KV", "id": "OWNER_SUPPLIED_PRODUCTION_KV_NAMESPACE_ID" }],
+      "services": [{ "binding": "SIGNER", "service": "flocked-signer" }],
       "analytics_engine_datasets": [{ "binding": "ANALYTICS", "dataset": "flocked_events" }],
       "vectorize": [{ "binding": "VECTORIZE", "index_name": "flocked-questions" }],
       "ai": { "binding": "AI" },

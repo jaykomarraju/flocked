@@ -25,6 +25,8 @@ const SAMPLE_PARAMS: Record<string, string> = {
   handle: 'ewe_one',
   board: 'strays',
   gameDay: '2026-10-08',
+  mode: 'free',
+  file: 'manifest.json',
 };
 
 /** Fills `:name` and `:name{regex}` segments with SAMPLE_PARAMS. */
@@ -77,6 +79,25 @@ const IMPLEMENTED = new Set([
   // W5-B (test/personhood/)
   'POST /me/personhood',
   'GET /me/personhood/callback',
+  // W6-B (test/stakes/)
+  'POST /rounds/:id/entries/stakes/prepare',
+  // W6-D (test/read/, test/gating/)
+  'GET /rounds/today',
+  'GET /rounds/:id',
+  'GET /rounds',
+  'GET /rounds/:id/me',
+  'GET /rounds/:id/verify',
+  'GET /rounds/:id/bundles/:mode/:file',
+  'GET /claims',
+]);
+
+/**
+ * Stubs behind the room-round gate (W6-D, src/read/access.ts): an unknown round answers 404 before
+ * the stub's 501 (test/gating/ checks the 501 for a public round and the gate for room rounds).
+ */
+const GATED_STUBS = new Set([
+  'GET /rounds/:id/ws',
+  `GET ${ENDPOINTS.find((e) => e.path.startsWith('/rounds/:id/card/'))?.path ?? ''}`,
 ]);
 
 const label = (ep: EndpointDef) => `${ep.method} ${ep.path}`;
@@ -86,13 +107,29 @@ describe.each(
 )('%s (implemented)', (_label, ep) => {
   it('is mounted: answers through the Worker, not 404', async () => {
     const res = await exports.default.fetch(requestFor(ep));
-    expect(res.status).not.toBe(404);
     expect(res.status).not.toBe(501);
+    if (res.status === 404) {
+      // A round read answers 404 for a round that does not exist: from its handler, not the router.
+      expect(ep.path.startsWith('/rounds/:id')).toBe(true);
+      expect(ErrorEnvelopeSchema.parse(await res.json()).error.message).toBe('No such round');
+    }
   });
 });
 
 describe.each(
-  ENDPOINTS.filter((ep) => !IMPLEMENTED.has(label(ep))).map((ep) => [label(ep), ep] as const),
+  ENDPOINTS.filter((ep) => GATED_STUBS.has(label(ep))).map((ep) => [label(ep), ep] as const),
+)('%s (gated stub)', (_label, ep) => {
+  it('answers 404 not_found for a round that does not exist, before the stub', async () => {
+    const res = await exports.default.fetch(requestFor(ep));
+    expect(res.status).toBe(404);
+    expect(ErrorEnvelopeSchema.parse(await res.json()).error.code).toBe('not_found');
+  });
+});
+
+describe.each(
+  ENDPOINTS.filter((ep) => !IMPLEMENTED.has(label(ep)) && !GATED_STUBS.has(label(ep))).map(
+    (ep) => [label(ep), ep] as const,
+  ),
 )('%s', (_label, ep) => {
   it('answers 501 not_implemented through the Worker', async () => {
     const res = await exports.default.fetch(requestFor(ep));

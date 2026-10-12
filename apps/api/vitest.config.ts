@@ -82,6 +82,21 @@ export default defineConfig(async () => {
             // A fixed, known value for src/lib/turnstile.ts tests (not a real key).
             TURNSTILE_SECRET_KEY: 'test-turnstile-secret',
           },
+          // wrangler.jsonc binds SIGNER to the ticket signer Worker (apps/signer). Tests never reach
+          // it: they inject a fake signer into the request env (test/stakes/helpers.ts). This stand-in
+          // refuses every ticket, so the binding resolves and an un-faked call fails loudly.
+          workers: [
+            {
+              name: 'flocked-signer-local',
+              modules: true,
+              compatibilityDate: '2026-10-01',
+              script: `import { WorkerEntrypoint } from 'cloudflare:workers';
+export default class extends WorkerEntrypoint {
+  async fetch() { return new Response(null, { status: 404 }); }
+  async signTicket() { throw new Error('ticket_refused: test stand-in signer'); }
+}`,
+            },
+          ],
         },
       }),
     ],

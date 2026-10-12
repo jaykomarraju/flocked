@@ -1,0 +1,67 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  // The ticket signer (spec "Architecture"; wave-6 pinned interface): one RPC entrypoint,
+  // `signTicket`, reached only through apps/api's service binding `SIGNER`. No route, no
+  // workers.dev URL: its fetch handler answers 404 to everything.
+  //
+  // Secret (never in this file; `wrangler secret put TICKET_SIGNER_KEY --env <env>`, locally
+  // e2e/stack/.run/ticket-signer.dev.vars): TICKET_SIGNER_KEY, the FlockedEscrow ticket signer's
+  // private key. It is this Worker's only secret, and no other Worker holds it (NFR-7,
+  // test/isolation.test.ts).
+  //
+  // D1: the API's database, read only. src/store.ts is the only code that touches it, and it runs
+  // two fixed SELECTs (see test/isolation.test.ts).
+  //
+  // Local only, from the stack (never deployed): LOCAL_DEPLOYMENT, the JSON of
+  // contracts/deployments/31337.json (the escrow address on anvil).
+  // Never deployed: `wrangler deploy` without --env would fail on the placeholder ID below.
+  "name": "flocked-signer-local",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "observability": { "enabled": true },
+
+  "vars": {
+    "ENVIRONMENT": "local",
+    "CHAIN_ID": "31337",
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "flocked-local",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+    },
+  ],
+
+  "env": {
+    "staging": {
+      "name": "flocked-signer-staging",
+      "vars": {
+        "ENVIRONMENT": "staging",
+        "CHAIN_ID": "84532",
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "flocked-staging",
+          "database_id": "OWNER_SUPPLIED_STAGING_D1_DATABASE_ID",
+        },
+      ],
+    },
+    "production": {
+      "name": "flocked-signer",
+      "vars": {
+        "ENVIRONMENT": "production",
+        "CHAIN_ID": "8453",
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "flocked-production",
+          "database_id": "OWNER_SUPPLIED_PRODUCTION_D1_DATABASE_ID",
+        },
+      ],
+    },
+  },
+}

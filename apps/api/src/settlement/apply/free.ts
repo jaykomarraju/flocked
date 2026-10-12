@@ -5,7 +5,8 @@
 //   1. the settlement record (proposal_seq 0) is inserted once; its `settled_at` is the time every
 //      later row uses, so a retry writes the same values;
 //   2. each entry's option_index, valid and void_reason;
-//   3. payouts and their ledger credits (win → payout, rebate, void_refund, refund) plus the creator
+//   3. `revealed_at` (W6-D: before any balance moves, since a credit says which side won), then the
+//      payouts and their ledger credits (win → payout, rebate, void_refund, refund) plus the creator
 //      award, chunked (APPLY_SIZES rows per statement, statements per D1 batch). A chunk's payouts,
 //      ledger rows and balance credits commit together. Ledger rows are inserted ON CONFLICT DO
 //      NOTHING with fresh IDs, and a balance moves only by the rows this attempt inserted, so the
@@ -349,6 +350,15 @@ export async function applyFree(
 
   const t = await writeRecord(db, result, awardRecipient, now(env));
   await writeEntries(db, result);
+  // The reveal comes before any balance moves: a credit says which side won (spec "API" › Reveal
+  // gating), so `revealed_at` is set once the record and the outcomes are durable (W6-D).
+  await db
+    .prepare(
+      `UPDATE round_modes SET revealed_at = ?2
+       WHERE round_id = ?1 AND mode = 'free' AND status = 'revealing' AND revealed_at IS NULL`,
+    )
+    .bind(roundId, t)
+    .run();
   const inserted = await writeCredits(db, roundId, scope, creditsOf(result, awardRecipient, t), t);
 
   // The outputs are durable: the mode is final (Free has no proposal stage).

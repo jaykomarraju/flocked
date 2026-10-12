@@ -251,3 +251,138 @@ header link (Settings is reached from the avatar menu). Exports are at
   action have a 2px ink border; read-only notices a 1.5px line border.
 - **Sheets:** bottom sheet on mobile, 400-wide modal on a scrim from tablet up (Core flow pattern), dismissed with a
   "Not now" text button.
+
+## Cards and notifications
+
+Paper page `Cards and notifications`. Freeze: OA-D4. Cards are light only (they are images on other apps' feeds).
+Each card artboard is the card frame `card__<kind>__<state>__<variant>` at the exact variant size plus a
+`notes (not part of the card)` band with the satori note and the 25% check; the export is the card frame (README
+"Exporting"). On the canvas, one row per state, 1600 apart: `og` at x 0, `embed` at 1400, `square` at 2800 (wins,
+losses, streak, teaser, round); refunds in a second band, `og` at 4400, `embed` at 5800, `square` at 7200.
+
+### Share cards
+
+Spec: "Share cards and distribution" (Card content). Route: `GET /cards/:shareId/:variant.png` (result, teaser) and
+`GET /rounds/:id/card/:variant.png` (round); rendered by satori (W10-A). Each row covers `og`, `embed` and `square`.
+
+| Artboard | Spec heading | Route or component | States covered | Export | Freeze |
+| --- | --- | --- | --- | --- | --- |
+| `cards/result/free-win/{og,embed,square}` | Share cards and distribution (Card content) | result card | Free win: "Free · Oct 12", question, 62/38 split, accent on the winning bar, "Your pick", UNFLOCKED +86 pts, smug sheep, handle and avatar, wordmark and URL | `exports/cards/result__free-win__{og,embed,square}.png` | review |
+| `cards/result/free-win-streak/{og,embed,square}` | Share cards and distribution (Card content: stray streak if ≥ 2) | result card | free win plus the "3-day stray streak" pill in the header row | `exports/cards/result__free-win-streak__{og,embed,square}.png` | review |
+| `cards/result/free-loss/{og,embed,square}` | Share cards and distribution | result card | Free loss: pick on the 62% side, winning bar still accent, GOT FLOCKED in ink, the flock | `exports/cards/result__free-loss__{og,embed,square}.png` | review |
+| `cards/result/stakes-win-multiple/{og,embed,square}` | Share cards and distribution (Stakes amounts off, the default) | result card | Stakes win with the multiple: UNFLOCKED 2.6x | `exports/cards/result__stakes-win-multiple__{og,embed,square}.png` | review |
+| `cards/result/stakes-win-amount/{og,embed,square}` | Share cards and distribution (show amounts on cards) | result card | Stakes win with the amount: UNFLOCKED +16.00 USDC | `exports/cards/result__stakes-win-amount__{og,embed,square}.png` | review |
+| `cards/result/stakes-loss/{og,embed,square}` | Share cards and distribution | result card | Stakes loss: GOT FLOCKED, the flock | `exports/cards/result__stakes-loss__{og,embed,square}.png` | review |
+| `cards/teaser/sealed/{og,embed,square}` | Share cards and distribution (Share surfaces: pre-reveal share) | teaser card | question and both options as plain outlines, sealed badge, "I sealed my pick. Can you out-think the flock?"; no per-option data (reveal gating) | `exports/cards/teaser__sealed__{og,embed,square}.png` | review |
+| `cards/round/free/{og,embed,square}` | Share cards and distribution (Generation: generic round card) | round card | split only: "Free · Oct 12 · 1,204 players", bars, "38% strayed. They won."; no player, pick or handle | `exports/cards/round__free__{og,embed,square}.png` | review |
+| `cards/round/stakes/{og,embed,square}` | Share cards and distribution (Generation: generic round card) | round card | as Free, "Stakes · Oct 12 · 214 players" | `exports/cards/round__stakes__{og,embed,square}.png` | review |
+
+### Refund cards
+
+Spec: "Settlement and payout math" (Refund rules); Design_Language.md refund lines. One state per rule and mode,
+named after `REFUND_REASONS[].name` in `packages/shared/src/reasons.ts`. No accent on any refund card.
+
+| Artboard | Spec heading | Route or component | States covered | Export | Freeze |
+| --- | --- | --- | --- | --- | --- |
+| `cards/result/free-refund-too-few-entrants/{og,embed,square}` | Refund rules (rule 1) | result card | room round, 2 players, split kept, rule 1 line | `exports/cards/result__free-refund-too-few-entrants__{og,embed,square}.png` | review |
+| `cards/result/free-refund-one-sided/{og,embed,square}` | Refund rules (rule 2) | result card | 100% / 0%, rule 2 line | `exports/cards/result__free-refund-one-sided__{og,embed,square}.png` | review |
+| `cards/result/free-refund-headcount-tie/{og,embed,square}` | Refund rules (rule 3) | result card | 50% / 50%, the "Refunded (tie only)" line | `exports/cards/result__free-refund-headcount-tie__{og,embed,square}.png` | review |
+| `cards/result/free-refund-voided/{og,embed,square}` | Refund rules (rule 4) | result card | entrant count and sealed badge instead of bars, rule 4 line | `exports/cards/result__free-refund-voided__{og,embed,square}.png` | review |
+| `cards/result/free-refund-commitment-not-anchored/{og,embed,square}` | Refund rules (rule 7); Decision log Oct 12 | result card | entrant count and sealed badge, rule 7 line ("Points returned.") | `exports/cards/result__free-refund-commitment-not-anchored__{og,embed,square}.png` | review |
+| `cards/result/free-refund-beacon-unavailable/{og,embed,square}` | Refund rules (rule 8); Decision log Oct 12 | result card | entrant count and sealed badge, rule 8 line ("Points returned.") | `exports/cards/result__free-refund-beacon-unavailable__{og,embed,square}.png` | review |
+| `cards/result/stakes-refund-too-few-entrants/{og,embed,square}` | Refund rules (rule 1) | result card | 14 players (under 20), 64% / 36%, rule 1 line | `exports/cards/result__stakes-refund-too-few-entrants__{og,embed,square}.png` | review |
+| `cards/result/stakes-refund-one-sided/{og,embed,square}` | Refund rules (rule 2) | result card | 100% / 0%, rule 2 line | `exports/cards/result__stakes-refund-one-sided__{og,embed,square}.png` | review |
+| `cards/result/stakes-refund-headcount-tie/{og,embed,square}` | Refund rules (rule 3) | result card | 50% / 50%, tie line | `exports/cards/result__stakes-refund-headcount-tie__{og,embed,square}.png` | review |
+| `cards/result/stakes-refund-voided/{og,embed,square}` | Refund rules (rule 4) | result card | entrant count and sealed badge, rule 4 line | `exports/cards/result__stakes-refund-voided__{og,embed,square}.png` | review |
+| `cards/result/stakes-refund-vetoed/{og,embed,square}` | Refund rules (rule 5) | result card | 62% / 38% kept with no accent, rule 5 line | `exports/cards/result__stakes-refund-vetoed__{og,embed,square}.png` | review |
+| `cards/result/stakes-refund-timeout/{og,embed,square}` | Refund rules (rule 6) | result card | entrant count instead of bars, rule 6 line | `exports/cards/result__stakes-refund-timeout__{og,embed,square}.png` | review |
+
+### Cards decisions (W6-C)
+
+- **Layout:** Design_Language "Share cards" order, as one flex column with space-between: mode and day label (with
+  the streak pill or sealed badge on the right), question (≤ 2 lines in `og` and `embed`, ≤ 3 in `square`), split
+  bars (label row with "Your pick" and the % in a 120px right-aligned slot, then the track), the result line with the
+  sheep, then handle and avatar left, wordmark and URL right. The square stacks the result line.
+- **Result line:** two text runs (`result-label` "UNFLOCKED", `result-value` "+86 pts" / "2.6x" / "+16.00 USDC")
+  so the value never breaks alone. Fredoka 700: 88 / 92 / 112px (`og` / `embed` / `square`); the Stakes amount
+  drops to 76 / 74px in `og` / `embed` to stay on one line. GOT FLOCKED and "Refunded" are ink.
+- **Accent:** only the winning bar, UNFLOCKED, the stray-streak pill, and the smug sheep's glint (README component
+  conventions). A loss keeps the accent on the winning bar. Refund cards have none (no winner), so both bars are ink.
+  Round cards keep the winning bar but put their line ("38% strayed. They won.") in ink.
+- **Refunds:** title "Refunded" (the result-card component's refunded title) plus the why line, exactly as in
+  Design_Language's refund table, Inter 600 ≤ 2 lines. Rules 1, 2, 3 and 5 keep the split with "Your pick"; rules
+  4, 6, 7 and 8 replace the bars with the entrant count ("1,204 players"), and 4, 7 and 8 add the sealed badge
+  because no pick was ever opened. Neutral sheep.
+- **Teaser:** the question, both options as plain 2px ink outlines, the sealed badge and "I sealed my pick. Can you
+  out-think the flock?" (spec share text) as the big line; no per-option data, no accent. **Round:** no player,
+  pick, handle or avatar; the footer keeps only the brand.
+- **Mascot:** smug on wins, the five-sheep flock on losses, neutral on refunds, teaser and round. The sheep SVGs keep
+  their fixed Foundations colours (raw `#141414` / `#FFFFFF`, and the accent glint). satori should get each pose,
+  and the flock, as one inline SVG.
+- **25% check:** `get_screenshot` at 1x, downscaled with `sips -Z` to 300 wide (`og`, `embed`) or 270 (`square`).
+  The result line, "Refunded" and the teaser line read on every card (16–28px at 25%); the question and the bars
+  read; the meta label, "Your pick", the why line and the URL are texture. Each card's notes band records its
+  check.
+- **satori:** every card is flex only (no grid, no transforms, no tabular figures: the % sits in a fixed slot); bar
+  fills are % widths of a fixed track. Each notes band names that card's primitives. Fonts: Fredoka 600/700 and
+  Inter 500/600/700 as TTF.
+- **Example values:** the Core flow question ("Would you rather fight one horse-sized duck or 100 duck-sized
+  horses?"), 62/38, @woolgatherer, "Oct 12", 1,204 Free and 212–214 Stakes players, URL "flocked.app" (a
+  placeholder: the spec names no domain).
+
+### Share sheet and share page
+
+Spec: "Share cards and distribution" (Share surfaces). Screen breakpoints, in the band x 9000–11500 (mobile at 9000,
+tablet 9460, desktop 10308; rows 2400 apart). Exports at `exports/cards/<screen>__<state>__<breakpoint>.png`.
+
+| Artboard | Spec heading | Route or component | States covered | Export | Freeze |
+| --- | --- | --- | --- | --- | --- |
+| `cards/share-sheet/result-web/{mobile,tablet,desktop}` | Share cards and distribution (Share surfaces: share sheet) | sheet over `/` (Reveal); modal from tablet up | "Share your result", share-card preview, Wide/Square segment (Wide, with check), share text "Unflocked. 3-day stray streak." + link, CTA "Share" (Web Share API; desktop: "Copy link"), "Copy link" and "Download image" pills, "Not now" | `exports/cards/share-sheet__result-web__{mobile,tablet,desktop}.png` | review |
+| `cards/share-sheet/result-mini-app/mobile` | Share surfaces (Farcaster cast composer in the mini app) | sheet in the mini app | CTA "Cast" (composer with the text and the embed), "Copy link", "Download image"; caption "Casts show the card with a Play button."; no segment | `exports/cards/share-sheet__result-mini-app__mobile.png` | review |
+| `cards/share-sheet/teaser-web/{mobile,tablet,desktop}` | Share surfaces (pre-reveal share) | sheet over the Sealed screen | "Share the question", "The card shows the question, not your pick.", teaser preview, share text "I sealed my pick. Can you out-think the flock?" + link, same actions | `exports/cards/share-sheet__teaser-web__{mobile,tablet,desktop}.png` | review |
+| `cards/share-page/result/{mobile,tablet,desktop}` | Share surfaces (`/s/:shareId`); Distribution hooks (Referral) | `/s/:shareId` | signed-out header, "@woolgatherer · Free · Oct 12", card preview, CTA "Play today's Flocked", "See the round"; head tags in the notes band | `exports/cards/share-page__result__{mobile,tablet,desktop}.png` | review |
+| `cards/share-page/teaser-open/{mobile,tablet,desktop}` | Share surfaces (teaser) | `/s/:shareId` before the reveal | "@woolgatherer sealed a pick.", teaser preview, "Closes in 04:12:09", CTA; no round link | `exports/cards/share-page__teaser-open__{mobile,tablet,desktop}.png` | review |
+| `cards/share-page/teaser-revealed/{mobile,tablet,desktop}` | Share surfaces (teaser page links to the round after the reveal) | `/s/:shareId` after the reveal | "@woolgatherer sealed a pick. The round has revealed.", teaser preview, CTA, "See the reveal" | `exports/cards/share-page__teaser-revealed__{mobile,tablet,desktop}.png` | review |
+
+### Notifications
+
+Spec: "Notifications". Copy: `packages/shared/src/copy/notifications.ts` (`NOTIFICATION_COPY`, `REFUND_LINES`,
+`OUTCOME_NEXT_LIVE`, `EMAIL_CHROME`); the artboards use it verbatim. Surface `notifications`, at x 12000 and up on the
+canvas. Notification mocks are neutral (surface rows, line borders, the neutral sheep head as the app icon), not a
+copy of Farcaster's or an OS's UI.
+
+| Artboard | Spec heading | Route or component | States covered | Export | Freeze |
+| --- | --- | --- | --- | --- | --- |
+| `notifications/farcaster/all-events/mobile` | Notifications | Farcaster mini app notification | every event and variant in `NOTIFICATION_EVENTS` order: question_live; closing_soon; outcome win, win without amount, loss, void, refund by rules 4, 7 and 8 (with "The next question is live."); payout_claimable marked not sent; refunded Free (rule 8) and Stakes (rule 5); question_used scheduled and settled; streak_at_risk; question_edited; security_notice × 4 kinds | `exports/notifications/farcaster__all-events__mobile.png` | review |
+| `notifications/webpush/all-events/mobile` | Notifications | web push | the same list, payout_claimable included | `exports/notifications/webpush__all-events__mobile.png` | review |
+| `notifications/refund-lines/all-rules/desktop` | Notifications; Settlement and payout math (Refund rules) | refund copy table | rules 1–8: the refund line, the outcome push, the refunded push per mode; rules 4, 7 and 8 marked (they never reveal); rules 5 and 6 not sent as an outcome | `exports/notifications/refund-lines__all-rules__desktop.png` | review |
+| `notifications/email/outcome-win/{mobile,desktop}` | Notifications (`outcome`, email if verified) | email template | UNFLOCKED +86 pts (accent heading), the share line, "The next question is live." with "Play the next question", CTA "See the reveal"; subject and preheader in the notes band | `exports/notifications/email__outcome-win__{mobile,desktop}.png` | review |
+| `notifications/email/outcome-refund/{mobile,desktop}` | Notifications (`outcome`); Refund rules (rule 8) | email template | Free round refunded, rule 8 line, next-live paragraph, CTA "See the round" | `exports/notifications/email__outcome-refund__{mobile,desktop}.png` | review |
+| `notifications/email/payout-claimable/{mobile,desktop}` | Notifications (`payout_claimable`) | email template | Ready to claim 17.67 USDC, CTA "Claim 17.67 USDC" | `exports/notifications/email__payout-claimable__{mobile,desktop}.png` | review |
+| `notifications/email/refunded/{mobile,desktop}` | Notifications (`refunded`); Refund rules (rule 5) | email template | Stakes round refunded, rule 5 line, "Your refund is waiting in Claims.", CTA "Go to Claims" | `exports/notifications/email__refunded__{mobile,desktop}.png` | review |
+| `notifications/email/security-notice/{mobile,desktop}` | Notifications (`security_notice`) | email template | new sign-in with email, CTA "Open Settings", "Security notices are always on." footer (no manage link) | `exports/notifications/email__security-notice__{mobile,desktop}.png` | review |
+
+### Share and notification decisions (W6-C.2)
+
+- **Share sheet actions:** in a browser, the CTA is "Share" (Web Share API), with "Copy link" and "Download image"
+  as secondary pills; where Web Share is missing (most desktop browsers) "Copy link" becomes the CTA. In the mini
+  app the CTA is "Cast" (the cast composer with the text and the embed card). The Wide/Square segment picks the
+  image for Share and Download (`og` or `square`); casts always use `embed`. The sheet closes with "Not now".
+- **Share text** (new lines): win "Unflocked." plus " 3-day stray streak." when the streak is ≥ 2; loss "Got
+  flocked." or "Got flocked again." after a loss the day before; teaser "I sealed my pick. Can you out-think the
+  flock?" (spec). The link follows on its own line.
+- **`/s/:shareId`:** signed-out header with no active link, the card preview, one CTA "Play today's Flocked" (also
+  the Farcaster embed button), and a round link once the round has revealed. Head tags (notes band): `og:title`,
+  `og:description` (the share text), `og:image` (`og.png`), `twitter:card` `summary_large_image`, `fc:miniapp` (and
+  `fc:frame`) with `imageUrl` `embed.png` and a `launch_miniapp` button to `/?ref=<ref_code>`. A teaser page keeps
+  its teaser images after the reveal and never reads the pick.
+- **Notification channels and copy:** the spec's channel column, as `NOTIFICATION_EVENT_CHANNELS`; every other
+  channel is `null` (not sent). `outcome` push bodies end with "The next question is live." when a next round
+  exists. A refund says why with `REFUND_LINES[refundReason]`; a Stakes refund adds "Your refund is waiting in
+  Claims." Rules 5 and 6 arrive only as `refunded` (they come after the reveal); `refunded` carries Free only for
+  rules 7 and 8 after the outcome was sent.
+- **Limits:** titles ≤ 32 and bodies ≤ 128 characters on Farcaster and web push (the test fills every template with
+  worst-case values: a 120-character question, ">99%", "+1,234,567.89 USDC", the longest refund line).
+- **Emails:** a 600 column on `bg`, wordmark, one surface panel (heading, body, next-live paragraph and link for
+  outcomes, one accent CTA), footer captions ("Manage notifications"; security notices say they're always on).
+  Accent only on the CTA and the UNFLOCKED heading. Subject, preheader and build notes are in each notes band.

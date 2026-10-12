@@ -1,8 +1,10 @@
-// The settlement's inputs (spec "Sealed picks" › Free mode specifics and Invalid entries): the
-// round as locked, the anchored commitment, and the entries in seq order, written to R2 as decrypt
-// chunks of DECRYPT_CHUNK_SIZE. Free entries outside the anchored leaf set are VOID `not_anchored`
-// and Free stakes outside the locked range `stake_out_of_range`; both are decided here, before
-// decryption, and in that order (docs/bundle-format.md › VOID precedence).
+// The settlement's inputs (spec "Sealed picks" › Free mode specifics, Stakes mode specifics and
+// Invalid entries): the round as locked, the anchored commitment (Free) or the reconciled entry set
+// (Stakes), and the entries in seq order, written to R2 as decrypt chunks of DECRYPT_CHUNK_SIZE.
+// Free entries outside the anchored leaf set are VOID `not_anchored` and Free stakes outside the
+// locked range `stake_out_of_range`; both are decided here, before decryption, and in that order
+// (docs/bundle-format.md › VOID precedence). Stakes entries come from D1 (the indexer stores each
+// `Entered` with its ciphertext) and must be exactly the entry set streamed from the chain.
 import { freeCommitmentTree, type VoidReason } from '@flocked/settle';
 import {
   LockedConfigSchema,
@@ -15,11 +17,12 @@ import {
   type RoundKind,
 } from '@flocked/shared';
 import { roundRefFromChainId, roundRefFromUlid, toBase64Url } from '@flocked/tlock';
-import { bytesToHex, type Hex } from 'viem';
+import { bytesToHex, keccak256, type Hex } from 'viem';
 import { receiptUserIdHash } from '../crypto/receipt.js';
 import { ANCHOR_SINGLETON } from '../do/anchor-do.js';
 import type { Env } from '../env.js';
 import { DECRYPT_CHUNK_SIZE, decryptInputKey } from './keys.js';
+import { streamedEntries, type StreamedEntry } from './stakes/entry-set.js';
 
 /** The round and mode as settlement reads them from D1. */
 export interface SettlementRound {
@@ -226,6 +229,9 @@ export interface PreparedChunks {
 
 export class IntegrityError extends Error {}
 
+/** D1 doesn't hold the streamed Stakes entry set yet (the indexer is behind): try again later. */
+export class EntrySetPendingError extends Error {}
+
 interface EntryRow {
   id: string;
   user_id: string | null;
@@ -234,12 +240,13 @@ interface EntryRow {
   commitment: string;
   ciphertext: ArrayBuffer | null;
   receipt_seq: number | null;
+  tx_hash: string | null;
   block_number: number | null;
   log_index: number | null;
 }
 
 const COLUMNS =
-  'id, user_id, wallet, stake, commitment, ciphertext, receipt_seq, block_number, log_index';
+  'id, user_id, wallet, stake, commitment, ciphertext, receipt_seq, tx_hash, block_number, log_index';
 
 /** One page of the mode's entries in seq order, after `after` (keyset pagination). */
 async function entryPage(
@@ -269,20 +276,48 @@ async function entryPage(
   return results;
 }
 
+/** The reconciled Stakes entry set (src/settlement/stakes/entry-set.ts): its files and count. */
+export interface StreamedSet {
+  files: number;
+  count: number;
+}
+
+/** Throws unless the D1 Stakes entry `e` is the streamed `Entered` event at its seq. */
+function checkStreamed(e: EntryRow, s: StreamedEntry | undefined, seq: number): void {
+  const same =
+    s !== undefined &&
+    s.seq === seq &&
+    s.txHash === e.tx_hash?.toLowerCase() &&
+    s.logIndex === e.log_index &&
+    s.blockNumber === e.block_number &&
+    s.commitment === e.commitment.toLowerCase() &&
+    s.player === e.wallet?.toLowerCase();
+  if (!same) throw new EntrySetPendingError(`D1's Stakes entry ${seq} is not the chain's`);
+  if (e.ciphertext === null || keccak256(new Uint8Array(e.ciphertext)) !== s.commitment) {
+    throw new IntegrityError(`stakes entry ${e.id}: the ciphertext is not the onchain one`);
+  }
+}
+
 /**
  * Writes the decrypt chunks: every entry of the mode in seq order, `chunkSize` per chunk.
  * Free: checks that the anchored root is the tree over the first `entryCount` entries (all of them
  * when the count isn't mirrored) and marks the rest `not_anchored`; a root that matches no prefix
- * throws IntegrityError. The files are a deterministic function of D1, so a retry rewrites them
- * with the same bytes.
+ * throws IntegrityError. Stakes: D1's entries must be exactly `stream`, the reconciled entry set
+ * (EntrySetPendingError while the indexer hasn't stored them all). The files are a deterministic
+ * function of D1, so a retry rewrites them with the same bytes.
  */
 export async function prepareChunks(
   env: Pick<Env, 'DB' | 'BUCKET'>,
   round: SettlementRound,
   anchored: Extract<AnchoredCommitment, { state: 'anchored' }> | null,
   chunkSize: number = DECRYPT_CHUNK_SIZE,
+  stream: StreamedSet | null = null,
 ): Promise<PreparedChunks> {
   const roundRef = roundRefHex(round);
+  if (round.mode === 'stakes' && stream === null) {
+    throw new Error('settlement: the Stakes entry set is not reconciled');
+  }
+  const expected = stream ? streamedEntries(env.BUCKET, round.roundId, stream.files) : null;
   const free = round.mode === 'free' ? round.config.free : undefined;
   const fixedStake = round.mode === 'stakes' ? round.config.stakes?.stake : undefined;
   const leaves: { userIdHash: Hex; stake: bigint; commitment: Hex; seq: number }[] = [];
@@ -293,6 +328,11 @@ export async function prepareChunks(
     const page = await entryPage(env.DB, round, last, chunkSize);
     if (page.length === 0) break;
     last = page[page.length - 1] ?? null;
+    const want: (StreamedEntry | undefined)[] = [];
+    for (let k = 0; expected && k < page.length; k++) {
+      const next = await expected.next();
+      want.push(next.done ? undefined : next.value);
+    }
     const entries = page.map((e, k): InputEntry => {
       const seq = entryCount + k;
       const stake = BigInt(e.stake);
@@ -317,6 +357,7 @@ export async function prepareChunks(
         if (fixedStake !== undefined && stake !== BigInt(fixedStake)) {
           throw new IntegrityError(`stakes entry ${e.id} stake differs from the round stake`);
         }
+        if (expected) checkStreamed(e, want[k], seq);
         account = e.wallet.toLowerCase();
       }
       if (preVoid === null && e.ciphertext === null) {
@@ -350,6 +391,11 @@ export async function prepareChunks(
     if (page.length < chunkSize) break;
   }
   if (free) checkAnchoredRoot(round, anchored, leaves, entryCount);
+  if (stream && entryCount !== stream.count) {
+    throw new EntrySetPendingError(
+      `D1 has ${entryCount} Stakes entries, the chain ${stream.count}`,
+    );
+  }
   return { keys, entryCount };
 }
 

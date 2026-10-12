@@ -64,3 +64,7 @@
 ## Carry-over from W5-Z (Oct 12, 2026)
 
 - **W11-A:** edits to the `config` table (`geo.stakes.allow`, `geo.stakes.age21`, `mode.stakes.enabled`) write an `audit_log` row. The guardian's hold release covers `void_rate` holds (either mode, `tx_hash` NULL) as well as `foreign_entry`.
+
+## Carry-over from W6-Z (Oct 12, 2026)
+
+- **W11-A:** releasing a settlement hold, including `refund_vetoed`, which the coordinator opens after a guardian veto of a refund proposal; only the guardian releases a hold (Decision log, Oct 11) (owner decision, Oct 12; W6-F1 O1), with an `audit_log` row. The alert for that veto is `ALERT_DO_ERROR` step `refund_proposal_vetoed`.

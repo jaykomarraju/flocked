@@ -36,6 +36,8 @@ export interface ReduceInputs {
   signature: string;
   /** Free with entries: the anchored commitment. */
   anchored: { root: Hex; txHash: Hex; entryCount: number } | null;
+  /** Stakes: the close block (src/chain/safe-head.ts). */
+  closeBlock?: { number: number; hash: Hex } | null;
   /** Decrypt chunk count; chunk i's files are at decryptInputKey / decryptOutputKey(i). */
   chunks: number;
   /** The consumers' partial tallies, by chunk index. */
@@ -235,8 +237,10 @@ export async function reduce(
       ? { root: i.anchored.root, anchorTx: i.anchored.txHash, entryCount: i.anchored.entryCount }
       : null,
     chainRoundId: round.chainRoundId,
-    // Stakes: the close block is a W6-A input, with the safe-head flag.
-    closeBlock: null,
+    closeBlock:
+      mode === 'stakes' && i.closeBlock
+        ? { number: i.closeBlock.number, hash: i.closeBlock.hash }
+        : null,
     record: recordJson(record),
     voids,
     payoutRoot,

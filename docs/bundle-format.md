@@ -68,7 +68,7 @@ Chunk `i` holds exactly the entries with `i × chunkSize ≤ seq < (i + 1) × ch
 | `drand`          | `{chainHash, signature}`      | The chain hash and the signature for `beaconRound`, verified against the pinned public key              |
 | `commitment`     | `{root, anchorTx, entryCount}` \| null | Free: the anchored commitment root, the anchor transaction and its leaf count. null for Stakes and for a Free mode with no entries |
 | `chainRoundId`   | string \| null                | Stakes: the FlockedEscrow round ID                                                                      |
-| `closeBlock`     | `{number, hash}` \| null      | Stakes: the close block (W6-A fills it; null until then). Free: null                                    |
+| `closeBlock`     | `{number, hash}` \| null      | Stakes: the close block, the last block stamped before `closesAt` (final once the safe head passed it). Free: null |
 | `record`         | object                       | The settlement record (below)                                                                            |
 | `voids`          | object                       | VOID count per reason, only reasons that occur                                                           |
 | `payoutRoot`     | hex \| null                   | The payout tree's root (below); null when it has no leaves                                               |
@@ -137,5 +137,8 @@ Stakes entries go straight to `classify`, with the round reference the onchain r
 
 `settlement/{roundId}/{mode}/` holds one run's private working files: `beacon.json` (`{round, signature}`),
 `in-{nnnn}.json` (a decrypt batch of 500: `{roundId, mode, index, beaconRound, roundRef, entries}`) and
-`out-{nnnn}.json` (its per-entry results). They are plain JSON, deterministic, rewritten by a retry, and never
+`out-{nnnn}.json` (its per-entry results). Stakes also has `entered-{nnnn}.json`: the round's `Entered` logs
+streamed from the chain up to the close block (at most 500 per file, `{roundId, index, entries}`, each entry
+`{seq, txHash, logIndex, blockNumber, player, personTag, ticketHash, commitment}`), which settlement
+reconciles against the contract and checks D1's entries against before decrypting. They are plain JSON, deterministic, rewritten by a retry, and never
 served publicly. Their format may change without a `bundleFormat` bump.

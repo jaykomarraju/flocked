@@ -5,17 +5,19 @@
 //   2. anvil on chain 31337 (STACK_FORK_URL forks Base or any chain, keeping chain ID 31337);
 //   3. the CREATE2 deploy (contracts/script/Deploy.s.sol) with the local drand genesis and period
 //      and fresh role keys;
-//   4. e2e/stack/.dev.vars (the drand chain, the deployment, fresh keys, the test seam key), the D1
-//      migrations, and `wrangler dev --local` for apps/api, plus the Farcaster Quick Auth mock;
+//   4. e2e/stack/.dev.vars (the drand chain, the deployment, fresh keys, the test seam key), the
+//      signer's env file, the D1 migrations and config seeds, and one `wrangler dev --local` running
+//      apps/api and apps/signer (the ticket signer behind the API's `SIGNER` binding), plus the
+//      service mocks;
 //   5. the cron driver (cron.mjs), which runs the Worker's cron jobs, as wrangler dev fires none.
 //
 // Idempotent: a healthy stack is left alone; anything else is torn down and started fresh. Stack
 // facts go to e2e/stack/.state.json, logs to e2e/stack/.run/logs.
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { existsSync, openSync, readFileSync, writeFileSync, closeSync } from 'node:fs';
+import { closeSync, existsSync, openSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { createPublicClient, http, parseAbi } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { CRON_HEARTBEAT_FILE } from './cron.mjs';
@@ -32,7 +34,9 @@ import {
   PERSIST_DIR,
   PORTS,
   ROOT,
-  RUN_DIR,
+  SIGNER_DIR,
+  SIGNER_RUN_DIR,
+  SIGNER_VARS_FILE,
   STACK_DIR,
   TOS_VERSION,
   TURNSTILE_TEST_SECRET,
@@ -40,6 +44,7 @@ import {
   alive,
   ensureDir,
   getJson,
+  parseJsonc,
   readState,
   rel,
   rpc,
@@ -227,6 +232,42 @@ async function deploy(keys, chain) {
   return { deployer, deployment, raw: JSON.stringify(deployment) };
 }
 
+/**
+ * The ticket signer's env file and config (W6-B; NFR-7). Both Workers run in one `wrangler dev`, so
+ * the API's `SIGNER` binding resolves in process and the signer reads the D1 the API writes. That
+ * `wrangler dev` hands `--env-file` to the first config (the API) only, and loads a further config's
+ * secrets from the `.dev.vars` beside that config. So the signer runs from a copy of
+ * apps/signer/wrangler.jsonc in .run/signer (with `main` pointing back at apps/signer/src), whose
+ * `.dev.vars` is a link to ticket-signer.dev.vars: TICKET_SIGNER_KEY reaches the signer and never
+ * the API, and apps/signer/.dev.vars (a developer's own) is neither read nor touched.
+ */
+function writeSigner(keys, deploymentJson) {
+  writeDevVars(
+    { TICKET_SIGNER_KEY: keys.ticketSigner.key, LOCAL_DEPLOYMENT: deploymentJson },
+    SIGNER_VARS_FILE,
+  );
+  const config = parseJsonc(readFileSync(join(SIGNER_DIR, 'wrangler.jsonc'), 'utf8'));
+  delete config.$schema;
+  // `main` is the only path in the signer's config; anything else relative would break here.
+  config.main = join(SIGNER_DIR, config.main);
+  ensureDir(SIGNER_RUN_DIR);
+  const configFile = join(SIGNER_RUN_DIR, 'wrangler.json');
+  writeFileSync(configFile, `${JSON.stringify(config, null, 2)}\n`);
+  symlinkSync(relative(SIGNER_RUN_DIR, SIGNER_VARS_FILE), join(SIGNER_RUN_DIR, '.dev.vars'));
+  return { name: config.name, configFile };
+}
+
+/**
+ * Local config the API and the signer read (the `config` table; seeds have no `updated_by`):
+ * Stakes is on and allowed in the US, the location `wrangler dev` gives every request (its
+ * placeholder `request.cf`, since the stack turns the cf.json fetch off), so a stack test can take a
+ * ticket through the API and the signer (e2e/tests/stakes-ticket.test.ts).
+ */
+const CONFIG_SEEDS = {
+  'mode.stakes.enabled': 'true',
+  'geo.stakes.allow': '["US"]',
+};
+
 async function main() {
   const existing = readState();
   if (existing) {
@@ -350,13 +391,9 @@ async function main() {
   save();
   // The escrow's ticket signer key, for the signer Worker and stack tests (W6). Never in the API's
   // .dev.vars: apps/api must have no access to it (NFR-7).
-  writeFileSync(
-    join(RUN_DIR, 'ticket-signer.dev.vars'),
-    `TICKET_SIGNER_KEY='${keys.ticketSigner.key}'\n`,
-    {
-      mode: 0o600,
-    },
-  );
+  state.signer = writeSigner(keys, raw);
+  state.signer.configFile = rel(state.signer.configFile);
+  save();
 
   const seamKey = randomBytes(32).toString('hex');
   writeDevVars({
@@ -379,6 +416,8 @@ async function main() {
     DRAND_RELAYS: urls.drand,
     // Personhood (W5-B): the Coinbase and EAS mocks, and a fresh person-ID key.
     PERSON_ID_KEY: randomBytes(32).toString('hex'),
+    // Stakes person tags (W6-B): a fresh key every run.
+    PERSON_TAG_KEY: randomBytes(32).toString('hex'),
     COINBASE_CLIENT_ID: 'mock-client-id',
     COINBASE_CLIENT_SECRET: 'mock-client-secret',
     COINBASE_LOGIN_ORIGIN: urls.coinbase,
@@ -395,12 +434,35 @@ async function main() {
   }
 
   await migrations;
-  log('starting wrangler dev');
+  const seededAt = Date.now();
+  await run(
+    'config-seeds',
+    WRANGLER,
+    [
+      'd1',
+      'execute',
+      'DB',
+      '--local',
+      '--persist-to',
+      PERSIST_DIR,
+      '--command',
+      `INSERT INTO config (key, value_json, updated_at) VALUES ${Object.entries(CONFIG_SEEDS)
+        .map(([key, value]) => `('${key}', '${value}', ${seededAt})`)
+        .join(', ')}`,
+    ],
+    { cwd: API_DIR, env: { ...process.env, WRANGLER_SEND_METRICS: 'false', CI: 'true' } },
+  );
+  log('starting wrangler dev (the API and the ticket signer)');
   state.pids.wrangler = start(
     'wrangler',
     WRANGLER,
     [
       'dev',
+      // The API first: it takes the port and --env-file; the signer reads .run/signer/.dev.vars.
+      '--config',
+      join(API_DIR, 'wrangler.jsonc'),
+      '--config',
+      join(ROOT, state.signer.configFile),
       '--local',
       '--ip',
       '127.0.0.1',
@@ -416,7 +478,12 @@ async function main() {
       '--log-level',
       'info',
     ],
-    { cwd: API_DIR, env: { ...process.env, WRANGLER_SEND_METRICS: 'false' } },
+    {
+      cwd: API_DIR,
+      // No cf.json fetch: every request gets wrangler's placeholder `request.cf` (US, TX), so
+      // geo checks see the same location on every machine (CONFIG_SEEDS).
+      env: { ...process.env, WRANGLER_SEND_METRICS: 'false', CLOUDFLARE_CF_FETCH_ENABLED: 'false' },
+    },
   );
   state.apiUrl = urls.api;
   state.appOrigin = urls.appOrigin;

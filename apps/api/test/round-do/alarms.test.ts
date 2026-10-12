@@ -135,21 +135,24 @@ describe('DO-5: the alarm chain', () => {
         beaconTimeSec: l.beaconTimeSec,
       },
     ]);
-    expect(settled).toEqual([]);
+    // Stakes settlement starts at close: it streams the entry set until the beacon (W6-A).
+    const stakesJob = { roundId: l.roundId, mode: 'stakes', idempotencyKey: `${l.roundId}:stakes` };
+    expect(settled).toEqual([stakesJob]);
 
     await alarmAt(r.stub, beaconAt - 1);
-    expect(settled).toEqual([]);
+    expect(settled).toEqual([stakesJob]);
     await alarmAt(r.stub, beaconAt);
     expect(settled).toEqual([
+      stakesJob,
       { roundId: l.roundId, mode: 'free', idempotencyKey: `${l.roundId}:free` },
-      { roundId: l.roundId, mode: 'stakes', idempotencyKey: `${l.roundId}:stakes` },
+      stakesJob,
     ]);
 
     // Free still pending 24 h after the beacon time: the rule-8 job is enqueued.
     await alarmAt(r.stub, beaconAt + 24 * HOUR - 1);
-    expect(settled).toHaveLength(2);
+    expect(settled).toHaveLength(3);
     await alarmAt(r.stub, beaconAt + 24 * HOUR);
-    expect(settled[2]).toEqual({
+    expect(settled[3]).toEqual({
       roundId: l.roundId,
       mode: 'free',
       idempotencyKey: `${l.roundId}:free:rule8`,
@@ -160,7 +163,7 @@ describe('DO-5: the alarm chain', () => {
 
     // A stray alarm afterwards changes nothing.
     await alarmAt(r.stub, beaconAt + 48 * HOUR);
-    expect(settled).toHaveLength(3);
+    expect(settled).toHaveLength(4);
     expect(commits).toHaveLength(1);
   });
 

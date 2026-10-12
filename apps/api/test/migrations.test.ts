@@ -25,6 +25,8 @@ const SPEC_COLUMNS: Record<string, readonly string[]> = {
     'coinbase_country',
     'coinbase_region',
     'created_at',
+    // 0012 (W6-B): the age the latest attestation named (spec issue raised in docs/sessions/W6-B.md).
+    'age_attested_min',
   ],
   identities: ['id', 'user_id', 'provider', 'external_id', 'verified_at', 'data_json'],
   questions: [
@@ -74,6 +76,8 @@ const SPEC_COLUMNS: Record<string, readonly string[]> = {
     'expiry',
     'issued_at',
     'used_tx',
+    // 0012 (W6-B): the round's game day, for the one-live-ticket-per-game-day insert.
+    'game_day',
   ],
   entries: [
     'id',
@@ -281,6 +285,8 @@ const SPEC_UNIQUE: readonly KeySpec[] = [
 /** Plain indexes the spec names. */
 const SPEC_INDEXES: readonly KeySpec[] = [
   { table: 'stakes_tickets', columns: ['round_id', 'person_tag'] },
+  // 0012 (W6-B).
+  { table: 'stakes_tickets', columns: ['user_id', 'game_day'] },
 ];
 
 interface IndexInfo {
@@ -529,6 +535,32 @@ describe('constraints reject bad rows', () => {
     await expect(ins('h4', '0xtx2')).rejects.toThrow('UNIQUE constraint failed');
   });
 
+  it('0012: stakes_tickets.game_day is a YYYY-MM-DD date; users.age_attested_min is 18 (default) or 21', async () => {
+    const ticket = (hash: string, day: string | null) =>
+      env.DB.prepare(
+        "INSERT INTO stakes_tickets (ticket_hash, round_id, person_tag, user_id, wallet, expiry, issued_at, game_day) VALUES (?1, 'r', 't', 'u', '0x1', 0, 0, ?2)",
+      )
+        .bind(hash, day)
+        .run();
+    await ticket('g1', '2026-10-08');
+    await ticket('g2', null);
+    await expect(ticket('g3', '2026-1-8')).rejects.toThrow('CHECK constraint failed');
+
+    await env.DB.prepare(
+      "INSERT INTO users (id, handle, ref_code, created_at) VALUES ('a18', 'a18', 'RA18', 0)",
+    ).run();
+    const age = () =>
+      env.DB.prepare("SELECT age_attested_min FROM users WHERE id = 'a18'").first<{
+        age_attested_min: number;
+      }>();
+    expect((await age())?.age_attested_min).toBe(18);
+    await env.DB.prepare("UPDATE users SET age_attested_min = 21 WHERE id = 'a18'").run();
+    expect((await age())?.age_attested_min).toBe(21);
+    expect(await rejects("UPDATE users SET age_attested_min = 19 WHERE id = 'a18'")).toContain(
+      'CHECK constraint failed',
+    );
+  });
+
   it('settlements: one current proposal per (round, mode); superseded ones are kept', async () => {
     const ins = (seq: number, superseded: number | null) =>
       env.DB.prepare(
@@ -600,6 +632,35 @@ describe('constraints reject bad rows', () => {
         "INSERT INTO rounds (id, kind, opens_at, closes_at, locked_at) VALUES ('r2', 'daily', 0, 1, 0)",
       ),
     ).toContain('rounds_locked_complete');
+  });
+});
+
+describe('0011 (W6-A)', () => {
+  it('Stakes entries are read in chain order through an index', async () => {
+    const plan = await env.DB.prepare(
+      `EXPLAIN QUERY PLAN SELECT id FROM entries WHERE round_id = ?1 AND mode = 'stakes'
+         AND (block_number > ?2 OR (block_number = ?2 AND log_index > ?3))
+       ORDER BY block_number, log_index LIMIT 500`,
+    )
+      .bind('r', 0, 0)
+      .all<{ detail: string }>();
+    const details = plan.results.map((r) => r.detail).join('\n');
+    expect(details).toContain('entries_round_stakes_chain_idx');
+    expect(details).not.toContain('TEMP B-TREE');
+  });
+});
+
+describe('0013 (W6-D)', () => {
+  it("GET /claims?wallet= finds a wallet's Stakes entries through an index", async () => {
+    const plan = await env.DB.prepare(
+      `EXPLAIN QUERY PLAN SELECT e.round_id FROM entries e JOIN rounds r ON r.id = e.round_id
+       WHERE e.wallet = ?1 AND e.mode = 'stakes' AND r.kind = 'daily'`,
+    )
+      .bind('0x0000000000000000000000000000000000000001')
+      .all<{ detail: string }>();
+    const details = plan.results.map((r) => r.detail).join('\n');
+    expect(details).toContain('entries_stakes_wallet_idx');
+    expect(details).not.toMatch(/SCAN e\b/);
   });
 });
 

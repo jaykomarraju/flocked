@@ -12,7 +12,7 @@ import { VOID_REFUSED_ALERT_AFTER, type RoundDO } from '../../src/do/round-do.js
 import { recordSentTx } from '../../src/indexer/sent.js';
 import { stakesVoidHandler } from '../../src/lifecycle/handlers.js';
 import type { RpcResult, EnterFreeResponse } from '../../src/do/types.js';
-import { VOID_RESOLVE_GRACE_MS } from '../../src/lifecycle/void.js';
+import { VOID_RESOLVE_GRACE_MS, applyVoid } from '../../src/lifecycle/void.js';
 import type { FakeChain } from '../anchor-do/fake-chain.js';
 import { captureAlerts } from '../indexer/helpers.js';
 import { failFirstMark } from '../scheduler/helpers.js';
@@ -168,6 +168,43 @@ describe('SET-1b (rule 4): a void before close', () => {
     expect(await balance(a, r.locked.roomId as string)).toBe(100);
   });
 
+  it('writes one refund payouts row per Free entry, however often applyVoid runs (owner decision, Oct 12)', async () => {
+    queues = recordQueues();
+    const t0 = Date.UTC(2026, 9, 8, 12, 0, 0);
+    const r = await stakesRound(fakeChainAt(t0), { modes: ['free'] });
+    const scope = r.locked.roomId as string;
+    setClock(t0);
+    await r.stub.init(r.locked);
+    const a = await createUser(100, scope);
+    const b = await createUser(100, scope);
+    okValue(await enter(r, a, '25'));
+    okValue(await enter(r, b, '40'));
+    expect((await r.stub.requestVoid()).accepted).toBe(true);
+    await alarmAt(r.stub, t0 + 1_000);
+    expect(await voidRecord(r.stub)).toMatchObject({ state: 'confirmed', applied: true });
+
+    const payouts = () =>
+      env.DB.prepare(
+        'SELECT user_id, wallet, kind, amount, claimed_at FROM payouts WHERE round_id = ?1 ORDER BY amount',
+      )
+        .bind(r.locked.roundId)
+        .all()
+        .then((x) => x.results);
+    const first = await payouts();
+    expect(first.map(({ claimed_at: _, ...p }) => p)).toEqual([
+      { user_id: a, wallet: null, kind: 'refund', amount: 25 },
+      { user_id: b, wallet: null, kind: 'refund', amount: 40 },
+    ]);
+    // Free payouts are credited at once, so they are written claimed.
+    expect(first.every((p) => typeof p.claimed_at === 'number')).toBe(true);
+    // Retries (a crash after the D1 writes, a re-delivered alarm) write nothing more.
+    expect(await applyVoid(env, r.locked, t0 + 5_000)).toEqual([]);
+    expect(await applyVoid(env, r.locked, t0 + 9_000)).toEqual([]);
+    expect(await payouts()).toEqual(first);
+    expect(await balance(a, scope)).toBe(100);
+    expect(await balance(b, scope)).toBe(100);
+  });
+
   it('is refused once closesAt has passed', async () => {
     queues = recordQueues();
     const fake = fakeChainAt(Date.UTC(2026, 9, 8, 12, 0, 0));
@@ -230,9 +267,11 @@ describe('a void that misses close is abandoned', () => {
     expect(state.voidRequested).toBe(false);
     expect(entered.entry.stake).toBe('25');
 
-    // Both modes are settled as usual at beacon time.
+    // Stakes settlement starts at close (W6-A: it streams the entry set until the beacon); both
+    // modes are enqueued as usual at beacon time.
+    expect(queues.settled.map((m) => m.mode)).toEqual(['stakes']);
     await alarmAt(r.stub, r.locked.beaconTimeSec * 1000);
-    expect(queues.settled.map((m) => m.mode).sort()).toEqual(['free', 'stakes']);
+    expect(queues.settled.map((m) => m.mode).sort()).toEqual(['free', 'stakes', 'stakes']);
     // No RoundDO alert (the AnchorDO alerts on its own: it has no ANCHOR_KEY in this test).
     captured.restore();
     expect(captured.alerts.filter((x) => x.roundId === r.locked.roundId)).toEqual([]);
