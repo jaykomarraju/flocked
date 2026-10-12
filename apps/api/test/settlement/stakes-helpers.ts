@@ -13,9 +13,18 @@ import { QUICKNET, encodePlaintext, encryptPick, roundRefFromChainId } from '@fl
 import { bytesToHex, keccak256, type Hex } from 'viem';
 import { generatePrivateKey } from 'viem/accounts';
 import type { SettlementDO } from '../../src/do/settlement-do.js';
+import { handlers } from '../../src/indexer/handlers.js';
+import type { ChainEvent, IndexerRpc } from '../../src/indexer/types.js';
 import type { SettlementStatus } from '../../src/do/types.js';
 import type { TallyResult } from '../../src/settlement/types.js';
-import { BEACON, BEACON_TIME_MS, fakeRelays, recordDecryptQueues, settlement } from './helpers.js';
+import {
+  BEACON,
+  BEACON_TIME_MS,
+  RELAYS,
+  fakeRelays,
+  recordDecryptQueues,
+  settlement,
+} from './helpers.js';
 import { decryptHandler } from '../../src/queues/decrypt.js';
 import { FAKE_DEPLOYMENT, FakeEscrowChain } from './stakes-chain.js';
 
@@ -56,6 +65,7 @@ export function stakesEnv(): void {
     LOCAL_DEPLOYMENT: FAKE_DEPLOYMENT,
     OPERATOR_KEY: generatePrivateKey(),
     BASE_RPC_URL: 'https://primary.invalid',
+    DRAND_RELAYS: RELAYS.join(','),
   });
   delete (env as { BASE_RPC_URL_FALLBACK?: string }).BASE_RPC_URL_FALLBACK;
 }
@@ -269,4 +279,46 @@ export async function stakesMode(roundId: string) {
       claims_open_at: number | null;
       final_at: number | null;
     }>();
+}
+
+/**
+ * Runs the default registry's handlers on each event, as the dispatcher does, and commits what
+ * they return. ALERT-8's handler is left out (it needs the indexer's RPC).
+ */
+export async function index(evts: ChainEvent[]): Promise<void> {
+  const ctx = { rpc: {} as IndexerRpc };
+  for (const evt of evts) {
+    for (const h of handlers.for(evt.event)) {
+      if (h.name === 'alert-unsent-tx') continue;
+      const stmts = (await h.fn(evt, env, ctx)) ?? [];
+      if (stmts.length > 0) await env.DB.batch(stmts);
+    }
+  }
+}
+
+/** The round's Stakes `payouts` rows, by wallet and kind. */
+export async function stakesPayouts(roundId: string) {
+  const { results } = await env.DB.prepare(
+    "SELECT user_id, wallet, kind, amount FROM payouts WHERE round_id = ?1 AND mode = 'stakes' ORDER BY wallet, kind",
+  )
+    .bind(roundId)
+    .all<{ user_id: string; wallet: string; kind: string; amount: number }>();
+  return results;
+}
+
+/** The round's Stakes settlement records, by proposal number. */
+export async function stakesRecords(roundId: string) {
+  const { results } = await env.DB.prepare(
+    "SELECT proposal_seq, outcome, bundle_hash, tx_hash, superseded_at, settled_at FROM settlements WHERE round_id = ?1 AND mode = 'stakes' ORDER BY proposal_seq",
+  )
+    .bind(roundId)
+    .all<{
+      proposal_seq: number;
+      outcome: string;
+      bundle_hash: string;
+      tx_hash: string | null;
+      superseded_at: number | null;
+      settled_at: number | null;
+    }>();
+  return results;
 }

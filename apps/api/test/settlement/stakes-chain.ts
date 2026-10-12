@@ -22,6 +22,8 @@ import {
   type Address,
   type Hex,
 } from 'viem';
+import { decodeLog } from '../../src/indexer/decode.js';
+import type { ChainEvent } from '../../src/indexer/types.js';
 import { FAKE_ESCROW } from '../anchor-do/fake-chain.js';
 
 export { FAKE_DEPLOYMENT, FAKE_ESCROW } from '../anchor-do/fake-chain.js';
@@ -120,6 +122,8 @@ export class FakeEscrowChain {
   readonly nonces = new Map<string, number>();
   /** Every operator call mined, in order: `propose:<roundId>`, `finalize:<roundId>`, ... */
   readonly calls: string[] = [];
+  /** The transaction of each mined call, in order. */
+  readonly callTxs: { call: string; hash: Hex }[] = [];
   /** Logs a provider leaves out of eth_getLogs (by transaction hash). */
   readonly dropLogs: Record<'primary' | 'fallback', Set<Hex>> = {
     primary: new Set(),
@@ -127,6 +131,10 @@ export class FakeEscrowChain {
   };
   /** RPC method → calls, per provider. */
   readonly requests = new Map<string, number>();
+  /** Mine every accepted transaction at once; otherwise they wait in `pool` for `mine()`. */
+  automine = true;
+  /** Accepted, not yet mined (raw transactions by `from:nonce`). */
+  readonly pool = new Map<string, Hex>();
 
   constructor(
     readonly t0: number,
@@ -185,6 +193,13 @@ export class FakeEscrowChain {
     const entry = { ...e, block: this.head, logIndex: 0 };
     r.entries.push(entry);
     return entry;
+  }
+
+  /** The latest mined transaction of `call` (e.g. 'propose'). */
+  lastTx(call: string): Hex {
+    const found = this.callTxs.filter((c) => c.call === call).pop();
+    if (!found) throw new Error(`fake escrow: no ${call} mined`);
+    return found.hash;
   }
 
   round(id: bigint): FakeRound {
@@ -399,16 +414,37 @@ export class FakeEscrowChain {
     }
   }
 
+  /** Mines the pooled transactions, in nonce order, one block each. */
+  async mine(): Promise<void> {
+    for (const raw of [...this.pool.values()]) await this.execute(raw);
+    this.pool.clear();
+  }
+
   private async sendRaw(raw: Hex): Promise<Hex> {
     const parsed = parseTransaction(raw);
     const from = (
       await recoverTransactionAddress({ serializedTransaction: raw as never })
     ).toLowerCase();
     const hash = keccak256(raw);
-    if (this.receipts.has(hash)) throw new Error('already known');
     const nonce = parsed.nonce as number;
+    if (this.receipts.has(hash) || this.pool.get(`${from}:${nonce}`) === raw) {
+      throw new Error('already known');
+    }
     if (nonce < (this.nonces.get(from) ?? 0)) throw new Error('nonce too low');
-    this.nonces.set(from, nonce + 1);
+    if (!this.automine) {
+      this.pool.set(`${from}:${nonce}`, raw);
+      return hash;
+    }
+    return this.execute(raw);
+  }
+
+  private async execute(raw: Hex): Promise<Hex> {
+    const parsed = parseTransaction(raw);
+    const from = (
+      await recoverTransactionAddress({ serializedTransaction: raw as never })
+    ).toLowerCase();
+    const hash = keccak256(raw);
+    this.nonces.set(from, (parsed.nonce as number) + 1);
     this.head += 1;
     const data = parsed.data ?? '0x';
     let logs: [string, Record<string, unknown>][] = [];
@@ -417,6 +453,7 @@ export class FakeEscrowChain {
       logs = this.apply(data, this.now, true);
       const call = decodeFunctionData({ abi: flockedEscrowAbi, data });
       this.calls.push(`${call.functionName}:${String((call.args as readonly unknown[])[0])}`);
+      this.callTxs.push({ call: call.functionName, hash });
     } catch {
       ok = false;
     }
@@ -466,8 +503,12 @@ export class FakeEscrowChain {
         return toHex(1_000_000n);
       case 'eth_gasPrice':
         return toHex(1_001_000_000n);
-      case 'eth_getTransactionCount':
-        return toHex(this.nonces.get((params[0] as string).toLowerCase()) ?? 0);
+      case 'eth_getTransactionCount': {
+        const from = (params[0] as string).toLowerCase();
+        let n = this.nonces.get(from) ?? 0;
+        if (params[1] === 'pending') while (this.pool.has(`${from}:${n}`)) n += 1;
+        return toHex(n);
+      }
       case 'eth_sendRawTransaction':
         return this.sendRaw(params[0] as Hex);
       case 'eth_getTransactionReceipt':
@@ -510,4 +551,71 @@ export class FakeEscrowChain {
         throw new Error(`fake RPC: ${method} not supported`);
     }
   }
+}
+
+/** The indexer's view of a logged event (src/indexer/types.ts ChainEvent), args as JSON. */
+export function chainEventOf(
+  chain: FakeEscrowChain,
+  eventName: string,
+  args: Record<string, unknown>,
+  at: { txHash: Hex; block: number; logIndex?: number },
+): ChainEvent {
+  const { topics, data } = encodeLog(eventName, args);
+  const d = decodeLog(flockedEscrowAbi, {
+    address: FAKE_ESCROW,
+    topics,
+    data,
+    blockNumber: at.block,
+    blockHash: chain.hashOf(at.block),
+    transactionHash: at.txHash,
+    logIndex: at.logIndex ?? 0,
+  });
+  return {
+    chainId: 31337,
+    contract: FAKE_ESCROW,
+    contractKind: 'escrow',
+    blockNumber: at.block,
+    blockHash: chain.hashOf(at.block),
+    blockTimestampSec: chain.timeOf(at.block),
+    txHash: at.txHash,
+    logIndex: at.logIndex ?? 0,
+    event: d.event,
+    args: d.args,
+    removed: false,
+    revision: 0,
+  };
+}
+
+/** The events a mined transaction logged, as the indexer hands them to handlers. */
+export function eventsOf(chain: FakeEscrowChain, txHash: Hex): ChainEvent[] {
+  const receipt = chain.receipts.get(txHash) as
+    { blockNumber: Hex; logs: { topics: Hex[]; data: Hex; logIndex: Hex }[] } | undefined;
+  if (!receipt) throw new Error(`fake escrow: no receipt for ${txHash}`);
+  const block = Number(BigInt(receipt.blockNumber));
+  return receipt.logs.map((l) => {
+    const logIndex = Number(BigInt(l.logIndex));
+    const d = decodeLog(flockedEscrowAbi, {
+      address: FAKE_ESCROW,
+      topics: l.topics,
+      data: l.data,
+      blockNumber: block,
+      blockHash: chain.hashOf(block),
+      transactionHash: txHash,
+      logIndex,
+    });
+    return {
+      chainId: 31337,
+      contract: FAKE_ESCROW,
+      contractKind: 'escrow',
+      blockNumber: block,
+      blockHash: chain.hashOf(block),
+      blockTimestampSec: chain.timeOf(block),
+      txHash,
+      logIndex,
+      event: d.event,
+      args: d.args,
+      removed: false,
+      revision: 0,
+    };
+  });
 }
