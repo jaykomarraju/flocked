@@ -37,6 +37,27 @@ export const ClaimItemSchema = z.object({
 });
 export type ClaimItem = z.infer<typeof ClaimItemSchema>;
 
-/** GET /claims response. */
-export const ClaimsResponseSchema = z.object({ claims: z.array(ClaimItemSchema) });
+/**
+ * One of the wallet's own unclaimed payouts or refunds in a room round, listed by `?wallet=` so a
+ * deleted account can still claim it ("Identity and personhood" › Account deletion): only what
+ * claiming needs, with no round ID, question, room or other members' data.
+ */
+export const RoomClaimItemSchema = z.object({
+  chainRoundId: DecimalBigintSchema,
+  kind: PayoutKindSchema,
+  account: AddressSchema,
+  amount: DecimalBigintSchema,
+  proof: z.array(Hex32Schema).nullable(),
+  claimsOpenAt: EpochMsSchema.nullable(),
+});
+export type RoomClaimItem = z.infer<typeof RoomClaimItemSchema>;
+
+/**
+ * GET /claims response. `roomClaims` comes with `?wallet=` only (signed in, the caller's room
+ * rounds are in `claims` like any other).
+ */
+export const ClaimsResponseSchema = z.object({
+  claims: z.array(ClaimItemSchema),
+  roomClaims: z.array(RoomClaimItemSchema).optional(),
+});
 export type ClaimsResponse = z.infer<typeof ClaimsResponseSchema>;
