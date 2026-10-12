@@ -5,7 +5,6 @@
 import { env } from 'cloudflare:test';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import type { Env } from '../../src/env.js';
-import type { StakesEnv } from '../../src/stakes/signer.js';
 import type { WranglerSummary } from '../env.js';
 
 declare global {
@@ -37,10 +36,9 @@ describe('NFR-7: apps/api has no access to TICKET_SIGNER_KEY', () => {
     }
   });
 
-  it('is not a field of Env, nor of the Stakes env with the SIGNER binding', () => {
+  it('is not a field of Env, which reaches the signer only through the SIGNER binding', () => {
     expectTypeOf<Env>().not.toHaveProperty('TICKET_SIGNER_KEY');
-    expectTypeOf<StakesEnv>().not.toHaveProperty('TICKET_SIGNER_KEY');
-    expectTypeOf<StakesEnv>().toHaveProperty('SIGNER');
+    expectTypeOf<Env>().toHaveProperty('SIGNER');
   });
 
   it('no source file reads it or imports the signer', () => {

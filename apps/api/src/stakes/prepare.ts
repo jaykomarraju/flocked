@@ -37,6 +37,7 @@ import type { SessionUser } from '../lib/auth-context.js';
 import { now } from '../lib/clock.js';
 import { HttpError } from '../lib/errors.js';
 import { log } from '../lib/log.js';
+import type { Env } from '../env.js';
 import { readStakesConfig } from '../personhood/config-store.js';
 import { stakesEligibility } from '../personhood/eligibility.js';
 import {
@@ -46,7 +47,7 @@ import {
   stakedOnGameDay,
 } from './cap.js';
 import { personTag } from './person-tag.js';
-import { ticketSigner, type StakesEnv } from './signer.js';
+import { ticketSigner } from './signer.js';
 
 /** Room rounds: the account must exist this long before the round closes. */
 export const ROOM_ACCOUNT_MIN_AGE_MS = 24 * 3600 * 1000;
@@ -114,7 +115,7 @@ function lockedStake(round: RoundRow): bigint | null {
 }
 
 /** Check 2: the Stakes mode is open, in D1 and in the RoundDO. */
-async function requireOpenStakesMode(env: StakesEnv, round: RoundRow, t: number): Promise<void> {
+async function requireOpenStakesMode(env: Env, round: RoundRow, t: number): Promise<void> {
   if (round.stakes_status === null || round.chain_round_id === null) {
     throw new HttpError('mode_unavailable', "Stakes isn't open in this round");
   }
@@ -256,7 +257,7 @@ async function insertTicket(
 
 /** Runs every check, records the ticket, has the signer sign it, and returns what `enter` needs. */
 export async function prepareStakesTicket(
-  env: StakesEnv,
+  env: Env,
   user: Pick<SessionUser, 'id'>,
   roundId: string,
   wallet: Address,

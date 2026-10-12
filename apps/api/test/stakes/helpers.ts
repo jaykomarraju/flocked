@@ -9,7 +9,8 @@ import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { app } from '../../src/app.js';
 import { deploymentOf } from '../../src/chain/client.js';
 import type { RoundDO } from '../../src/do/round-do.js';
-import type { SignTicketRequest, StakesEnv } from '../../src/stakes/signer.js';
+import type { Env } from '../../src/env.js';
+import type { SignTicketRequest } from '../../src/stakes/signer.js';
 import { FAKE_DEPLOYMENT } from '../anchor-do/fake-chain.js';
 import { realSession } from '../helpers/index.js';
 import { ORIGIN, TOS } from '../auth/fixtures.js';
@@ -53,7 +54,7 @@ export class FakeSigner {
 }
 
 export interface StakesTest extends PersonhoodTest {
-  env: StakesEnv;
+  env: Env;
   signer: FakeSigner;
 }
 
@@ -64,10 +65,10 @@ export function clockAt(t: StakesTest, ms: number): void {
 }
 
 /** The personhood env plus PERSON_TAG_KEY, the fake signer and the fake chain's deployment. */
-export function stakesTest(vars: Partial<StakesEnv> = {}): StakesTest {
+export function stakesTest(vars: Partial<Env> = {}): StakesTest {
   const signer = new FakeSigner();
   const p = personhoodEnv({ PERSON_TAG_KEY: TEST_PERSON_TAG_KEY, ...vars });
-  const e = p.env as StakesEnv;
+  const e = p.env as Env;
   Object.assign(e, {
     SIGNER: signer,
     CHAIN_ID: env.CHAIN_ID,
