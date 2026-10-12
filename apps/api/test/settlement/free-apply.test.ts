@@ -424,11 +424,14 @@ describe('applyFree: a voided mode (rule 4)', () => {
     expect(voided.map((l) => [l.reason, l.delta])).toEqual(
       r.entries.map(() => ['void_refund', 10]),
     );
+    // Every Free refund writes `refund` payouts rows, rule 4 included (owner decision, Oct 12).
+    const refunds = await payoutsOf(r.roundId);
+    expect([...refunds.values()]).toEqual(r.entries.map(() => ['refund', 10]));
 
     const deps = recordedDeps();
     await expect(applyFree(env, result, deps.deps)).rejects.toThrow(/is voided, not revealing/);
     expect(await ledgerOf(r.roundId)).toEqual(voided);
-    expect(await payoutsOf(r.roundId)).toEqual(new Map());
+    expect(await payoutsOf(r.roundId)).toEqual(refunds);
     expect(await all('SELECT 1 FROM settlements WHERE round_id = ?1', r.roundId)).toEqual([]);
     expect(deps.results).toEqual([]);
 

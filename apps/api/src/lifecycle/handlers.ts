@@ -44,10 +44,11 @@ const isPermanent = (err: unknown) =>
   err instanceof RangeError || /^(ingestStakesEntry|onModeResult):/.test(message(err));
 
 /**
- * Ticketed `Entered` → its `entries` row and the RoundDO's Stakes counters. A removal deletes the row
- * and un-counts it; removals are dispatched before additions, so a log re-mined elsewhere is then
- * added again with its new block fields (and an addition at a slot already stored updates them).
- * Foreign entries are entered.ts's.
+ * Ticketed `Entered` → its `entries` row, its ticket marked used (`stakes_tickets.used_tx`, which the
+ * daily cap and the one-ticket-per-person rule read; W6-D), and the RoundDO's Stakes counters. A
+ * removal deletes the row, clears the mark and un-counts it; removals are dispatched before additions,
+ * so a log re-mined elsewhere is then added again with its new block fields (and an addition at a slot
+ * already stored updates them). Foreign entries are entered.ts's.
  */
 export const stakesIngestHandler: EventHandler = async (evt, env) => {
   if (evt.contractKind !== 'escrow') return;
@@ -81,6 +82,17 @@ export const stakesIngestHandler: EventHandler = async (evt, env) => {
           evt.logIndex,
           createdAt,
         );
+  // OR IGNORE: the escrow takes one entry per person tag and round, so another used ticket for the
+  // same (round, person) can't exist; if it ever did, the entry is still stored.
+  const ticket = evt.removed
+    ? db
+        .prepare('UPDATE stakes_tickets SET used_tx = NULL WHERE ticket_hash = ?1 AND used_tx = ?2')
+        .bind(m.args.ticketHash, evt.txHash)
+    : db
+        .prepare(
+          'UPDATE OR IGNORE stakes_tickets SET used_tx = ?2 WHERE ticket_hash = ?1 AND used_tx IS NULL',
+        )
+        .bind(m.args.ticketHash, evt.txHash);
   if (evt.removed) log.warn('stakes_entry_removed', { txHash: evt.txHash, logIndex: evt.logIndex });
   try {
     await env.ROUND.get(env.ROUND.idFromName(m.roundId)).ingestStakesEntry({
@@ -107,7 +119,7 @@ export const stakesIngestHandler: EventHandler = async (evt, env) => {
       txHash: evt.txHash,
     });
   }
-  return [stmt];
+  return [stmt, ticket];
 };
 
 /**

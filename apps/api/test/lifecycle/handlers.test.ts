@@ -318,9 +318,18 @@ describe('ticketed Entered → the RoundDO Stakes counters', () => {
       );
     const counts = async () => (await r.stub.getState()).modes.stakes;
 
+    const usedTx = () =>
+      env.DB.prepare('SELECT used_tx FROM stakes_tickets WHERE ticket_hash = ?1')
+        .bind(ticketHash)
+        .first<{ used_tx: string | null }>()
+        .then((x) => x?.used_tx);
+    expect(await usedTx()).toBeNull();
+
     await commitStatements(await stakesIngestHandler(evt, env, ctx));
     const row = await stored();
     expect(row).toMatchObject({ user_id: user, wallet: player, commitment: keccak256(ciphertext) });
+    // W6-D: the ticket is marked used, which the daily cap and the one-ticket rule read (W6-B).
+    expect(await usedTx()).toBe(evt.txHash);
     expect(bytesToHex(new Uint8Array(row?.ciphertext ?? new ArrayBuffer(0)))).toBe(ciphertext);
     expect(await counts()).toMatchObject({ entrantCount: 1, pool: stake });
 
@@ -329,10 +338,12 @@ describe('ticketed Entered → the RoundDO Stakes counters', () => {
       await stakesIngestHandler({ ...evt, removed: true, revision: 2 }, env, ctx),
     );
     expect(await stored()).toBeNull();
+    expect(await usedTx()).toBeNull();
     expect(await counts()).toMatchObject({ entrantCount: 0, pool: '0' });
     const moved = { ...evt, blockNumber: 205, revision: 3 };
     await commitStatements(await stakesIngestHandler(moved, env, ctx));
     expect((await stored())?.block_number).toBe(205);
+    expect(await usedTx()).toBe(evt.txHash);
     expect(await counts()).toMatchObject({ entrantCount: 1, pool: stake });
     expect(await doBlocks()).toEqual([205]);
 
@@ -373,9 +384,10 @@ describe('ticketed Entered → the RoundDO Stakes counters', () => {
       ciphertext: '0x0102',
     });
     // Rethrown, it would stop dispatch at this row for good. The entry is still stored in D1 (W6-A):
-    // the RoundDO's counters are a display value, D1 the settlement's input.
+    // the RoundDO's counters are a display value, D1 the settlement's input. W6-D: the second
+    // statement marks the ticket used.
     const stmts = await stakesIngestHandler(evt, env, ctx);
-    expect(stmts).toHaveLength(1);
+    expect(stmts).toHaveLength(2);
     captured.restore();
     expect(
       captured.alerts.filter((a) => a.roundId === r.locked.roundId && a.code === 'ALERT_DO_ERROR'),
