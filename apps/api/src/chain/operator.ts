@@ -190,7 +190,11 @@ async function runOperatorTx(
   data: Hex,
 ): Promise<OperatorTxResult> {
   const op = operator(env, deps);
-  if (op instanceof Error) return { status: 'refused', error: op.message };
+  if (op instanceof Error) {
+    // Already sent (W5-F1 C3): only the chain can say whether it was mined, so this is no answer.
+    if (await readRow(env.DB, purpose)) throw op;
+    return { status: 'refused', error: op.message };
+  }
   const db = env.DB;
   const t = () => clockNow(env);
 

@@ -460,3 +460,33 @@ describe('W4-F1: permanent handler conditions alert and return (V3)', () => {
     expect((await modeRow(r.locked.roundId, 'stakes'))?.status).toBe('voided');
   });
 });
+
+describe('W5-F1: a void is abandoned at close only on proof', () => {
+  it('a sent voidRound whose operator config breaks at close is not abandoned on that refusal (C3)', async () => {
+    queues = recordQueues();
+    const closesAt = Date.UTC(2026, 9, 14, 1, 0, 0);
+    const fake = fakeChainAt(closesAt - 10_000);
+    const r = await stakesRound(fake, { opensAt: closesAt - 24 * 3_600_000 });
+    setClock(closesAt - 10_000);
+    await r.stub.init(r.locked);
+    fake.automine = false;
+    await r.stub.requestVoid();
+    await alarmAt(r.stub, closesAt - 9_000);
+    expect(fake.pool.size).toBe(1); // sent: its operator_txs row exists
+
+    // A redeploy leaves TX_MAX_FEE_GWEI invalid; at close the head is stamped past closesAt.
+    fake.time = Math.floor(closesAt / 1000) + 1;
+    Object.assign(env, { TX_MAX_FEE_GWEI: 'abc' });
+    try {
+      await alarmAt(r.stub, closesAt);
+      expect(await voidRecord(r.stub)).toMatchObject({ state: 'requested' });
+      expect((await readMeta(r.stub))?.done).not.toContain('close');
+    } finally {
+      delete (env as { TX_MAX_FEE_GWEI?: string }).TX_MAX_FEE_GWEI;
+    }
+
+    // Fixed: the push answers definitely again (unmined, and it can only revert now).
+    await alarmAt(r.stub, closesAt + 3_000);
+    expect(await voidRecord(r.stub)).toMatchObject({ state: 'abandoned' });
+  });
+});
