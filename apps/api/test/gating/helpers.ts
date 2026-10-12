@@ -374,14 +374,17 @@ export async function roundTimes(roundId: string) {
 
 // The dangerous window --------------------------------------------------------------------------
 
-/** An env whose D1 refuses applyFree's step 4 (the `revealing → settled` update with revealed_at). */
+/**
+ * An env whose D1 refuses applyFree's reveal: the update that sets `revealed_at` once the record and
+ * outcomes are durable, before any balance moves (W6-D moved it ahead of the credits).
+ */
 function crashBeforeReveal(): Env {
   const db = env.DB;
   const crashing = new Proxy(db, {
     get(target, prop, receiver) {
       if (prop === 'prepare') {
         return (sql: string) => {
-          if (/UPDATE round_modes SET status = \?2[\s\S]*revealed_at = \?5/.test(sql)) {
+          if (/UPDATE round_modes SET revealed_at = \?2/.test(sql)) {
             throw new Error('injected crash before the reveal');
           }
           return target.prepare(sql);
@@ -402,10 +405,10 @@ export interface FreeWindow {
 
 /**
  * Runs the real Free pipeline (SettlementDO: beacon, decrypt, reduce, the bundle written to R2) and
- * the real applyFree, crashed just before its step 4: the settlement record, the entries' option,
- * validity and VOID reason, the payouts and ledger credits are in D1 and the bundle is in R2, while
- * the mode is still `revealing` with `revealed_at` null. That is what a crash between steps 3 and 4
- * leaves (and what readers see while steps 1–3 run); the SettlementDO's retry then completes it.
+ * the real applyFree, crashed just before its reveal: the settlement record and the entries' option,
+ * validity and VOID reason are in D1 and the bundle is in R2, while the mode is still `revealing`
+ * with `revealed_at` null and no balance has moved. That is what a crash there leaves (and what
+ * readers see while those steps run); the SettlementDO's retry then completes it.
  */
 export async function freeToWindow(
   roundId: string,

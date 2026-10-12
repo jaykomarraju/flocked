@@ -287,7 +287,7 @@ describe('PIPE-1 (API half), AC-2 (API part): a Free round, every GET route, bef
     meBefore = w.answers.get('entrant GET /me')?.json;
   });
 
-  it('settlement written (record, outcomes, payouts, bundle) but revealed_at null: nothing per option on any route, no bundle served', async () => {
+  it('settlement written (record, outcomes, bundle) but revealed_at null: nothing per option on any route, no bundle served', async () => {
     window = await freeToWindow(s.roundId);
     // The dangerous window is real: D1 and R2 hold the per-option data.
     const entry = await env.DB.prepare('SELECT option_index, valid FROM entries WHERE id = ?1')
@@ -300,31 +300,27 @@ describe('PIPE-1 (API half), AC-2 (API part): a Free round, every GET route, bef
       .bind(s.roundId)
       .first<{ n: number }>();
     expect(rec?.n).toBe(1);
+    // No balance moves before the reveal (W6-D: applyFree sets revealed_at before its credits).
     const payouts = await env.DB.prepare('SELECT kind FROM payouts WHERE round_id = ?1')
       .bind(s.roundId)
       .all<{ kind: string }>();
-    expect(payouts.results.map((p) => p.kind)).toContain('win');
+    expect(payouts.results).toEqual([]);
     expect(await env.BUCKET.head(`bundles/${s.roundId}/free/manifest.json`)).not.toBeNull();
 
     const w = await walk(s, at(BEACON_TIME_MS + 5_000));
     expectSealed(w, s);
   });
 
-  // A winner's balance moving before the reveal tells them their side won. applyFree credits the
-  // ledger (step 3) before it sets `revealed_at` (step 4), and GET /me reads the balance as is, so in
-  // the window the winner's `balances.global` already includes the win. Outside src/read (the fix
-  // belongs to src/settlement/apply/free.ts or the balance read); `it.fails` until it's fixed.
-  it.fails(
-    'KNOWN GAP (reported): a Free winner’s GET /me balance already includes the win before revealed_at',
-    async () => {
-      const a = await get(at(BEACON_TIME_MS + 5_000), '/me', s.headers);
-      const before = meBefore as { balances?: unknown } | undefined;
-      const after = a.json as { balances?: unknown } | null;
-      // Nothing to compare would pass, which `it.fails` reports: this fails only on the balances.
-      if (!before?.balances || !after?.balances) return;
-      expect(after.balances).toEqual(before.balances);
-    },
-  );
+  // A winner's balance moving before the reveal would tell them their side won. applyFree used to
+  // credit the ledger before it set `revealed_at`; W6-D sets `revealed_at` first, so in the window
+  // GET /me's balances are still those from before the beacon.
+  it('a Free winner’s GET /me balance does not move before revealed_at', async () => {
+    const a = await get(at(BEACON_TIME_MS + 5_000), '/me', s.headers);
+    const before = meBefore as { balances?: unknown } | undefined;
+    const after = a.json as { balances?: unknown } | null;
+    expect(before?.balances).toBeDefined();
+    expect(after?.balances).toEqual(before?.balances);
+  });
 
   it('revealed: the per-option data is on every read that carries it, and the bundle is served', async () => {
     await window.reveal();
