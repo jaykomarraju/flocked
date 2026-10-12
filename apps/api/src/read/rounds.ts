@@ -376,13 +376,15 @@ export async function readArchive(
 ): Promise<RoundsArchiveResponse> {
   const limit = q.limit ?? ARCHIVE_DEFAULT_LIMIT;
   // Every round of game day D closes before 21:00 New York on D + 1, and a daily round of an
-  // earlier day closes before 21:00 on `before`; the game day is checked exactly below.
+  // earlier day closes before 21:00 on `before`; the game day is checked exactly below. The bound
+  // also takes in `before`'s own daily round (one per game day), which the check drops: one row more
+  // than `limit + 1` is read so that `rows` still tells whether another page exists.
   const bound = q.before ? dailyClosesAt(q.before) * 1000 : Number.MAX_SAFE_INTEGER;
   const { results } = await env.DB.prepare(
     `${ROUND_SELECT} AND r.kind = 'daily' AND r.status = 'closed' AND r.closes_at <= ?1
      ORDER BY r.closes_at DESC LIMIT ?2`,
   )
-    .bind(bound, limit + 1)
+    .bind(bound, limit + 2)
     .all<RoundRow>();
   const rows = results.filter(
     (r) => !q.before || gameDayOf(Math.floor(r.closes_at / 1000)) < q.before,
@@ -421,7 +423,7 @@ export async function readArchive(
     return item;
   });
   const last = page[page.length - 1];
-  const more = rows.length > limit || results.length > limit;
+  const more = rows.length > limit;
   return {
     rounds,
     nextBefore: more && last ? gameDayOf(Math.floor(last.closes_at / 1000)) : null,
