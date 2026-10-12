@@ -32,6 +32,7 @@ import {
   PERSIST_DIR,
   PORTS,
   ROOT,
+  RUN_DIR,
   STACK_DIR,
   TOS_VERSION,
   TURNSTILE_TEST_SECRET,
@@ -347,6 +348,15 @@ async function main() {
     ...Object.fromEntries(Object.entries(keys).map(([role, k]) => [role, k.address])),
   };
   save();
+  // The escrow's ticket signer key, for the signer Worker and stack tests (W6). Never in the API's
+  // .dev.vars: apps/api must have no access to it (NFR-7).
+  writeFileSync(
+    join(RUN_DIR, 'ticket-signer.dev.vars'),
+    `TICKET_SIGNER_KEY='${keys.ticketSigner.key}'\n`,
+    {
+      mode: 0o600,
+    },
+  );
 
   const seamKey = randomBytes(32).toString('hex');
   writeDevVars({
