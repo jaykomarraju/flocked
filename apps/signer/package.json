@@ -1,0 +1,22 @@
+{
+  "name": "@flocked/signer",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Flocked ticket signer Worker: signs Stakes entry tickets that apps/api has recorded. Holds only TICKET_SIGNER_KEY.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.3.7",
+    "@cloudflare/workers-types": "5.20261008.1",
+    "wrangler": "4.148.0"
+  },
+  "dependencies": {
+    "@flocked/abi": "workspace:*",
+    "@flocked/shared": "workspace:*",
+    "viem": "2.57.3"
+  }
+}
