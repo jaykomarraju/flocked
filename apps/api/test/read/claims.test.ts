@@ -10,7 +10,7 @@ import {
   newUlid,
   type ClaimItem,
 } from '@flocked/shared';
-import type { Hex } from 'viem';
+import { keccak256, type Hex } from 'viem';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { chainEventOf } from '../settlement/stakes-chain.js';
 import {
@@ -325,6 +325,30 @@ describe('GET /claims?wallet=', () => {
     const restored = await claims({ wallet: winner });
     expect(restored).toMatchObject([{ roundId: r.roundId, kind: 'win' }]);
     expect(await expectProofs(restored)).toBe(1);
+  });
+
+  it('a bundle whose chunks don’t reproduce its manifest’s payout root leaves the item out', async () => {
+    const r = await seed([0, 1, 1], [], { stakes: { capMultiple: 1 } });
+    await propose(r);
+    const key = `bundles/${r.roundId}/stakes/manifest.json`;
+    const manifest = await ((await env.BUCKET.get(key)) as R2ObjectBody).json<{
+      payoutRoot: string;
+    }>();
+    // A manifest that hashes to the record's bundle hash but claims another root.
+    const forged = new TextEncoder().encode(
+      JSON.stringify({ ...manifest, payoutRoot: `0x${'0f'.repeat(32)}` }),
+    );
+    await env.BUCKET.put(key, forged);
+    await env.DB.prepare(
+      "UPDATE settlements SET bundle_hash = ?2 WHERE round_id = ?1 AND mode = 'stakes' AND superseded_at IS NULL",
+    )
+      .bind(r.roundId, keccak256(forged))
+      .run();
+    expect(await claims({ wallet: wallet(r, 0) })).toEqual([]);
+    const res = await request(`/rounds/${r.roundId}/me`, {
+      userId: r.entries[0]?.userId ?? '',
+    });
+    expect(RoundMeResponseSchema.parse(await res.json()).modes.stakes?.payouts).toEqual([]);
   });
 });
 
