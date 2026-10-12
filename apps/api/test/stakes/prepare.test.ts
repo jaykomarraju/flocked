@@ -26,6 +26,7 @@ import {
   addWallet,
   clockAt,
   codeOf,
+  indexedAt,
   join,
   player,
   prepare,
@@ -415,9 +416,10 @@ describe('ID-5: every ineligible branch is refused with its reason, and no ticke
   it('room rounds: members only, with an account 24 hours older than closesAt', async () => {
     const r = await round(t, { kind: 'room' });
     const outsider = await player(t);
+    // A non-member gets the unknown round's 404 (Reveal gating; W6-F1 R10), not `not_member`.
     await refused(
       await prepare(t, outsider, r.locked.roundId, outsider.wallet),
-      'not_member',
+      'not_found',
       outsider.id,
     );
 
@@ -592,8 +594,10 @@ describe('ID-5: the daily cap counts indexed stakes and live tickets by game day
     await indexedEntry(a.locked.roundId, p.id, 1);
     // 5 indexed + 5 here = 10: fits.
     const issued = await ok(await prepare(t, p, b.locked.roundId, p.wallet));
-    // Past expiry + 30 s the unused ticket for b no longer counts: 5 indexed + 5 = 10 fits again.
+    // Past expiry + 30 s, with the indexer past its expiry (O2), the unused ticket for b no longer
+    // counts: 5 indexed + 5 = 10 fits again.
     clockAt(t, (issued.ticket.expiry + 30) * 1000);
+    await indexedAt(issued.ticket.expiry + 1);
     await ok(await prepare(t, p, c.locked.roundId, p.wallet));
     // But with an indexed entry in b as well, 15 would be over.
     clockAt(t, T0 + 20 * 60_000);

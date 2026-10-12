@@ -7,6 +7,12 @@
 // `payoutRoot`, which must equal the record's (the root proposed onchain). Nothing user-specific in
 // D1 is involved, so a wallet with no account gets the same proof.
 //
+// A proof is served only for a proposal that is live onchain (liveStakesPayoutIndex, W6-F1 R8 and
+// R9): the mode is `settle_proposed` or `settled` (a reorg that removes `OutcomeProposed` sends it
+// back to `revealing`, while `revealed_at` stays set), the current record's bundle is the one the
+// chain recorded (`round_modes.bundle_hash`, written by the `OutcomeProposed` handler), and the
+// rebuilt root is the record's `payout_root` as well as the manifest's.
+//
 // Free inclusion proofs (GET /rounds/:id/me) are over the commitment tree of the round's committed
 // entries, which must hash to the anchored `commitment_root`.
 //
@@ -147,6 +153,46 @@ export async function stakesPayoutIndex(
     byWallet,
   };
   stakesCache.set(bundleHash, index);
+  return index;
+}
+
+/** What D1 holds about a Stakes mode's proposal, for a proof. */
+export interface StakesProposalState {
+  status: string;
+  revealedAt: number | null;
+  /** `round_modes.bundle_hash`: the bundle hash the `OutcomeProposed` handler took from the chain. */
+  chainBundleHash: string | null;
+  /** The current (not superseded) settlement record's bundle hash and payout root. */
+  bundleHash: string | null;
+  payoutRoot: string | null;
+}
+
+/** Stakes statuses with a live settlement proposal onchain or a final settlement. */
+const PROPOSED: ReadonlySet<string> = new Set(['settle_proposed', 'settled']);
+
+/**
+ * The payouts of a Stakes mode whose settlement proposal is live onchain (see the header): null
+ * when the mode is not proposed or settled, not revealed, or has no record matching the chain's
+ * bundle hash. Throws BundleError when the bundle can't back a proof, or rebuilds another root than
+ * the record's.
+ */
+export async function liveStakesPayoutIndex(
+  env: Pick<Env, 'BUCKET'>,
+  roundId: string,
+  state: StakesProposalState,
+): Promise<StakesPayoutIndex | null> {
+  if (!PROPOSED.has(state.status) || state.revealedAt === null) return null;
+  const { bundleHash, chainBundleHash, payoutRoot } = state;
+  if (bundleHash === null || chainBundleHash === null || payoutRoot === null) return null;
+  if (bundleHash.toLowerCase() !== chainBundleHash.toLowerCase()) {
+    throw new BundleError(
+      `the stakes record of ${roundId} is bundle ${bundleHash}, the chain's ${chainBundleHash}`,
+    );
+  }
+  const index = await stakesPayoutIndex(env, roundId, bundleHash.toLowerCase() as Hex);
+  if (index.payoutRoot.toLowerCase() !== payoutRoot.toLowerCase()) {
+    throw new BundleError(`the stakes bundle of ${roundId} does not reproduce its recorded root`);
+  }
   return index;
 }
 

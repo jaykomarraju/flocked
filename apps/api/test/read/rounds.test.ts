@@ -99,7 +99,7 @@ beforeAll(async () => {
     handle: 'flock_author',
     displayName: 'Flock Author',
     avatarUrl: 'https://img.flocked.test/a.png',
-    // As PATCH /me stores it; the lock resolved it as the Stakes creator.
+    // As PATCH /me stores it; the lock resolved it as the Stakes creator and froze it (O4).
     prefs: { creator_payout_wallet: PAYOUT },
   });
   const beaconRound = beaconRoundAtOrAfter(CLOSES / 1000 + 120);
@@ -109,7 +109,11 @@ beforeAll(async () => {
     closesAt: CLOSES,
     beaconRound,
     status: 'open',
-    config: lockedConfig(['free', 'stakes'], { creator: PAYOUT, awardRecipient: author }),
+    config: lockedConfig(['free', 'stakes'], {
+      creator: PAYOUT,
+      awardRecipient: author,
+      payoutAddress: PAYOUT,
+    }),
     modes: { free: {}, stakes: { chainRoundId: '42' } },
   });
   // The previous daily round (a house question, the treasury as creator), still settling.
@@ -316,6 +320,32 @@ describe('GET /rounds/today', () => {
     });
     expect(authored.config?.free).toBeUndefined();
     expect(authored.modes.stakes).toMatchObject({ status: 'refunded', refundReason: 1 });
+  });
+
+  it('payoutAddress is the one frozen at lock, never the author’s current prefs (O4)', async () => {
+    const setPrefs = (prefs: object) =>
+      env.DB.prepare('UPDATE users SET prefs_json = ?2 WHERE id = ?1')
+        .bind(author, JSON.stringify(prefs))
+        .run();
+    // The author clears, then changes, the payout wallet after the lock: the round still says PAYOUT.
+    for (const prefs of [{}, { creator_payout_wallet: TREASURY }]) {
+      await setPrefs(prefs);
+      expect((await getRound(today.id)).config?.stakes?.payoutAddress).toBe(PAYOUT);
+    }
+    // A config locked before the field existed publishes none, whatever the prefs say.
+    await setPrefs({ creator_payout_wallet: PAYOUT });
+    const legacy = await insertRound({
+      questionId: await insertQuestion({ authorId: author }),
+      opensAt: OPENS - 3 * DAY_MS,
+      closesAt: OPENS - 2 * DAY_MS,
+      config: lockedConfig(['stakes'], { creator: PAYOUT }),
+      modes: { stakes: { status: 'refunded', refundReason: 1, chainRoundId: '39' } },
+    });
+    expect((await getRound(legacy.id)).config?.stakes).toMatchObject({
+      creator: PAYOUT,
+      authorHandle: 'flock_author',
+      payoutAddress: null,
+    });
   });
 });
 

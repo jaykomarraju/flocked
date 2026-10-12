@@ -137,8 +137,15 @@ export function questionHashOf(q: QuestionRow): Hex {
  * The config to freeze. Before lock, `config_json` may hold a draft (an admin's per-round config); a
  * round without one gets the launch defaults with Free only (Stakes is enabled per round, behind its
  * launch gates). A daily round's Free creator award goes to the question's author (null for house).
+ * Stakes freezes the author's `payoutAddress` (O4, Oct 12, 2026): `authorPayoutWallet`, the payout
+ * wallet the author named in Settings, when it is the resolved `creator`; else null (house questions,
+ * the treasury). Reads publish it from here, never from the author's current prefs.
  */
-export function configToLock(r: RoundRow, q: QuestionRow): LockedConfig {
+export function configToLock(
+  r: RoundRow,
+  q: QuestionRow,
+  authorPayoutWallet: string | null = null,
+): LockedConfig {
   const draft = r.config_json
     ? (JSON.parse(r.config_json) as Record<string, unknown>)
     : {
@@ -149,7 +156,32 @@ export function configToLock(r: RoundRow, q: QuestionRow): LockedConfig {
   if (free) {
     draft.free = { ...free, awardRecipient: r.kind === 'daily' ? q.author_user_id : null };
   }
+  const stakes = draft.stakes as Record<string, unknown> | undefined;
+  if (stakes) {
+    const payout = q.author_user_id !== null ? (authorPayoutWallet?.toLowerCase() ?? null) : null;
+    const creator = typeof stakes.creator === 'string' ? stakes.creator.toLowerCase() : null;
+    draft.stakes = {
+      ...stakes,
+      payoutAddress: payout !== null && payout === creator ? payout : null,
+    };
+  }
   return LockedConfigSchema.parse(draft);
+}
+
+/** The payout wallet the author named in Settings (`users.prefs_json`), or null. */
+async function authorPayoutWallet(db: D1Database, q: QuestionRow): Promise<string | null> {
+  if (q.author_user_id === null) return null;
+  const row = await db
+    .prepare('SELECT prefs_json FROM users WHERE id = ?1')
+    .bind(q.author_user_id)
+    .first<{ prefs_json: string | null }>();
+  if (!row?.prefs_json) return null;
+  try {
+    const prefs = JSON.parse(row.prefs_json) as { creator_payout_wallet?: unknown };
+    return typeof prefs.creator_payout_wallet === 'string' ? prefs.creator_payout_wallet : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -211,8 +243,9 @@ export async function lockRound(
 
   let config: LockedConfig;
   let qHash: Hex;
+  const payoutWallet = await authorPayoutWallet(db, q);
   try {
-    config = configToLock(r, q);
+    config = configToLock(r, q, payoutWallet);
     qHash = questionHashOf(q);
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
