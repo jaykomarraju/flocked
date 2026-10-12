@@ -1,13 +1,9 @@
 // Email codes (spec "API" › Rate limits: 8 digits, 5 attempts per code, about 10 codes per hour per
-// address; "Data model": stored in KV as hashes with a 5-minute TTL, consumed by AuthDO). Sign-in
-// codes go only to a verified email already linked to an account; email never creates one.
-// W7-B's `POST /me/email` and `/me/email/verify` reuse `issueEmailCode` and `checkEmailCode`.
-import {
-  AUTH_SECRET_TTL_MS,
-  authDOFor,
-  emailCodeKvKey,
-  type EmailCodeRecord,
-} from '../do/auth-do.js';
+// address; "Data model": stored only as hashes with a 5-minute TTL, consumed by AuthDO). A code is
+// written to the address's AuthDO instance, never KV (W3-Z carry-over). Sign-in codes go only to a
+// verified email already linked to an account; email never creates one. `POST /me/email` and
+// `/me/email/verify` (src/identity/email.ts) reuse `issueEmailCode` and `checkEmailCode`.
+import { AUTH_SECRET_TTL_MS, authDOFor, type EmailCodeRecord } from '../do/auth-do.js';
 import type { Env } from '../env.js';
 import { now } from '../lib/clock.js';
 import { HttpError } from '../lib/errors.js';
@@ -30,11 +26,17 @@ export async function emailCodeHash(emailHashHex: string, code: string): Promise
 }
 
 /**
+ * Sends nothing. `/auth/email/start` issues a code to an address with no account through it, so
+ * `/auth/email/verify` answers the same way for every address (W3-Z carry-over: no enumeration).
+ */
+export const silentSender: EmailSender = { send: () => Promise.resolve() };
+
+/**
  * Stores a new code for `email` (replacing any earlier one) and sends it. The caller has already
  * taken a token from the address's code bucket.
  */
 export async function issueEmailCode(
-  env: Pick<Env, 'KV' | 'ENVIRONMENT' | 'FLOCKED_TEST_CLOCK'>,
+  env: Pick<Env, 'AUTH' | 'ENVIRONMENT' | 'FLOCKED_TEST_CLOCK'>,
   sender: EmailSender,
   email: string,
 ): Promise<{ expiresAt: number }> {
@@ -47,9 +49,7 @@ export async function issueEmailCode(
     codeHash: await emailCodeHash(hash, code),
     expiresAt,
   };
-  await env.KV.put(emailCodeKvKey(hash), JSON.stringify(record), {
-    expirationTtl: AUTH_SECRET_TTL_MS / 1000,
-  });
+  await authDOFor(env, 'email', hash).issueEmailCode(record);
   await sender.send({
     to: address,
     subject: `${code} is your Flocked code`,
@@ -60,9 +60,13 @@ export async function issueEmailCode(
   return { expiresAt };
 }
 
+/** The answer to an unknown or used code, and to a right code for an address with no account. */
+export const NO_VALID_CODE = 'No valid code for this address; ask for a new one';
+
 /**
  * Consumes an attempt at `email`'s current code. Throws 401 `invalid_code` (wrong, unknown or
- * used), 401 `code_expired`, or 429 `too_many_attempts` once the code's 5 attempts are spent.
+ * used; the last two with the same message), 401 `code_expired`, or 429 `too_many_attempts` once
+ * the code's 5 attempts are spent.
  */
 export async function checkEmailCode(
   env: Pick<Env, 'AUTH'>,
@@ -89,6 +93,6 @@ export async function checkEmailCode(
         `Wrong code; ${result.attemptsLeft} attempt${result.attemptsLeft === 1 ? '' : 's'} left`,
       );
     default:
-      throw new HttpError('invalid_code', 'No valid code for this address; ask for a new one');
+      throw new HttpError('invalid_code', NO_VALID_CODE);
   }
 }

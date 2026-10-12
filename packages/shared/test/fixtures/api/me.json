@@ -86,7 +86,8 @@
           "currentVersion": "2026-10-01",
           "acceptedVersion": "2026-10-01",
           "acceptedAt": 1791468191250,
-          "ageAttestedAt": 1791468191250
+          "ageAttestedAt": 1791468191250,
+          "ageRequired": 18
         },
         "verification": {
           "personVerified": true,
@@ -126,7 +127,7 @@
     "AcceptTosRequestSchema": [
       {
         "tosVersion": "2026-10-01",
-        "ageAttested": true
+        "ageAttested": 21
       }
     ],
     "AcceptTosResponseSchema": [
@@ -135,7 +136,8 @@
           "currentVersion": "2026-10-01",
           "acceptedVersion": "2026-10-01",
           "acceptedAt": 1791468191250,
-          "ageAttestedAt": 1791468191250
+          "ageAttestedAt": 1791468191250,
+          "ageRequired": 18
         }
       }
     ],
@@ -327,6 +329,20 @@
           "tosVersion": "v1",
           "ageAttested": false
         }
+      },
+      {
+        "why": "the pre-W7-B boolean attestation",
+        "value": {
+          "tosVersion": "v1",
+          "ageAttested": true
+        }
+      },
+      {
+        "why": "an age the checkbox never names",
+        "value": {
+          "tosVersion": "v1",
+          "ageAttested": 19
+        }
       }
     ],
     "LinkIdentityRequestSchema": [
@@ -422,7 +438,8 @@
             "currentVersion": "2026-10-01",
             "acceptedVersion": "2026-10-01",
             "acceptedAt": 1791468191250,
-            "ageAttestedAt": 1791468191250
+            "ageAttestedAt": 1791468191250,
+            "ageRequired": 18
           },
           "verification": {
             "personVerified": true,
@@ -522,7 +539,8 @@
             "currentVersion": "2026-10-01",
             "acceptedVersion": "2026-10-01",
             "acceptedAt": 1791468191250,
-            "ageAttestedAt": 1791468191250
+            "ageAttestedAt": 1791468191250,
+            "ageRequired": 18
           },
           "verification": {
             "personVerified": true,
@@ -532,6 +550,31 @@
           "stakes": {
             "eligible": false,
             "reasons": ["geo_blocked"]
+          }
+        }
+      }
+    ],
+    "AcceptTosResponseSchema": [
+      {
+        "why": "ageRequired is required",
+        "value": {
+          "tos": {
+            "currentVersion": "2026-10-01",
+            "acceptedVersion": "2026-10-01",
+            "acceptedAt": 1791468191250,
+            "ageAttestedAt": 1791468191250
+          }
+        }
+      },
+      {
+        "why": "ageRequired is 18 or 21",
+        "value": {
+          "tos": {
+            "currentVersion": "2026-10-01",
+            "acceptedVersion": "2026-10-01",
+            "acceptedAt": 1791468191250,
+            "ageAttestedAt": 1791468191250,
+            "ageRequired": 20
           }
         }
       }

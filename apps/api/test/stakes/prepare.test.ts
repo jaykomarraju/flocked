@@ -316,7 +316,7 @@ describe('ID-5: every ineligible branch is refused with its reason, and no ticke
       new Request(`${ORIGIN}${API_BASE_PATH}/me/tos`, {
         method: 'POST',
         headers: { ...p.headers, 'content-type': 'application/json' },
-        body: JSON.stringify({ tosVersion: TOS, ageAttested: true }),
+        body: JSON.stringify({ tosVersion: TOS, ageAttested: 21 }),
         cf: nj,
       }),
       t.env,
@@ -335,7 +335,7 @@ describe('ID-5: every ineligible branch is refused with its reason, and no ticke
       new Request(`${ORIGIN}${API_BASE_PATH}/me/tos`, {
         method: 'POST',
         headers: { ...p.headers, 'content-type': 'application/json' },
-        body: JSON.stringify({ tosVersion: TOS, ageAttested: true }),
+        body: JSON.stringify({ tosVersion: TOS, ageAttested: 18 }),
         cf: { country: 'US', regionCode: 'NY' },
       }),
       t.env,

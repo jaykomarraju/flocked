@@ -1,13 +1,27 @@
-// Email-code sign-in (ID-4: brute force and replay). Codes are 8 digits, stored hashed in KV for 5
-// minutes, 5 attempts each, about 10 per hour per address; email signs in but never creates an
-// account; every email sign-in enqueues a security notice.
-import { env } from 'cloudflare:test';
+// Email-code sign-in (ID-4: brute force and replay). Codes are 8 digits, stored hashed in the
+// address's AuthDO for 5 minutes (W7-B: not KV), 5 attempts each, about 10 per hour per address;
+// email signs in but never creates an account; every email sign-in enqueues a security notice.
+// W3-Z carry-over (W7-B): the answers don't reveal whether an address has an account.
+import { env, runInDurableObject } from 'cloudflare:test';
 import { AuthSessionResponseSchema, NotifyMessageSchema } from '@flocked/shared';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { emailCodeHash, emailHash } from '../../src/auth/email.js';
-import { emailCodeKvKey, type EmailCodeRecord } from '../../src/do/auth-do.js';
+import { authDOFor, type AuthDO, type EmailCodeRecord } from '../../src/do/auth-do.js';
 import { FIXTURE_IDS, seedFixture } from '../helpers/index.js';
 import { authEnv, call, errorCode, type TestAuth } from './fixtures.js';
+
+/** The code record stored for `email` in its AuthDO, if any. */
+async function storedCode(email: string): Promise<EmailCodeRecord | undefined> {
+  const stub = authDOFor(env, 'email', await emailHash(email));
+  return runInDurableObject(stub, (_i: AuthDO, state) =>
+    state.storage.get<EmailCodeRecord>('email-code'),
+  );
+}
+
+/** Stores `record` as `email`'s current code. */
+async function putCode(email: string, record: EmailCodeRecord): Promise<void> {
+  await authDOFor(env, 'email', await emailHash(email)).issueEmailCode(record);
+}
 
 let n = 0;
 /** A fresh address linked (verified) to the fixture user. */
@@ -45,7 +59,7 @@ beforeAll(async () => {
 });
 
 describe('POST /auth/email/start', () => {
-  it('sends an 8-digit code to a linked, verified address; KV holds only its hash', async () => {
+  it('sends an 8-digit code to a linked, verified address; AuthDO holds only its hash', async () => {
     const t = authEnv();
     const email = await linkedEmail();
     const res = await start(t, email);
@@ -57,13 +71,14 @@ describe('POST /auth/email/start', () => {
     expect(code).toMatch(/^\d{8}$/);
 
     const hash = await emailHash(email);
-    const raw = await env.KV.get(emailCodeKvKey(hash));
-    expect(raw).not.toBeNull();
+    const record = await storedCode(email);
+    expect(record).toBeDefined();
+    const raw = JSON.stringify(record);
     expect(raw).not.toContain(code);
     expect(raw).not.toContain(email);
-    const record = JSON.parse(raw as string) as EmailCodeRecord;
-    expect(record.codeHash).toBe(await emailCodeHash(hash, code));
-    expect(record.expiresAt - Date.now()).toBeLessThanOrEqual(300_000);
+    expect(record?.codeHash).toBe(await emailCodeHash(hash, code));
+    expect((record?.expiresAt ?? 0) - Date.now()).toBeLessThanOrEqual(300_000);
+    expect(await env.KV.list({ prefix: 'auth:email-code:' })).toMatchObject({ keys: [] });
   });
 
   it('answers the same for an unknown or unverified address and sends nothing', async () => {
@@ -73,7 +88,8 @@ describe('POST /auth/email/start', () => {
       const res = await start(t, email);
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({ ok: true });
-      expect(await env.KV.get(emailCodeKvKey(await emailHash(email)))).toBeNull();
+      // A code is stored all the same (sent nowhere), so a guess at it answers like a linked one.
+      expect(await storedCode(email)).toBeDefined();
     }
     expect(t.email.sent).toHaveLength(0);
   });
@@ -198,7 +214,7 @@ describe('POST /auth/email/verify', () => {
       codeHash: await emailCodeHash(hash, '12345678'),
       expiresAt: Date.now() - 1,
     };
-    await env.KV.put(emailCodeKvKey(hash), JSON.stringify(record));
+    await putCode(email, record);
     const res = await verify(t, email, '12345678');
     expect(res.status).toBe(401);
     expect(await errorCode(res)).toBe('code_expired');
@@ -213,7 +229,7 @@ describe('POST /auth/email/verify', () => {
       codeHash: await emailCodeHash(hash, '87654321'),
       expiresAt: Date.now() + 60_000,
     };
-    await env.KV.put(emailCodeKvKey(hash), JSON.stringify(record));
+    await putCode(email, record);
     const users = await userCount();
     const res = await verify(t, email, '87654321');
     expect(res.status).toBe(401);
@@ -224,6 +240,46 @@ describe('POST /auth/email/verify', () => {
         .bind(email)
         .first(),
     ).toBeNull();
+  });
+
+  // W3-Z carry-over: before W7-B a linked address answered "Wrong code; 4 attempts left" and an
+  // address with no account "No valid code", which told an attacker which addresses have accounts.
+  it('no enumeration: a wrong code answers the same for a linked and an unknown address', async () => {
+    const t = authEnv();
+    const answers: { status: number; body: unknown }[] = [];
+    for (const email of [await linkedEmail(), `stranger${++n}@flocked.test`]) {
+      expect((await start(t, email)).status).toBe(200);
+      const res = await verify(t, email, '00000000');
+      answers.push({ status: res.status, body: await res.json() });
+    }
+    expect(t.email.sent).toHaveLength(1);
+    expect(answers[1]).toEqual(answers[0]);
+    expect(answers[0]).toEqual({
+      status: 401,
+      body: { error: { code: 'invalid_code', message: 'Wrong code; 4 attempts left' } },
+    });
+  });
+
+  it('no enumeration: unknown, used and right-but-unlinked codes share one message', async () => {
+    const t = authEnv();
+    const linked = await linkedEmail();
+    await start(t, linked);
+    const code = t.email.codes[0] as string;
+    expect((await verify(t, linked, code)).status).toBe(200);
+    const used = await verify(t, linked, code);
+    const unknown = await verify(t, `never${++n}@flocked.test`, '12345678');
+    const unlinked = `ghost${++n}@flocked.test`;
+    await putCode(unlinked, {
+      id: `g${n}`,
+      codeHash: await emailCodeHash(await emailHash(unlinked), '24681357'),
+      expiresAt: Date.now() + 60_000,
+    });
+    const right = await verify(t, unlinked, '24681357');
+    const bodies = await Promise.all([used, unknown, right].map((r) => r.json()));
+    expect(new Set(bodies.map((b) => JSON.stringify(b))).size).toBe(1);
+    expect(bodies[0]).toEqual({
+      error: { code: 'invalid_code', message: 'No valid code for this address; ask for a new one' },
+    });
   });
 
   it('no code at all → invalid_code', async () => {

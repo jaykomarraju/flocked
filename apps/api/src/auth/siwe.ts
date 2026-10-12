@@ -38,7 +38,7 @@ const invalid = (message: string) => new HttpError('invalid_signature', message)
  * Verifies a signed SIWE message and returns the lowercase signer address. Throws 401
  * `invalid_signature` (malformed, wrong domain, URI or chain, outside its validity window, bad
  * signature), 401 `invalid_nonce` (unknown, expired or already used), or 503 `unavailable` when
- * the chain RPC fails while checking a smart-wallet signature.
+ * the nonce store (KV) or the chain RPC fails.
  */
 export async function verifySiwe(
   env: Env,
@@ -66,7 +66,12 @@ export async function verifySiwe(
 
   const hash = await nonceHash(parsed.nonce);
   const consumed = await authDOFor(env, 'nonce', hash).consumeNonce(hash);
-  if (!consumed.ok) throw new HttpError('invalid_nonce', `SIWE nonce ${consumed.reason}`);
+  if (!consumed.ok) {
+    if (consumed.reason === 'unavailable') {
+      throw new HttpError('unavailable', 'Could not check the sign-in nonce; try again');
+    }
+    throw new HttpError('invalid_nonce', `SIWE nonce ${consumed.reason}`);
+  }
 
   let valid: boolean;
   try {
