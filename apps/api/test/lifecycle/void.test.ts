@@ -12,7 +12,7 @@ import { VOID_REFUSED_ALERT_AFTER, type RoundDO } from '../../src/do/round-do.js
 import { recordSentTx } from '../../src/indexer/sent.js';
 import { stakesVoidHandler } from '../../src/lifecycle/handlers.js';
 import type { RpcResult, EnterFreeResponse } from '../../src/do/types.js';
-import { VOID_RESOLVE_GRACE_MS } from '../../src/lifecycle/void.js';
+import { VOID_RESOLVE_GRACE_MS, applyVoid } from '../../src/lifecycle/void.js';
 import type { FakeChain } from '../anchor-do/fake-chain.js';
 import { captureAlerts } from '../indexer/helpers.js';
 import { failFirstMark } from '../scheduler/helpers.js';
@@ -166,6 +166,41 @@ describe('SET-1b (rule 4): a void before close', () => {
       refund_reason: 4,
     });
     expect(await balance(a, r.locked.roomId as string)).toBe(100);
+  });
+
+  it('writes one refund payouts row per Free entry, however often applyVoid runs (owner decision, Oct 12)', async () => {
+    queues = recordQueues();
+    const t0 = Date.UTC(2026, 9, 8, 12, 0, 0);
+    const r = await stakesRound(fakeChainAt(t0), { modes: ['free'] });
+    const scope = r.locked.roomId as string;
+    setClock(t0);
+    await r.stub.init(r.locked);
+    const a = await createUser(100, scope);
+    const b = await createUser(100, scope);
+    okValue(await enter(r, a, '25'));
+    okValue(await enter(r, b, '40'));
+    expect((await r.stub.requestVoid()).accepted).toBe(true);
+    await alarmAt(r.stub, t0 + 1_000);
+    expect(await voidRecord(r.stub)).toMatchObject({ state: 'confirmed', applied: true });
+
+    const payouts = () =>
+      env.DB.prepare(
+        'SELECT user_id, wallet, kind, amount, claimed_at FROM payouts WHERE round_id = ?1 ORDER BY amount',
+      )
+        .bind(r.locked.roundId)
+        .all()
+        .then((x) => x.results);
+    const first = await payouts();
+    expect(first).toEqual([
+      { user_id: a, wallet: null, kind: 'refund', amount: 25, claimed_at: expect.any(Number) },
+      { user_id: b, wallet: null, kind: 'refund', amount: 40, claimed_at: expect.any(Number) },
+    ]);
+    // Retries (a crash after the D1 writes, a re-delivered alarm) write nothing more.
+    expect(await applyVoid(env, r.locked, t0 + 5_000)).toEqual([]);
+    expect(await applyVoid(env, r.locked, t0 + 9_000)).toEqual([]);
+    expect(await payouts()).toEqual(first);
+    expect(await balance(a, scope)).toBe(100);
+    expect(await balance(b, scope)).toBe(100);
   });
 
   it('is refused once closesAt has passed', async () => {

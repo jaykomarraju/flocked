@@ -9,7 +9,8 @@
 // head. An abandoned void lets every mode follow the normal close path.
 //
 // A confirmed void is applied in D1 by applyVoid: the round is sealed (no Free entry commits after),
-// every Free stake comes back as `void_refund`, and every live mode is `voided` with refund reason 4.
+// every Free stake comes back as `void_refund` with a `refund` payouts row (like every Free refund;
+// owner decision, Oct 12, 2026), and every live mode is `voided` with refund reason 4.
 import type { Mode } from '@flocked/shared';
 import type { Hex } from 'viem';
 import { voidRound, type OperatorDeps, type OperatorTxResult } from '../chain/operator.js';
@@ -143,12 +144,19 @@ export function voidAbandonable(
   return headPast || localGrace;
 }
 
+const INSERT_FREE_REFUND_PAYOUTS = `
+  INSERT INTO payouts (round_id, mode, user_id, wallet, kind, amount, claimed_at, claim_tx)
+  SELECT round_id, 'free', user_id, NULL, 'refund', stake, ?2, NULL FROM entries
+  WHERE round_id = ?1 AND mode = 'free' AND receipt_seq IS NOT NULL
+  ON CONFLICT DO NOTHING`;
+
 /** Modes a confirmed void moves to `voided` (anything already terminal keeps its outcome). */
 const LIVE_STATUSES = "('pending', 'revealing')";
 
 /**
  * Applies a confirmed void in D1 (idempotent): seals the round, refunds every committed Free stake
- * (`void_refund`, once per user and round) and voids every live mode with refund reason 4.
+ * (`void_refund`, once per user and round, and a `refund` payouts row) and voids every live mode
+ * with refund reason 4.
  * Returns the modes it voided now.
  */
 export async function applyVoid(env: Env, locked: LockedRound, t: number): Promise<Mode[]> {
@@ -174,6 +182,9 @@ export async function applyVoid(env: Env, locked: LockedRound, t: number): Promi
       // `duplicate`: an earlier attempt refunded this entry already.
       if (out.status === 'applied') refunded += 1;
     }
+    // One `refund` payouts row per Free entry, as rules 7 and 8 write (settlement/apply/free.ts), so
+    // reads see one shape for every Free refund. The natural key makes a retry insert nothing.
+    await db.prepare(INSERT_FREE_REFUND_PAYOUTS).bind(id, t).run();
   }
   const { results } = await db
     .prepare(
