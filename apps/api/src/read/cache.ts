@@ -6,6 +6,10 @@
 // also runs the caller's daily grant). Workers responses are not cached by the CDN on their own, so
 // this goes through the Cache API (`caches.default`).
 //
+// The key is the path plus the route's validated query, sorted (W6-F1 R7): a parameter the route's
+// schema doesn't know is dropped, so `?x=<random>` can't miss the cache (and make `/claims?wallet=`
+// rebuild payout trees on every request). A route with no query schema keys on its path alone.
+//
 // Off on the local environment (tests and the stack): there the game clock can be pinned and moved,
 // and a response cached on wall time would hide a change the next request should see.
 import type { Context } from 'hono';
@@ -36,6 +40,38 @@ function cacheFor(
   return deps.cache();
 }
 
+/** One validated query value as it goes into the key. */
+function keyValue(v: unknown): string {
+  if (typeof v === 'string') return v;
+  if (typeof v === 'number' || typeof v === 'boolean' || typeof v === 'bigint') return String(v);
+  return JSON.stringify(v);
+}
+
+/**
+ * The edge cache key for a read: origin and path, then the route's validated query (what its zod
+ * schema kept: unknown parameters dropped), sorted by name. Undefined values are left out.
+ */
+export function cacheKey(c: Context<AppEnv>): Request {
+  const url = new URL(c.req.url);
+  // The validator's output for `query`, or undefined when the route has none.
+  const valid = (c.req as unknown as { valid(target: 'query'): unknown }).valid('query');
+  const params = new URLSearchParams();
+  if (valid !== null && typeof valid === 'object') {
+    const query = valid as Record<string, unknown>;
+    for (const name of Object.keys(query).sort()) {
+      const v = query[name];
+      if (v === undefined || v === null) continue;
+      for (const item of Array.isArray(v) ? (v as unknown[]) : [v]) {
+        params.append(name, keyValue(item));
+      }
+    }
+  }
+  const search = params.toString();
+  return new Request(`${url.origin}${url.pathname}${search ? `?${search}` : ''}`, {
+    method: 'GET',
+  });
+}
+
 /** A cached response for an anonymous request, if any. */
 export async function cachedRead(
   c: Context<AppEnv>,
@@ -43,7 +79,7 @@ export async function cachedRead(
 ): Promise<Response | null> {
   const cache = cacheFor(c.env, c.get('user') === undefined, deps);
   if (!cache) return null;
-  return (await cache.match(c.req.raw)) ?? null;
+  return (await cache.match(cacheKey(c))) ?? null;
 }
 
 /**
@@ -62,7 +98,7 @@ export function readResponse(
   if (opts.membersOnly) return res;
   const cache = cacheFor(c.env, c.get('user') === undefined, deps);
   if (cache) {
-    const put = cache.put(c.req.raw, res.clone());
+    const put = cache.put(cacheKey(c), res.clone());
     try {
       c.executionCtx.waitUntil(put);
     } catch {
