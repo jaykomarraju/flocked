@@ -135,6 +135,24 @@
     "type": "refunded",
     "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
     "mode": "stakes",
-    "refundReason": 5
+    "refundReason": 5,
+    "provisional": true,
+    "finalAt": 1791514980000
+  },
+  {
+    "type": "refunded",
+    "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+    "mode": "free",
+    "refundReason": 7,
+    "provisional": false,
+    "finalAt": 1791507790000
+  },
+  {
+    "type": "refunded",
+    "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+    "mode": "stakes",
+    "refundReason": 1,
+    "provisional": false,
+    "finalAt": 1791508000000
   }
 ]

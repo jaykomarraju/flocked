@@ -89,6 +89,8 @@ const IMPLEMENTED = new Set([
   'GET /rounds/:id/verify',
   'GET /rounds/:id/bundles/:mode/:file',
   'GET /claims',
+  // W7-A (test/ws/)
+  'GET /rounds/:id/ws',
 ]);
 
 /**
@@ -96,7 +98,6 @@ const IMPLEMENTED = new Set([
  * the stub's 501 (test/gating/ checks the 501 for a public round and the gate for room rounds).
  */
 const GATED_STUBS = new Set([
-  'GET /rounds/:id/ws',
   `GET ${ENDPOINTS.find((e) => e.path.startsWith('/rounds/:id/card/'))?.path ?? ''}`,
 ]);
 
