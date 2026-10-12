@@ -57,6 +57,7 @@ afterAll(() => {
 });
 
 const MODES: Mode[] = ['free', 'stakes'];
+const BUNDLE_PATH = '/rounds/:id/bundles/:mode/:file';
 
 interface Subject {
   roundId: string;
@@ -92,6 +93,7 @@ function probes(s: Subject): Probe[] {
     ['voider', s.voider],
   ] as const;
   for (const ep of GET_ENDPOINTS) {
+    if (ep.path === BUNDLE_PATH) continue; // probed below, all four objects
     const paths = [concretePath(ep.path, ids)];
     if (ep.path === '/claims') paths.push(...s.wallets.map((w) => `/claims?wallet=${w}`));
     if (ep.path === '/rounds') paths[0] = '/rounds?limit=100';
@@ -200,8 +202,9 @@ function expectReached(w: Walk, s: Subject): void {
     ok('voider', path);
     expect(w.answers.get(`anon GET ${path}`)?.status, `anon GET ${path}`).toBe(401);
   }
-  // Every GET route of the table, three ways, plus the `?wallet=` asks and four bundle objects.
-  expect(w.answers.size).toBe(3 * (GET_ENDPOINTS.length + s.wallets.length + 4));
+  // Every GET route of the table but the bundle row, three ways, plus the `?wallet=` asks and the
+  // four bundle objects.
+  expect(w.answers.size).toBe(3 * (GET_ENDPOINTS.length - 1 + s.wallets.length + 4));
 }
 
 /** After the reveal: the per-option data is served on every read that carries it. */

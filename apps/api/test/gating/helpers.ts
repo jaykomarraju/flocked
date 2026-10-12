@@ -496,6 +496,8 @@ const SAMPLE_PARAMS: Record<string, string> = {
   handle: 'ewe_one',
   board: 'strays',
   gameDay: '2026-10-08',
+  mode: 'free',
+  file: 'manifest.json',
 };
 
 /** Fills the path's `:name` and `:name{regex}` segments (`id` by the path's resource). */

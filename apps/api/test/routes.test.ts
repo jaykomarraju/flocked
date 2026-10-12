@@ -25,6 +25,8 @@ const SAMPLE_PARAMS: Record<string, string> = {
   handle: 'ewe_one',
   board: 'strays',
   gameDay: '2026-10-08',
+  mode: 'free',
+  file: 'manifest.json',
 };
 
 /** Fills `:name` and `:name{regex}` segments with SAMPLE_PARAMS. */
@@ -85,6 +87,7 @@ const IMPLEMENTED = new Set([
   'GET /rounds',
   'GET /rounds/:id/me',
   'GET /rounds/:id/verify',
+  'GET /rounds/:id/bundles/:mode/:file',
   'GET /claims',
 ]);
 

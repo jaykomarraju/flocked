@@ -332,6 +332,26 @@
           }
         }
       }
+    ],
+    "BundleObjectParamsSchema": [
+      {
+        "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+        "mode": "free",
+        "file": "manifest.json"
+      },
+      {
+        "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+        "mode": "stakes",
+        "file": "chunk-0000.json"
+      }
+    ],
+    "BundleObjectResponseSchema": [
+      {
+        "bundleFormat": 1,
+        "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+        "mode": "free",
+        "chunks": []
+      }
     ]
   },
   "invalid": {
@@ -767,6 +787,32 @@
         "why": "limit too large",
         "value": {
           "limit": 1000
+        }
+      }
+    ],
+    "BundleObjectParamsSchema": [
+      {
+        "why": "a path outside the bundle",
+        "value": {
+          "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+          "mode": "free",
+          "file": "../manifest.json"
+        }
+      },
+      {
+        "why": "chunk index not 4 digits",
+        "value": {
+          "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+          "mode": "free",
+          "file": "chunk-1.json"
+        }
+      },
+      {
+        "why": "unknown mode",
+        "value": {
+          "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+          "mode": "points",
+          "file": "manifest.json"
         }
       }
     ]

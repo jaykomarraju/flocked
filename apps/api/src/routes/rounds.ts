@@ -6,11 +6,14 @@
 // WebSocket stub and the round card (src/read/access.ts). Room-round responses are `private,
 // no-store` and never enter the edge cache; public reads are cached for 5 s (src/read/cache.ts).
 //
-// The verification bundle's objects are served at GET /rounds/:id/bundles/:mode/:file (not in the
-// pinned table yet; see docs/sessions/W6-D.md), behind the same gate.
-import { IdParamsSchema, ModeSchema, RoundsArchiveQuerySchema } from '@flocked/shared';
+// The verification bundle's objects are served at GET /rounds/:id/bundles/:mode/:file (in the
+// pinned table since W6-Z, owner decision Oct 12, 2026), behind the same gate.
+import {
+  BundleObjectParamsSchema,
+  IdParamsSchema,
+  RoundsArchiveQuerySchema,
+} from '@flocked/shared';
 import { Hono } from 'hono';
-import { z } from 'zod';
 import type { Env } from '../env.js';
 import type { AppEnv } from '../lib/auth-context.js';
 import { now } from '../lib/clock.js';
@@ -20,7 +23,7 @@ import { validate } from '../lib/validate.js';
 import { accessFor, requireRoundAccess } from '../read/access.js';
 import { PRIVATE_CACHE_CONTROL, cachedRead, readResponse } from '../read/cache.js';
 import { openDailyRound, readArchive, readRound, readToday } from '../read/rounds.js';
-import { BUNDLE_FILE_RE, readBundleObject, readVerify } from '../read/verify.js';
+import { readBundleObject, readVerify } from '../read/verify.js';
 import { applyDailyGrant, recordPriorTransactions } from '../rounds/grant.js';
 import { stubEndpoints } from './stub.js';
 
@@ -82,27 +85,25 @@ app.get('/rounds/:id/verify', validate('param', IdParamsSchema), async (c) => {
   return readResponse(c, await readVerify(c.env, id), access);
 });
 
-const BundleParamsSchema = z.object({
-  id: IdParamsSchema.shape.id,
-  mode: ModeSchema,
-  file: z.string().regex(BUNDLE_FILE_RE),
-});
-
-app.get('/rounds/:id/bundles/:mode/:file', validate('param', BundleParamsSchema), async (c) => {
-  const { id, mode, file } = c.req.valid('param');
-  const access = await accessFor(c, id);
-  const obj = await readBundleObject(c.env, id, mode, file);
-  if (!obj) throw new HttpError('not_found', 'No such bundle object');
-  // Bundle objects are write-once (docs/bundle-format.md), so a public one never changes.
-  return new Response(obj.body, {
-    headers: {
-      'Content-Type': 'application/json',
-      'Cache-Control': access.membersOnly
-        ? PRIVATE_CACHE_CONTROL
-        : 'public, max-age=31536000, immutable',
-    },
-  });
-});
+app.get(
+  '/rounds/:id/bundles/:mode/:file',
+  validate('param', BundleObjectParamsSchema),
+  async (c) => {
+    const { id, mode, file } = c.req.valid('param');
+    const access = await accessFor(c, id);
+    const obj = await readBundleObject(c.env, id, mode, file);
+    if (!obj) throw new HttpError('not_found', 'No such bundle object');
+    // Bundle objects are write-once (docs/bundle-format.md), so a public one never changes.
+    return new Response(obj.body, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': access.membersOnly
+          ? PRIVATE_CACHE_CONTROL
+          : 'public, max-age=31536000, immutable',
+      },
+    });
+  },
+);
 
 // The WebSocket (W7-A) and the round card (W10-A, module `cards`, mounted after this one) are still
 // stubs; their room rounds are gated here already.

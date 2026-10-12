@@ -117,6 +117,7 @@ export const ENDPOINTS: readonly EndpointDef[] = [
   { method: 'POST', path: '/rounds/:id/entries/stakes/prepare', module: 'stakes', auth: 'user', request: entries.StakesPrepareRequestSchema, response: entries.StakesPrepareResponseSchema, params: IdParamsSchema },
   { method: 'GET', path: '/rounds/:id/me', module: 'entries', auth: 'user', request: null, response: entries.RoundMeResponseSchema, params: IdParamsSchema },
   { method: 'GET', path: '/rounds/:id/verify', module: 'rounds', auth: 'optional', request: null, response: rounds.RoundVerifyResponseSchema, params: IdParamsSchema },
+  { method: 'GET', path: '/rounds/:id/bundles/:mode/:file', module: 'rounds', auth: 'optional', request: null, response: rounds.BundleObjectResponseSchema, params: rounds.BundleObjectParamsSchema },
   { method: 'GET', path: '/rounds/:id/ws', module: 'rounds', auth: 'optional', request: null, response: WsServerMessageSchema, params: IdParamsSchema, responseType: 'websocket' },
   // claims
   { method: 'GET', path: '/claims', module: 'claims', auth: 'optional', request: null, response: claims.ClaimsResponseSchema, query: claims.ClaimsQuerySchema },

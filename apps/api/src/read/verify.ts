@@ -14,9 +14,6 @@ import { log } from '../lib/log.js';
 import { bundlePrefix, manifestKey } from '../settlement/keys.js';
 import type { Manifest } from '../settlement/types.js';
 
-/** The bundle object names a client may fetch. */
-export const BUNDLE_FILE_RE = /^(manifest|chunk-\d{4})\.json$/;
-
 interface VerifyRow {
   mode: Mode;
   lock_tx: string | null;
@@ -68,7 +65,7 @@ export async function readVerify(env: Env, roundId: string): Promise<RoundVerify
 
 /**
  * One bundle object, or null when the mode hasn't revealed or the object doesn't exist. The caller
- * has passed the round's access gate and checked `file` against BUNDLE_FILE_RE.
+ * has passed the round's access gate and checked `file` against `BundleFileSchema` (`@flocked/shared`).
  */
 export async function readBundleObject(
   env: Env,
