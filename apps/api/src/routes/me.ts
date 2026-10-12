@@ -17,7 +17,7 @@ import { now } from '../lib/clock.js';
 import { HttpError, errorResponse } from '../lib/errors.js';
 import { validate } from '../lib/validate.js';
 import { personhoodReturnUrl } from '../personhood/config.js';
-import { stakesEligibility } from '../personhood/eligibility.js';
+import { stakesAgeRequirement, stakesEligibility } from '../personhood/eligibility.js';
 import { completePersonhood, startPersonhood } from '../personhood/flow.js';
 import { endpointsOf } from './stub.js';
 
@@ -47,8 +47,9 @@ const OWN = new Set([
  */
 async function meView(c: Context<AppEnv>): Promise<MeResponse> {
   const user = getUser(c);
+  const ageRequired = await stakesAgeRequirement(c.env, user.id, c.req.raw);
   const [view, stakes] = await Promise.all([
-    buildMe(c.env, user.id),
+    buildMe(c.env, user.id, ageRequired),
     stakesEligibility(c.env, user, c.req.raw),
   ]);
   return { ...view, stakes };
@@ -127,12 +128,19 @@ me.post(
       throw new HttpError('conflict', 'These are not the current Terms; reload and try again');
     }
     const t = now(c.env);
+    // The checkbox named the age this request requires (W6-B; personhood/age.ts). A 21+
+    // attestation stays true, so a later 18+ one never lowers it.
+    const ageRequired = await stakesAgeRequirement(c.env, userId, c.req.raw);
     await c.env.DB.prepare(
-      'UPDATE users SET tos_version = ?1, tos_accepted_at = ?2, age_attested_at = ?2 WHERE id = ?3',
+      'UPDATE users SET tos_version = ?1, tos_accepted_at = ?2, age_attested_at = ?2, ' +
+        'age_attested_min = CASE WHEN age_attested_at IS NOT NULL AND age_attested_min > ?4 ' +
+        'THEN age_attested_min ELSE ?4 END WHERE id = ?3',
     )
-      .bind(accepted, t, userId)
+      .bind(accepted, t, userId, ageRequired)
       .run();
-    const body: AcceptTosResponse = { tos: tosView(c.env, await loadMeUser(c.env.DB, userId)) };
+    const body: AcceptTosResponse = {
+      tos: tosView(c.env, await loadMeUser(c.env.DB, userId), ageRequired),
+    };
     return c.json(body);
   },
 );

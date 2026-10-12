@@ -77,6 +77,8 @@ const IMPLEMENTED = new Set([
   // W5-B (test/personhood/)
   'POST /me/personhood',
   'GET /me/personhood/callback',
+  // W6-B (test/stakes/)
+  'POST /rounds/:id/entries/stakes/prepare',
 ]);
 
 const label = (ep: EndpointDef) => `${ep.method} ${ep.path}`;

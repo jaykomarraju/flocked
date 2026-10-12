@@ -16,6 +16,7 @@ import type { Env } from '../env.js';
 import type { SessionUser } from '../lib/auth-context.js';
 import { now } from '../lib/clock.js';
 import { HttpError } from '../lib/errors.js';
+import type { AgeRequirement } from '../personhood/age.js';
 import { GLOBAL_SCOPE } from '../points/index.js';
 import { tosVersion } from './config.js';
 
@@ -109,12 +110,18 @@ export function limitsView(row: LimitsRow | null, t: number): LimitsState {
   };
 }
 
-export function tosView(env: Pick<Env, 'TOS_VERSION'>, user: MeUserRow): TosState {
+/** `ageRequired` is the age the Stakes checkbox names for this request (personhood/age.ts). */
+export function tosView(
+  env: Pick<Env, 'TOS_VERSION'>,
+  user: MeUserRow,
+  ageRequired: AgeRequirement,
+): TosState {
   return {
     currentVersion: tosVersion(env),
     acceptedVersion: user.tos_version,
     acceptedAt: user.tos_accepted_at,
     ageAttestedAt: user.age_attested_at,
+    ageRequired,
   };
 }
 
@@ -152,8 +159,12 @@ export async function loadMeUser(db: D1Database, userId: string): Promise<MeUser
   return user;
 }
 
-/** `GET /me`. */
-export async function buildMe(env: Env, userId: string): Promise<MeResponse> {
+/** `GET /me`; `ageRequired` as for `tosView`. */
+export async function buildMe(
+  env: Env,
+  userId: string,
+  ageRequired: AgeRequirement,
+): Promise<MeResponse> {
   const db = env.DB;
   const t = now(env);
   const user = await loadMeUser(db, userId);
@@ -196,7 +207,7 @@ export async function buildMe(env: Env, userId: string): Promise<MeResponse> {
   }[];
   const balanceRows = (balances?.results ?? []) as { scope: string; balance: number }[];
   const limitsState = limitsView((limits?.results[0] as LimitsRow | undefined) ?? null, t);
-  const tos = tosView(env, user);
+  const tos = tosView(env, user, ageRequired);
   const personVerified = user.person_id !== null && user.kyc_status === 'verified';
   const reasons = stakesReasons(user, tos, limitsState, personVerified);
 
