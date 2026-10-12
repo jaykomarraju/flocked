@@ -79,3 +79,16 @@
   - `ALERT_FOREIGN_EVENT` (ALERT-8: role-only events and reason-4 `RoundRefunded`);
   - `ALERT_DO_ERROR` (dispatch failures, step `void_reorged`, and W4-F1's void alerts).
 - **W13-D:** per-environment values for W4-F1's `TxSender` max-fee cap go in the deploy config and `docs/runbooks/secrets.md`.
+
+## Carry-over from W5-Z (Oct 12, 2026)
+
+- **W13-A:**
+  - route `ALERT_SETTLEMENT_FAILED` (ALERT-1, including step `points_reconcile` from the nightly reconciliation), `ALERT_VOID_RATE` (ALERT-5) and `ALERT_BEACON_LATE` (ALERT-9, new on Oct 12);
+  - indexer throughput: `DISPATCH_LIMIT` is 25 per pass, about 1,500 entries an hour at cron cadence. Re-arming the IndexerDO alarm after `more: true` would give each pass a fresh budget;
+  - the per-poll write budget in `apps/api/src/indexer/core.ts` misses a chunk with no logs but many stale rows to remove (unrealistic on Base; bound it anyway);
+  - W4-F1's N3 retried-`applyReceipt` path (`anchor-do.ts`, the `confirmed && tx_hash === hash` branch) has no test.
+- **W13-B:** load-test the reduce plus `applyFree` at 100k entries; both run in one DO alarm.
+- **W13-D:**
+  - a retention job deletes the private working files `settlement/{roundId}/{mode}/` once a mode is final, and the D1 ciphertexts of Free modes refunded before the reveal 30 days after the refund (Decision log, Oct 12);
+  - `docs/runbooks/secrets.md`: `PERSON_ID_KEY` is at least 32 bytes of hex (`openssl rand -hex 32`) and can never be rotated; `ATTESTATION_RPC_URL` is a Base mainnet RPC in every environment (a secret if it embeds a key);
+  - `TX_MAX_FEE_GWEI` per environment (W5-D set `"5"` everywhere in `wrangler.jsonc`).

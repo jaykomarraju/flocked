@@ -68,7 +68,7 @@
 ## Carry-over from W2-Z (Oct 8, 2026)
 
 - **W8-B:** the CHECK `best_stray_streak >= stray_streak` means both columns change in one `UPDATE`.
-- **W8-C:** navigation is five tabs: Today, Archive, Boards, Rooms, You; Submit, Queue, Claims and Settings under You on mobile and in the header on desktop (plus Questions) (Decision log, Oct 8). W8-C also builds the placeholder mascot React components in `packages/shared/mascot` from the Paper `sheep/*` layers (Design_Language "Mascot").
+- **W8-C:** navigation is five tabs: Today, Archive, Boards, Rooms, You; Submit, Queue, Claims and Settings under You on mobile and in the header's avatar menu on tablet and desktop, not as header links (Decision log, Oct 8 and Oct 9). W8-C also builds the placeholder mascot React components in `packages/shared/mascot` from the Paper `sheep/*` layers (Design_Language "Mascot").
 
 ## Carry-over from W3-Z (Oct 9, 2026)
 
@@ -79,3 +79,9 @@
 
 - **W8-B:** the referral bonus uses the daily grant's points-farming rule, as the spec revised it on Oct 11 ("Anti-abuse"). Reuse the eligibility check in `apps/api/src/rounds/grant.ts` (`recordPriorTransactions` first).
 - **W8-D:** the scheduler refuses to lock a room round without a question (`apps/api/src/scheduler/lock.ts`). Room questions and room config are defined here.
+
+## Carry-over from W5-Z (Oct 12, 2026)
+
+- **W8-B:** the Streaks board ranks the best stray streak (all time), showing the current streak; ties go to the current streak, then rounds played (spec "Profiles, leaderboards and rooms", Oct 12).
+- **W8-D:** room `qualifies` flags. The settlement counts every valid room entry today (`apps/api/src/settlement/reduce.ts`; `countQualifyingOnly` exists in `@flocked/settle`).
+- **OA-09:** the Coinbase OAuth app must exist by now (redirect URI `${APP_ORIGIN}/api/v1/me/personhood/callback`, scopes `wallet:user:read` and `identity:user:address:read`).

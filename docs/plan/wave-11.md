@@ -60,3 +60,7 @@
   - the admin void calls `requestRoundVoid` (`apps/api/src/lifecycle/void.ts`) and writes an `audit_log` row. The void's state lives in the RoundDO;
   - a guardian-only release of a settlement hold sets `settlement_holds.released_at` / `released_by` and writes `audit_log`;
   - a non-default close publishes `nonDefaultAuditId` in the locked config. Add it to `LockedConfigSchema` (`packages/shared/src/config.ts`) and have `apps/api/src/scheduler/lock.ts` carry it. Today the scheduler only creates default closes.
+
+## Carry-over from W5-Z (Oct 12, 2026)
+
+- **W11-A:** edits to the `config` table (`geo.stakes.allow`, `geo.stakes.age21`, `mode.stakes.enabled`) write an `audit_log` row. The guardian's hold release covers `void_rate` holds (either mode, `tx_hash` NULL) as well as `foreign_entry`.

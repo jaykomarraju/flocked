@@ -7,7 +7,7 @@
 ## Pinned interfaces
 
 - **Signer boundary (W6-B):** `apps/signer` is a separate Worker with one RPC entrypoint, `signTicket({ roundId, wallet, personTag, expiry, ticketHash }) → { signature }`, reachable only through a service binding `SIGNER` from `apps/api`. It verifies that a `stakes_tickets` row with that `ticket_hash` exists (read-only D1 binding) before signing, and holds only `TICKET_SIGNER_KEY`.
-- **Safe-head input (W6-A → W5-A's SettlementDO):** `apps/api/src/chain/safe-head.ts` exports `closeBlockFor(closesAt)` and `safeHeadPast(block)`. W6-A implements it; SettlementDO already awaits a predicate with this signature.
+- **Safe-head input (W6-A → W5-A's SettlementDO):** `apps/api/src/chain/safe-head.ts` exports `closeBlockFor(closesAt)` and `safeHeadPast(block)`. W6-A implements it. SettlementDO awaits `safeHeadReady(env, roundId, mode)` from `apps/api/src/settlement/safe-head.ts` (W5-A's stub: true for Free only); W6-A makes that predicate use `chain/safe-head.ts` and writes `closeBlock` into the Stakes manifest (`docs/bundle-format.md`).
 - **Read models (W6-D):** responses conform to `packages/shared/src/api/{rounds,claims}.ts`. W6-A and W6-B don't touch `routes/rounds.ts` or `routes/claims.ts`.
 
 ## W6-A: Stakes settlement
@@ -85,3 +85,23 @@
   - Stakes settlement doesn't post while `settlement_holds` has an open hold.
 - **W6-B:** ticket issuance refuses while the RoundDO has a void requested (`getState().voidRequested`) or the Stakes `round_modes.status` isn't `pending` (Decision log, Oct 11). `round_modes` alone misses a pending void.
 - **W6-D:** the first-visit grant calls `recordPriorTransactions` (`apps/api/src/rounds/grant.ts`) before `applyDailyGrant`, so a wallet-only account's onchain history counts.
+
+## Carry-over from W5-Z (Oct 12, 2026)
+
+- **All:** read `docs/sessions/W5-Z.md` for the spec sections changed on Oct 12 and for W5-F1, the review fixes W5-Z ran before merging (settlement retries and the anchored root, `TxSender` and void proof, the personhood callback). Stack tests can reuse `POST /__test/rounds/scheduled`, the cron driver, `GET /__test/rounds/:id` (settlement fields), `GET /__test/bundles/:id/:mode/:file`, and `e2e/tests/free-settle.test.ts`'s pattern.
+- **W6-A:**
+  - the safe head (see Pinned interfaces) and `closeBlock` in the manifest;
+  - Stakes ciphertexts: `prepare` reads them from `entries.ciphertext` and throws without them, so Stakes ingestion must store them from `Entered`;
+  - `applyStakes(env, result)` (the hooks take `env`; W5-A). SettlementDO already checks `settlementHold` first, and a held job sits in phase `applying` with `error: "held:<reason>"`;
+  - from W4-F1: after a block move `ingestStakesEntry` gets a re-add with new block fields, but it is idempotent by (tx, logIndex), so the stored fields stay old. Update them, and un-count a removed entry;
+  - a confirmed manifest anchor that is reorged out is never resubmitted (`applyFree` skips any known anchor state, and no handler resubmits on removal). Resubmit it for both modes, as W4-F1 did for `Locked` / `Committed`;
+  - the serialised operator nonce (W4-Z carry-over) builds on W5-F1's `chain/{tx,operator}.ts` and the tick's cancellation sweep.
+- **W6-B:**
+  - the ticket path calls `stakesEligibility(env, user, request, { attestationMaxAgeMs: 0 })` (`apps/api/src/personhood/eligibility.ts`), then adds the per-round checks;
+  - any linked wallet holding the attestations satisfies them; the entering wallet need not (owner decision, Oct 12);
+  - 21+: the config key `geo.stakes.age21` (country and region codes, in the `config` table from migration 0009) names the places that need 21+. The age check and the checkbox copy name 21 when the verified country or the request's region is listed.
+- **W6-C:** Free refunds by rules 7 and 8 (commitment not anchored, beacon unavailable) are real outcomes and need refund cards and notification copy, like rule 4.
+- **W6-D:**
+  - every Free refund writes `refund`-kind `payouts` rows (owner decision, Oct 12). Rules 7 and 8 do (`refundFree`); rule 4 doesn't yet. Make `applyVoid` (`apps/api/src/lifecycle/void.ts`) write them idempotently, with a test, so `/rounds/:id/me` reads one shape. W6-D owns that change;
+  - Free settlement data: `settlements.tally_json` is the API's `TallySchema`; `winners_json` holds `{winner, refundReason, voidCount, voidStake, total, creatorAward, awardRecipient}`; `tx_hash` is the manifest anchor. Bundles are at `bundles/{roundId}/{mode}/` (`docs/bundle-format.md`). Modes refunded before the reveal (rules 4, 7, 8) have no bundle;
+  - `MeResponse.stakes.reasons` uses the widened `INELIGIBLE_REASONS` (W5-B).
