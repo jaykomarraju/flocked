@@ -80,3 +80,8 @@
 
 - **W9-A:** void and refund notifications. A guardian void of Stakes tells its entrants their stake is refunded, and a confirmed round void tells everyone who entered. There is no outcome notification kind yet.
 - **W9-C:** the client sends `turnstileToken` on the first Free entry of each New York game day. Without it, `POST /rounds/:id/entries` answers 403 `turnstile_failed`.
+
+## Carry-over from W5-Z (Oct 12, 2026)
+
+- **W9-A:** a Free outcome's notifications (and W10-A's cards) are enqueued where its D1 outputs become durable: `applyFree` and `refundFree` in `apps/api/src/settlement/apply/free.ts`, and `applyVoid` in `apps/api/src/lifecycle/void.ts` for rule 4. No outcome hook exists yet.
+- **W9-B:** read `docs/bundle-format.md` (`bundleFormat` 1). Free chunks carry receipt fields, not signatures. A refunded Free mode has a payout tree over its refunds, and the creator award is not a leaf. Modes refunded before the reveal (rules 4, 7, 8) publish no bundle (Decision log, Oct 12).

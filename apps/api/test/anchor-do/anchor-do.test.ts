@@ -306,6 +306,10 @@ describe('stuck transactions, nonces and RPC failures', () => {
     await h.stub.submitLock([a]);
     await h.run();
     h.fake.consumeNonce(h.anchorer);
+    // Seen once: it could be our own version with its receipt not served yet (T3), so it waits.
+    await h.run();
+    expect(h.fake.sent.map((t) => t.nonce)).toEqual([0]);
+    h.fake.mine(); // a later block: seen again there, the nonce is taken
     await h.run();
     expect(h.fake.sent.map((t) => t.nonce)).toEqual([0, 1]);
     h.fake.mine();
@@ -368,5 +372,170 @@ describe('manifests', () => {
     expect(h.fake.sent).toHaveLength(1);
     expect((await h.stub.status(l.roundKey)).manifest.state).toBe('confirmed');
     expect(h.fake.anchorOf(l.roundKey).manifestHash).toBe(manifest.manifestHash);
+  });
+});
+
+describe('W4-F1 review fixes', () => {
+  it('N1: a reverted earlier version fails only its own keys; the replacement’s other keys are resent', async () => {
+    const h = await harness();
+    h.fake.automine = false;
+    const a = lockItem(await insertRound(closeSec), closeSec);
+    await h.stub.submitLock([a]);
+    await h.run(); // v1: lock [a]
+    const b = lockItem(await insertRound(closeSec), closeSec);
+    await h.stub.submitLock([b]);
+    h.at(T0 + 13_000);
+    await h.run(); // stuck: v2 = lock [a, b] at the same nonce
+    const [v1, v2] = h.fake.sent as [(typeof h.fake.sent)[0], (typeof h.fake.sent)[0]];
+    expect(v2.nonce).toBe(v1.nonce);
+
+    // The earlier version wins the race, and reverts.
+    h.fake.revertHashes.add(v1.hash);
+    h.fake.mineVersion(v1.hash);
+    await h.run();
+    expect((await h.stub.status(a.roundKey)).lock).toMatchObject({
+      state: 'failed',
+      detail: 'reverted',
+    });
+    // b was only ever in v2, which can't be mined now: it goes out again at the next nonce.
+    expect((await h.stub.status(b.roundKey)).lock.state).toBe('sent');
+    const v3 = h.fake.sent[2]!;
+    expect(v3.nonce).toBe(v1.nonce + 1);
+    expect(decodeFunctionData({ abi: flockedAnchorAbi, data: v3.data }).args[0]).toEqual([
+      b.roundKey,
+    ]);
+    h.fake.mine();
+    await h.run();
+    expect((await h.stub.status(b.roundKey)).lock.state).toBe('confirmed');
+  });
+
+  it('N1: an earlier version of another kind that lands is applied as what it is', async () => {
+    const h = await harness();
+    h.fake.automine = false;
+    const soon = T0 / 1000 + 60;
+    const a = lockItem(await insertRound(soon), soon);
+    await h.stub.submitLock([a]);
+    await h.run(); // v1: lock [a]
+
+    // A room round that closed already has its commit due.
+    const closed = T0 / 1000 - 10;
+    const l2 = lockItem(await insertRound(closed), closed);
+    lockOnchain(h.fake, l2);
+    // Our clock passes a's closesAt (its window is gone for us), the chain's is still before it.
+    h.at(T0 + 61_000);
+    h.fake.time = T0 / 1000 + 50;
+    await h.stub.submitCommit(commitItem(l2));
+    await h.run(); // stuck: a can't be sent again, so v2 = commit [l2] at the same nonce
+    const [v1, v2] = h.fake.sent as [(typeof h.fake.sent)[0], (typeof h.fake.sent)[0]];
+    expect(decodeFunctionData({ abi: flockedAnchorAbi, data: v2.data }).functionName).toBe(
+      'commit',
+    );
+    expect((await h.stub.status(a.roundKey)).lock.state).toBe('failed');
+
+    // v1 lands before closesAt on the chain's clock: a is locked after all.
+    h.fake.mineVersion(v1.hash);
+    await h.run();
+    expect((await h.stub.status(a.roundKey)).lock).toMatchObject({
+      state: 'confirmed',
+      txHash: v1.hash,
+    });
+    expect(await lockTx(v1.hash)).toEqual([{ lock_tx: v1.hash, commit_tx: null }]);
+    // l2's commit was only in v2: it is sent again at the next nonce.
+    expect((await h.stub.status(l2.roundKey)).commit.state).toBe('sent');
+    expect(h.fake.sent[2]!.nonce).toBe(v1.nonce + 1);
+  });
+
+  it('N1: a manifest that reverts in a block stamped before beacon time is retried, not failed', async () => {
+    const h = await harness();
+    const l = lockItem(await insertRound(closeSec), closeSec);
+    lockOnchain(h.fake, l);
+    const beacon = commitItem(l).beaconTimeSec;
+    h.at(beacon * 1000);
+    h.fake.time = beacon - 5; // the chain is behind our clock
+    await h.stub.submitManifest({
+      roundKey: l.roundKey,
+      roundId: l.roundId,
+      mode: 'free',
+      manifestHash: `0x${'cd'.repeat(32)}`,
+      beaconTimeSec: beacon,
+    });
+    await h.run(); // sent and mined at beacon − 5: BeaconNotReached
+    await h.run(); // the revert is early: back in the queue a little later
+    expect((await h.stub.status(l.roundKey)).manifest.state).toBe('queued');
+    h.at((beacon + 6) * 1000);
+    await h.run();
+    await h.run();
+    expect(h.fake.sent).toHaveLength(2);
+    expect((await h.stub.status(l.roundKey)).manifest).toMatchObject({
+      state: 'confirmed',
+      txHash: h.fake.sent[1]!.hash,
+    });
+  });
+
+  it('N2: a confirmed key resubmitted after a reorg removed its write is checked again and resent', async () => {
+    const h = await harness();
+    const a = lockItem(await insertRound(closeSec), closeSec);
+    await h.stub.submitLock([a]);
+    await h.run();
+    await h.run();
+    expect((await h.stub.status(a.roundKey)).lock.state).toBe('confirmed');
+
+    h.fake.anchors.delete(a.roundKey); // a reorg dropped the write
+    expect(await h.stub.submitLock([a])).toEqual({ queued: [a.roundKey], alreadyAnchored: [] });
+    await h.run();
+    await h.run();
+    expect(h.fake.sent).toHaveLength(2);
+    expect((await h.stub.status(a.roundKey)).lock).toMatchObject({
+      state: 'confirmed',
+      txHash: h.fake.sent[1]!.hash,
+    });
+    // Still written: a resubmission stays confirmed and sends nothing.
+    expect(await h.stub.submitLock([a])).toEqual({ queued: [], alreadyAnchored: [a.roundKey] });
+    await h.run();
+    expect(h.fake.sent).toHaveLength(2);
+  });
+
+  it('N3: a key found written onchain records the transaction that wrote it and its round_modes value', async () => {
+    const h = await harness();
+    const l = lockItem(await insertRound(closeSec), closeSec);
+    lockOnchain(h.fake, l);
+    // The indexer mirrored the Locked event of the transaction that wrote it.
+    const txHash: Hex = `0x${'7e'.repeat(32)}`;
+    await env.DB.prepare(
+      `INSERT INTO chain_events (chain_id, contract, block_number, block_hash, block_timestamp, tx_hash,
+         log_index, event, args_json, created_at, updated_at)
+       VALUES (31337, ?1, 90, ?2, 1, ?3, 0, 'Locked', ?4, 0, 0)`,
+    )
+      .bind(FAKE_ANCHOR, `0x${'b1'.repeat(32)}`, txHash, JSON.stringify({ roundKey: l.roundKey }))
+      .run();
+    await h.stub.submitLock([l]);
+    await h.run();
+    expect(h.fake.sent).toHaveLength(0);
+    expect((await h.stub.status(l.roundKey)).lock).toMatchObject({ state: 'confirmed', txHash });
+    expect(await lockTx(txHash)).toEqual([{ lock_tx: txHash, commit_tx: null }]);
+  });
+
+  it('N4: a sent lock that goes stuck inside its last 30 s stays in its replacement until closesAt', async () => {
+    const h = await harness();
+    const alerts = alertSpy();
+    h.fake.automine = false;
+    const a = lockItem(await insertRound(closeSec), closeSec);
+    await h.stub.submitLock([a]);
+    await h.run(); // v1
+    h.at((closeSec - 20) * 1000); // stuck, and inside the 30 s margin
+    await h.run();
+    expect(h.fake.sent).toHaveLength(2);
+    expect(
+      decodeFunctionData({ abi: flockedAnchorAbi, data: h.fake.sent[1]!.data }).args[0],
+    ).toEqual([a.roundKey]);
+    expect((await h.stub.status(a.roundKey)).lock.state).toBe('sent');
+    // Unconfirmed at its deadline: one alert; a late confirmation still counts.
+    expect(alerts.codes()).toEqual(['ALERT_SCHEDULE_GAP']);
+    h.fake.mine();
+    await h.run();
+    expect((await h.stub.status(a.roundKey)).lock).toMatchObject({
+      state: 'confirmed',
+      txHash: h.fake.sent[1]!.hash,
+    });
   });
 });

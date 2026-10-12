@@ -1,9 +1,9 @@
 // Cron triggers (wrangler.jsonc `triggers.crons`; spec "Architecture": Scheduler and Chain indexer,
-// "Data model": nightly reconciliation). Times are UTC. The scheduler (W4-A) and the indexer kick
-// (W4-B) are wired; reconciliation is a stub that only logs until W5-D lands (src/jobs/reconcile.ts,
-// using src/points findBalanceMismatches).
+// "Data model": nightly reconciliation). Times are UTC. The scheduler (W4-A), the indexer kick (W4-B)
+// and the points reconciliation (W5-D, src/jobs/reconcile.ts) are wired.
 import type { Env } from './env.js';
 import { indexerKick } from './indexer/cron.js';
+import { reconcileJob } from './jobs/reconcile.js';
 import { log } from './lib/log.js';
 import { SCHEDULER_JOBS } from './scheduler/index.js';
 
@@ -28,18 +28,11 @@ export const CRON_JOBS: Record<string, readonly CronJob[]> = {
 
 export type CronJobHandler = (env: Env, scheduledTime: number) => Promise<void>;
 
-const pending =
-  (job: CronJob): CronJobHandler =>
-  (_env, scheduledTime) => {
-    log.info('cron_job_not_implemented', { job, scheduledTime });
-    return Promise.resolve();
-  };
-
 export const CRON_HANDLERS: Record<CronJob, CronJobHandler> = {
   scheduler_tick: SCHEDULER_JOBS.scheduler_tick,
   indexer_kick: indexerKick,
   create_rounds_ahead: SCHEDULER_JOBS.create_rounds_ahead,
-  reconcile_points: pending('reconcile_points'),
+  reconcile_points: reconcileJob,
 };
 
 /** Runs one cron expression's jobs; one failing job doesn't stop the rest. Returns the jobs run. */

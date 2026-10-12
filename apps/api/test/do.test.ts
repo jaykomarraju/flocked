@@ -1,9 +1,14 @@
 // Every Durable Object binding resolves to its class in the Workers runtime and each pinned RPC
 // method answers "not implemented" until it is built (plan P2.4: src/do/types.ts).
-import { env } from 'cloudflare:test';
+import { env, runInDurableObject } from 'cloudflare:test';
 import { roundKey } from '@flocked/shared';
 import { describe, expect, it } from 'vitest';
-import { ANCHOR_SINGLETON, INDEXER_SINGLETON, settlementName } from '../src/do/index.js';
+import {
+  ANCHOR_SINGLETON,
+  INDEXER_SINGLETON,
+  settlementName,
+  type SettlementDO,
+} from '../src/do/index.js';
 import type { AnchorCommitItem, StakesEntryEvent } from '../src/do/types.js';
 import { isNotImplemented } from '../src/lib/errors.js';
 import { FIXTURE_IDS } from './helpers/index.js';
@@ -130,29 +135,33 @@ describe('AnchorDO (binding ANCHOR)', () => {
   });
 });
 
+// SettlementDO is implemented (W5-A); test/settlement/*.test.ts cover its behaviour. Here: the
+// binding reaches the class and the pinned methods answer.
 describe('SettlementDO (binding SETTLEMENT)', () => {
   it('pins start, chunkDone, status', async () => {
     const name = settlementName(FIXTURE_IDS.round, 'free');
     expect(name).toBe(`${FIXTURE_IDS.round}:free`);
     const s = env.SETTLEMENT.get(env.SETTLEMENT.idFromName(name));
-    await expectNotImplemented(
-      s.start({ roundId: FIXTURE_IDS.round, mode: 'free', idempotencyKey: name }),
-      'SettlementDO.start',
-    );
-    await expectNotImplemented(
-      s.chunkDone('chunks/0', {
-        entries: 0,
-        valid: 0,
-        tally: [
-          { headcount: 0, total: '0' },
-          { headcount: 0, total: '0' },
-        ],
-        voids: {},
-        resultKey: 'results/0',
-      }),
-      'SettlementDO.chunkDone',
-    );
-    await expectNotImplemented(s.status(), 'SettlementDO.status');
+    await runInDurableObject(s, (o: SettlementDO) => {
+      o.manualAlarms = true;
+    });
+    expect((await s.status()).phase).toBe('idle');
+    const done = await s.chunkDone('chunks/0', {
+      entries: 0,
+      valid: 0,
+      tally: [
+        { headcount: 0, total: '0' },
+        { headcount: 0, total: '0' },
+      ],
+      voids: {},
+      resultKey: 'results/0',
+    });
+    expect(done.phase).toBe('idle');
+    const key = { roundId: FIXTURE_IDS.round, mode: 'free' as const, idempotencyKey: name };
+    const first = await s.start(key);
+    expect(first.started).toBe(true);
+    expect(first.status).toMatchObject({ roundId: FIXTURE_IDS.round, phase: 'preparing' });
+    expect((await s.start(key)).started).toBe(false);
   });
 });
 

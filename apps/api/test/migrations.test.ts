@@ -188,6 +188,26 @@ const SPEC_COLUMNS: Record<string, readonly string[]> = {
     'dispatch_error',
     'created_at',
     'updated_at',
+    'dispatch_alerted_at', // 0007 (W4-F1): ALERT_DO_ERROR repeats while a row keeps failing
+  ],
+  // 0007_review_fixes (W4-F1): poll-end checkpoints for reorg repair, and the removals queue.
+  indexer_checkpoints: ['chain_id', 'contract', 'block_number', 'block_hash', 'created_at'],
+  chain_event_removals: [
+    'chain_id',
+    'tx_hash',
+    'log_index',
+    'revision',
+    'contract',
+    'block_number',
+    'block_hash',
+    'block_timestamp',
+    'event',
+    'args_json',
+    'dispatched',
+    'dispatch_attempts',
+    'dispatch_error',
+    'dispatch_alerted_at',
+    'created_at',
   ],
   chain_event_handled: ['chain_id', 'tx_hash', 'log_index', 'revision', 'handler', 'handled_at'],
   sent_txs: ['chain_id', 'tx_hash', 'round_key', 'kind', 'created_at'],
@@ -206,6 +226,16 @@ const SPEC_COLUMNS: Record<string, readonly string[]> = {
   daily_grant_skips: ['user_id', 'round_id', 'balance', 'skipped_at'],
   // 0005_scheduler (W4-A): at-most-once operator transactions; not yet a row in the spec's data model.
   operator_txs: ['purpose', 'status', 'tx_json', 'tx_hash', 'created_at', 'updated_at'],
+  // 0009_personhood (W5-B): admin flags and config, and deleted people's cap state; neither is a
+  // row in the spec's data model yet (W5-B spec issue).
+  config: ['key', 'value_json', 'updated_at', 'updated_by'],
+  person_tombstones: [
+    'person_id',
+    'daily_stake_cap',
+    'pending_cap',
+    'pending_cap_effective_at',
+    'created_at',
+  ],
 };
 
 /** Primary keys the spec names ("PK (...)", or "(PK)" on a column). */
@@ -213,6 +243,8 @@ const SPEC_PRIMARY_KEYS: Record<string, readonly string[]> = {
   question_votes: ['question_id', 'user_id'],
   daily_grant_skips: ['user_id', 'round_id'],
   chain_events: ['chain_id', 'tx_hash', 'log_index'],
+  indexer_checkpoints: ['chain_id', 'contract', 'block_number'],
+  chain_event_removals: ['chain_id', 'tx_hash', 'log_index', 'revision'],
   sent_txs: ['chain_id', 'tx_hash', 'round_key'],
   settlement_holds: ['round_id', 'mode', 'reason'],
   round_modes: ['round_id', 'mode'],
@@ -220,6 +252,8 @@ const SPEC_PRIMARY_KEYS: Record<string, readonly string[]> = {
   settlements: ['round_id', 'mode', 'proposal_seq'],
   point_balances: ['user_id', 'scope'],
   share_cards: ['share_id'],
+  config: ['key'],
+  person_tombstones: ['person_id'],
 };
 
 interface KeySpec {
@@ -381,6 +415,27 @@ describe('unique keys and indexes', () => {
 });
 
 describe('constraints reject bad rows', () => {
+  it('settlement_holds (0008): void_rate holds have no tx_hash; foreign_entry holds need one', async () => {
+    const insert =
+      'INSERT INTO settlement_holds (round_id, mode, reason, tx_hash, created_at) VALUES (?1, ?2, ?3, ?4, 0)';
+    await env.DB.prepare(insert).bind('r-0008', 'free', 'void_rate', null).run();
+    await env.DB.prepare(insert).bind('r-0008', 'stakes', 'foreign_entry', '0xabc').run();
+    expect(await rejects(insert, 'r-0008', 'stakes', 'void_rate', '0xabc')).toContain(
+      'CHECK constraint failed: settlement_holds_tx',
+    );
+    expect(await rejects(insert, 'r-0008', 'free', 'foreign_entry', null)).toContain(
+      'CHECK constraint failed: settlement_holds_tx',
+    );
+    expect(await rejects(insert, 'r-0008', 'free', 'other', null)).toContain(
+      'CHECK constraint failed',
+    );
+    expect(await rejects(insert, 'r-0008', 'free', 'void_rate', null)).toContain('UNIQUE');
+    const { results } = await env.DB.prepare('SELECT name FROM d1_migrations').all<{
+      name: string;
+    }>();
+    expect(results.map((r) => r.name)).toContain('0008_settlement.sql');
+  });
+
   it('point_balances: balance >= 0', async () => {
     expect(
       await rejects(
@@ -521,6 +576,17 @@ describe('constraints reject bad rows', () => {
         "INSERT INTO points_ledger (id, user_id, scope, delta, reason, ref_id, created_at) VALUES ('l3', 'u', 'global', 5, 'bonus', 'r', 0)",
       ),
     ).toContain('CHECK constraint failed');
+  });
+
+  it('config: value_json is JSON; person_tombstones: a pending cap needs its effective time', async () => {
+    expect(
+      await rejects("INSERT INTO config (key, value_json, updated_at) VALUES ('k', 'not json', 0)"),
+    ).toContain('CHECK constraint failed');
+    expect(
+      await rejects(
+        "INSERT INTO person_tombstones (person_id, pending_cap, created_at) VALUES ('0x01', 5, 0)",
+      ),
+    ).toContain('person_tombstones_pending_cap_pair');
   });
 
   it('rounds: room rounds need room_id, and locked rounds are complete', async () => {

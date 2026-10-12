@@ -19,11 +19,20 @@
 //   ANTHROPIC_API_KEY     moderation (W8-A)
 //   VAPID_PRIVATE_KEY     web push (W9-A)
 //   PAYMASTER_URL, BUNDLER_URL  paymaster proxy (W10-D)
+//   ATTESTATION_RPC_URL   Base mainnet RPC for Coinbase Verifications reads (W5-B); a secret when it
+//                         embeds a key. Defaults to BASE_RPC_URL on chain 8453
+// Optional vars, unset unless an environment needs them (src/env.ts):
+//   ATTESTATION_NETWORK   `base` (default, every environment) or `base-sepolia` (Coinbase's test
+//                         attester only; W5-B)
+//   DRAND_RELAYS          comma-separated drand relays; quicknet defaults to the public ones (W5-A)
 // The ticket signer key (TICKET_SIGNER_KEY) lives only in apps/signer.
 // Local only, written by `pnpm stack:up` into e2e/stack/.dev.vars (never deployed):
 //   LOCAL_DEPLOYMENT      JSON of contracts/deployments/31337.json (receipt domain on anvil; W3-B)
 //   FLOCKED_TEST_SEAM_KEY Bearer key for the /__test/* seam (src/local/seam.ts; W3-D)
 //   FARCASTER_AUTH_ORIGIN Quick Auth mock (e2e/mocks/farcaster; W3-A)
+//   COINBASE_LOGIN_ORIGIN, COINBASE_API_ORIGIN  Coinbase OAuth and API mock (e2e/mocks/coinbase; W5-B)
+//   ATTESTATION_RPC_URL   the EAS mock (e2e/mocks/eas; W5-B)
+//   DRAND_RELAYS          the stack's drand HTTP endpoint (W5-A)
 //   FLOCKED_TEST_CLOCK    fixed game clock, epoch ms (src/lib/clock.ts)
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
@@ -97,6 +106,9 @@
     // would warn that the named environments lack them): locally `pnpm stack:up` writes them to
     // e2e/stack/.dev.vars; staging and production get theirs from the owner (W14-A).
     "TOS_VERSION": "2026-10-01",
+    // The fee cap of every signed transaction, decimal gwei (src/chain/tx.ts; W4-F1 T2). Local and
+    // the placeholders below equal the code's default; W13-D sets staging and production.
+    "TX_MAX_FEE_GWEI": "5",
   },
   "d1_databases": [
     {
@@ -191,6 +203,7 @@
         // APP_ORIGIN and EMAIL_FROM: OWNER_SUPPLIED with the staging domain (W14-A). Until then the
         // sign-in routes answer 503 `unavailable`.
         "TOS_VERSION": "2026-10-01",
+        "TX_MAX_FEE_GWEI": "5",
       },
       "d1_databases": [
         {
@@ -286,6 +299,7 @@
         // APP_ORIGIN and EMAIL_FROM: OWNER_SUPPLIED with the production domain (W14-A). Until then the
         // sign-in routes answer 503 `unavailable`.
         "TOS_VERSION": "2026-10-01",
+        "TX_MAX_FEE_GWEI": "5",
       },
       "d1_databases": [
         {

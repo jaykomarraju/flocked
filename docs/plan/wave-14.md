@@ -58,3 +58,8 @@
   - commit the deployments, so the IndexerDO stops logging `indexer_unconfigured`;
   - set the fee cap;
   - deal with orphan `anchors` rows. A crash between the `anchors` insert and the AnchorDO's pending write leaves a row that was never broadcast (`block_timestamp` NULL). Sweep them, or skip them in reconciliation.
+
+## Carry-over from W5-Z (Oct 12, 2026)
+
+- **W14-A:** confirm the Coinbase API shape with the real OAuth app (OA-09) on staging, with one ID-verified and one unverified account: the `/v2/user/personal-details` body (`parsePersonalDetails` in `apps/api/src/personhood/coinbase.ts`), how an unverified account is answered, the scope `identity:user:address:read`, and `CB-VERSION`. Fix the parser if needed. OA-22 stays 🟡 until this passes.
+- **Later (any wave with stack capacity):** a personhood stack test; the Coinbase and EAS mocks run on the stack since W5-D.

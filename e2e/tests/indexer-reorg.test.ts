@@ -1,6 +1,7 @@
-// Chain indexer against the local stack's anvil (W4-B): every FlockedEscrow and FlockedAnchor event
-// mirrored, PIPE-3 (a reorg made with evm_snapshot / evm_revert, repaired), idempotent dispatch across
-// the replay, and ALERT-8 on a real transaction the backend didn't record.
+// Chain indexer against the local stack's anvil (W4-B, W4-F1): every FlockedEscrow and FlockedAnchor
+// event mirrored, PIPE-3 (reorgs made with evm_snapshot / evm_revert, repaired: a dropped log, and a
+// log re-mined at a lower block), idempotent dispatch across the replay, and ALERT-8 on a real
+// transaction the backend didn't record.
 //
 // The indexer core (apps/api/src/indexer) runs here in Node over the stack's anvil and its real
 // deployments, through the same viem RPC client the IndexerDO uses. D1 is node:sqlite with the
@@ -227,8 +228,18 @@ describe('chain indexer on the local stack', () => {
       )
       .all(chainId);
 
+  const row = (tx: string) =>
+    d1.db
+      .prepare('SELECT block_number, removed, revision FROM chain_events WHERE tx_hash = ?1')
+      .get(tx) as { block_number: number; removed: number; revision: number };
+
   /** Sends one FlockedAnchor.lock from the stack's anchorer key; `record` puts it in sent_txs first. */
   async function sendLock(tag: string, record: boolean): Promise<Hex> {
+    return (await sendLockSigned(tag, record)).hash;
+  }
+
+  /** sendLock, also returning the signed transaction (to broadcast it again after a revert). */
+  async function sendLockSigned(tag: string, record: boolean): Promise<{ hash: Hex; signed: Hex }> {
     const key = keccak256(toHex(`indexer-e2e:${tag}:${Date.now()}`));
     const closesAt = BigInt(Math.floor(Date.now() / 1000) + 3600);
     const beaconRound =
@@ -259,7 +270,7 @@ describe('chain indexer on the local stack', () => {
     const [log] = receipt.logs;
     const evt = decodeEventLog({ abi: flockedAnchorAbi, data: log!.data, topics: log!.topics });
     expect(['Locked', 'Skipped']).toContain(evt.eventName);
-    return hash;
+    return { hash, signed };
   }
 
   beforeAll(async () => {
@@ -351,13 +362,8 @@ describe('chain indexer on the local stack', () => {
 
     // chain_events now matches the chain: `dropped` is removed, `kept` is live.
     expect(liveRows()).toEqual(await chainLogs());
-    const row = (tx: string) =>
-      d1.db.prepare('SELECT removed, revision FROM chain_events WHERE tx_hash = ?1').get(tx) as {
-        removed: number;
-        revision: number;
-      };
-    expect(row(dropped)).toEqual({ removed: 1, revision: 1 });
-    expect(row(kept)).toEqual({ removed: 0, revision: 0 });
+    expect(row(dropped)).toMatchObject({ removed: 1, revision: 1 });
+    expect(row(kept)).toMatchObject({ removed: 0, revision: 0 });
     expect(seen.filter((s) => s.txHash === dropped).map((s) => s.removed)).toEqual([false, true]);
     expect(seen.filter((s) => s.txHash === kept).map((s) => s.removed)).toEqual([false]);
 
@@ -367,6 +373,32 @@ describe('chain indexer on the local stack', () => {
     await cycle();
     expect(seen.length).toBe(before);
     expect(liveRows()).toEqual(await chainLogs());
+  });
+
+  it('PIPE-3: a log re-mined at a lower block is undone, then applied again there', async () => {
+    const snapshot = await anvil('evm_snapshot');
+    await anvil('anvil_mine', ['0x1']);
+    const { hash, signed } = await sendLockSigned('moved', true);
+    await cycle();
+    const before = row(hash);
+    expect(before).toMatchObject({ removed: 0, revision: 0 });
+
+    // Back to before the empty block, and the same signed transaction again: one block lower.
+    expect(await anvil('evm_revert', [snapshot])).toBe(true);
+    await client.sendRawTransaction({ serializedTransaction: signed });
+    const receipt = await client.waitForTransactionReceipt({ hash });
+    expect(Number(receipt.blockNumber)).toBe(before.block_number - 1);
+    await anvil('anvil_mine', ['0x3']);
+    expect((await cycle()).reorg).toBe(true);
+
+    expect(liveRows()).toEqual(await chainLogs());
+    expect(row(hash)).toEqual({ block_number: before.block_number - 1, removed: 0, revision: 2 });
+    // Handlers undo the old block's log before they see it at the new one.
+    expect(seen.filter((x) => x.txHash === hash).map((x) => [x.removed, x.revision])).toEqual([
+      [false, 0],
+      [true, 1],
+      [false, 2],
+    ]);
   });
 
   it('ALERT-8: an anchor event from a transaction the backend did not record', async () => {

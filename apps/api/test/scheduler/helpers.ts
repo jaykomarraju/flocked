@@ -3,6 +3,7 @@
 import { env, runDurableObjectAlarm, runInDurableObject } from 'cloudflare:test';
 import { newUlid } from '@flocked/shared';
 import { generatePrivateKey } from 'viem/accounts';
+import { vi } from 'vitest';
 import { ANCHOR_SINGLETON, type AnchorDO } from '../../src/do/anchor-do.js';
 import type { RoundRow } from '../../src/scheduler/lock.js';
 import { FAKE_DEPLOYMENT, FakeChain } from '../anchor-do/fake-chain.js';
@@ -75,4 +76,26 @@ export async function chainHarness(t: number) {
     deps: { operator: { transport: fake.transport, waitMs: 0 } },
     runAnchor: () => runDurableObjectAlarm(anchor),
   };
+}
+
+/**
+ * The first write that marks `purpose` abandoned in operator_txs throws, as a D1 outage would, so
+ * that cancellation fails before anything is sent (W5-F1 C4). Returns the spy (mockRestore it).
+ */
+export function failFirstMark(purpose: string) {
+  const prepare = env.DB.prepare.bind(env.DB);
+  let armed = true;
+  return vi.spyOn(env.DB, 'prepare').mockImplementation((sql: string) => {
+    const stmt = prepare(sql);
+    if (!armed || !sql.startsWith('UPDATE operator_txs SET tx_json')) return stmt;
+    return {
+      bind: (...args: unknown[]) => {
+        if (args[0] === purpose && String(args[1]).includes('"abandoned":true')) {
+          armed = false;
+          throw new Error('D1_ERROR: unavailable');
+        }
+        return stmt.bind(...args);
+      },
+    } as unknown as D1PreparedStatement;
+  });
 }

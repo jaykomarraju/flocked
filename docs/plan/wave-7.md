@@ -83,3 +83,17 @@
   - reuse `e2e/stack/env.mjs` and the seam;
   - add a local Turnstile siteverify mock (the stack smoke calls `challenges.cloudflare.com` today);
   - make the seam's 404 body match the app's ("Not found", `apps/api/src/lib/errors.ts`).
+
+## Carry-over from W5-Z (Oct 12, 2026)
+
+- **W7-B:**
+  - write `person_tombstones` at account deletion (migration 0009; `apps/api/src/personhood/verify.ts` applies and deletes them on verification);
+  - merge confirmation for pending merges that the personhood callback creates (7-day TTL);
+  - refuse to unlink the coinbase identity;
+  - `apps/api/src/auth/profile.ts` `stakesReasons` is computed and then overridden by `meView` (`routes/me.ts`). Delete it, or make `buildMe` take the eligibility.
+- **W7-C:** before the admin pages, these Paper fixes (owner decisions, Oct 12), re-exporting what they touch:
+  - remove the "Questions" header link from the Core flow tablet and desktop headers (74 artboards) and from the navigation sheet (Client app "Navigation": no header links);
+  - draw `security_notice` as a locked, always-on row in Settings › notifications (spec "Notifications": always on);
+  - the Streaks board ranks the best stray streak (all time), with the current streak as the caption; the accent pill marks the board's top live streak only;
+  - the five kit fixes on Components and in `docs/design/README.md`: secondary pills keep the surface fill, and the places that assume "transparent" are corrected; captions follow the type table (Inter 500, muted); the mode toggle's selected segment gets a check; the rank slot grows to 32px; optional sheets close with a "Not now" text button, and the 48px pill stays only where closing is the sheet's main action (claim all).
+  The admin "flags and config" screen covers the `config` table's keys, including `geo.stakes.age21`.

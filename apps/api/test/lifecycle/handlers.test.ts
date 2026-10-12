@@ -9,6 +9,7 @@ import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { LockedRound } from '../../src/do/types.js';
 import { handlers } from '../../src/indexer/handlers.js';
 import { recordSentTx } from '../../src/indexer/sent.js';
+import type { ChainEvent } from '../../src/indexer/types.js';
 import {
   anchorConfirmationHandler,
   stakesIngestHandler,
@@ -113,6 +114,9 @@ describe('the guardian void: Stakes voided, Free continues', () => {
     const r = await stakesRound(fake);
     setClock(T0);
     await r.stub.init(r.locked);
+    // The admin void the RoundDO is pushing (its voidRound sits unmined on the fake chain).
+    fake.automine = false;
+    expect((await r.stub.requestVoid()).accepted).toBe(true);
     const evt = chainEvent('escrow', 'RoundRefunded', { roundId: r.chainRoundId, reason: '4' });
     await recordSentTx(env, {
       chainId: evt.chainId,
@@ -122,8 +126,10 @@ describe('the guardian void: Stakes voided, Free continues', () => {
     });
     await commitStatements(await stakesVoidHandler(evt, env, ctx));
     expect((await modeRow(r.locked.roundId, 'stakes'))?.status).toBe('voided');
-    // The RoundDO applies an admin void to every mode itself; it is not told here.
-    expect((await r.stub.getState()).modes.stakes?.status).toBe('pending');
+    // The RoundDO applies an admin void to every mode itself (its own alarm may already have, now
+    // that D1 has Stakes voided); the handler doesn't tell it a mode result.
+    const meta = (await readMeta(r.stub)) as { results?: Record<string, unknown> } | undefined;
+    expect(meta?.results?.stakes).toBeUndefined();
   });
 
   it('other refund reasons and unknown chain rounds are not voids', async () => {
@@ -161,6 +167,52 @@ describe('the guardian void: Stakes voided, Free continues', () => {
     expect(captured.alerts.map((a) => [a.code, a.step])).toEqual([
       ['ALERT_DO_ERROR', 'void_reorged'],
     ]);
+    expect((await modeRow(r.locked.roundId, 'stakes'))?.status).toBe('pending');
+  });
+
+  it('a void or an anchor write re-mined in another block is not a removal for its handler', async () => {
+    const fake = fakeChainAt(T0);
+    const r = await stakesRound(fake);
+    const key = roundKey(r.locked.roundId, 'free');
+    await env.DB.prepare(
+      "UPDATE round_modes SET lock_tx = ?2 WHERE round_id = ?1 AND mode = 'free'",
+    )
+      .bind(r.locked.roundId, `0x${'4c'.repeat(32)}`)
+      .run();
+    const captured = captureAlerts();
+    // The indexer has mirrored both again in their new block before it dispatches the removals.
+    const mirror = (evt: ChainEvent) =>
+      env.DB.prepare(
+        `INSERT INTO chain_events (chain_id, contract, block_number, block_hash, block_timestamp, tx_hash,
+           log_index, event, args_json, revision, created_at, updated_at)
+         VALUES (?1, ?2, 201, ?3, 1, ?4, ?5, ?6, ?7, 2, 0, 0)`,
+      )
+        .bind(
+          evt.chainId,
+          evt.contract,
+          `0x${'cd'.repeat(32)}`,
+          evt.txHash,
+          evt.logIndex,
+          evt.event,
+          JSON.stringify(evt.args),
+        )
+        .run();
+    const voided = chainEvent('escrow', 'RoundRefunded', { roundId: r.chainRoundId, reason: '4' });
+    const locked = chainEvent(
+      'anchor',
+      'Locked',
+      { roundKey: key, closesAt: String(r.locked.closesAt / 1000) },
+      { txHash: `0x${'4c'.repeat(32)}` },
+    );
+    await mirror(voided);
+    await mirror(locked);
+    await commitStatements(await stakesVoidHandler({ ...voided, removed: true }, env, ctx));
+    await commitStatements(await anchorConfirmationHandler({ ...locked, removed: true }, env, ctx));
+    captured.restore();
+    expect(captured.alerts).toEqual([]);
+    expect(await modeRow(r.locked.roundId, 'free')).toMatchObject({
+      lock_tx: `0x${'4c'.repeat(32)}`,
+    });
     expect((await modeRow(r.locked.roundId, 'stakes'))?.status).toBe('pending');
   });
 });
@@ -216,6 +268,44 @@ describe('ticketed Entered → the RoundDO Stakes counters', () => {
       blockTimestampSec: evt.blockTimestampSec,
     });
     expect(again).toEqual({ counted: false, entrantCount: 2, pool: String(BigInt(stake) * 2n) });
+  });
+
+  it('an entry the RoundDO refuses for good (another chain round) alerts and returns (V3)', async () => {
+    const fake = fakeChainAt(T0);
+    const r = await stakesRound(fake);
+    setClock(T0);
+    await r.stub.init(r.locked);
+    // D1 maps another escrow round to this round than the RoundDO was given: a permanent mismatch.
+    const other = String(BigInt(r.chainRoundId) + 1000n);
+    await env.DB.prepare(
+      "UPDATE round_modes SET chain_round_id = ?2 WHERE round_id = ?1 AND mode = 'stakes'",
+    )
+      .bind(r.locked.roundId, other)
+      .run();
+    const user = await createUser(0);
+    const player = '0x00000000000000000000000000000000000000b1' as Hex;
+    const personTag = keccak256(toHex('person-v3'));
+    const ticketHash = keccak256(toHex('ticket-v3'));
+    await env.DB.prepare(
+      'INSERT INTO stakes_tickets (ticket_hash, round_id, person_tag, user_id, wallet, expiry, issued_at) VALUES (?1, ?2, ?3, ?4, ?5, 0, 0)',
+    )
+      .bind(ticketHash, r.locked.roundId, personTag, user, player)
+      .run();
+    const captured = captureAlerts();
+    const evt = chainEvent('escrow', 'Entered', {
+      roundId: other,
+      player,
+      personTag,
+      ticketHash,
+      ciphertext: '0x0102',
+    });
+    // Rethrown, it would stop dispatch at this row for good.
+    await expect(stakesIngestHandler(evt, env, ctx)).resolves.toBeUndefined();
+    captured.restore();
+    expect(
+      captured.alerts.filter((a) => a.roundId === r.locked.roundId && a.code === 'ALERT_DO_ERROR'),
+    ).toMatchObject([{ step: 'ingest_stakes_entry', txHash: evt.txHash }]);
+    expect((await r.stub.getState()).modes.stakes).toMatchObject({ entrantCount: 0 });
   });
 });
 

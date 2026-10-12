@@ -210,6 +210,31 @@ describe('ALERT-4: indexer lag over 150 s', () => {
     expect((await stub.status()).lagSec).toBe(140);
   });
 
+  it("counts the head's own age, so a provider stuck on an old head alerts (not on the local stack)", async () => {
+    chain.mine([lockedLog(dep.anchor, 1)]); // the head: T0 + 2 s
+    const stub = await indexer();
+    const local = await indexer(`indexer-local-${seed}`); // headAgeLag left to ENVIRONMENT (local)
+    await runInDurableObject(stub, (instance: IndexerDO) => {
+      instance.headAgeLag = true;
+    });
+    setClock(T0 + 2_000);
+    await stub.poll();
+    await local.poll();
+    expect(lagAlerts()).toEqual([]);
+    expect((await stub.status()).lagSec).toBe(0);
+
+    // The provider keeps answering with the same head while the clock moves on 200 s.
+    setClock(T0 + 202_000);
+    await stub.poll();
+    expect(lagAlerts()).toHaveLength(1);
+    expect(lagAlerts()[0]).toMatchObject({ lagSec: 200, headAgeSec: 200, rpcFailing: false });
+    expect((await stub.status()).lagSec).toBe(200);
+    // anvil mines no empty blocks: locally an old head is normal.
+    await local.poll();
+    expect(lagAlerts()).toHaveLength(1);
+    expect((await local.status()).lagSec).toBe(0);
+  });
+
   it('alerts when the RPC has been failing for more than 150 s', async () => {
     chain.mine([lockedLog(dep.anchor, 1)]);
     const stub = await indexer();

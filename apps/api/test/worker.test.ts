@@ -9,6 +9,7 @@ import {
 } from 'cloudflare:test';
 import { QUEUE_NAMES } from '@flocked/shared';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { maxFeePerGasOf } from '../src/chain/tx.js';
 import { CRONS, CRON_JOBS, runCron } from '../src/cron.js';
 import worker from '../src/index.js';
 import { HANDLERS, logicalQueue, queue } from '../src/queues/index.js';
@@ -184,6 +185,11 @@ describe('wrangler.jsonc stays in step with the code', () => {
       DRAND_GENESIS: '1692803367',
       DRAND_PERIOD: '3',
     });
+  });
+
+  it.each(envs)('%s: a valid transaction fee cap (W4-F1 T2)', (_name, w) => {
+    expect(typeof w.vars.TX_MAX_FEE_GWEI).toBe('string');
+    expect(maxFeePerGasOf(w.vars)).toBeGreaterThan(0n);
   });
 
   it.each(envs)('%s: every DO class is bound and SQLite-backed', (_name, w) => {

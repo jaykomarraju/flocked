@@ -4,7 +4,13 @@ import { env } from 'cloudflare:test';
 import { flockedAnchorAbi, flockedEscrowAbi } from '@flocked/abi';
 import type { Hex } from 'viem';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { indexOnce, readIndexState, type IndexOptions } from '../../src/indexer/core.js';
+import {
+  indexOnce,
+  LOG_RANGE_REGROW_AFTER,
+  MAX_LOG_RANGE,
+  readIndexState,
+  type IndexOptions,
+} from '../../src/indexer/core.js';
 import { isLogRangeError } from '../../src/indexer/rpc.js';
 import {
   anchorEvent,
@@ -169,14 +175,64 @@ describe('RPC log-range limits', () => {
     const r = await run({ range, maxBlocksPerPoll: 800 });
     // One poll covers 800 blocks (1..800); the rest waits for the next poll.
     expect(r.toBlock).toBe(800);
-    expect(range.maxRange).toBeLessThanOrEqual(300);
     expect(chain.logCalls.every(([a, b]) => b - a + 1 <= 800)).toBe(true);
     const accepted = chain.logCalls.filter(([a, b]) => b - a + 1 <= 300);
     expect(accepted.length).toBeGreaterThan(0);
+    // Halved below the limit (800 -> 400 -> 200). The range regrows after a run of successes, so it
+    // may sit one doubling above the limit until the next rejection halves it again.
+    expect(chain.logCalls.slice(0, 2).map(([a, b]) => b - a + 1)).toEqual([800, 400]);
+    expect(range.maxRange).toBeLessThanOrEqual(400);
+    const rejected = chain.logCalls.filter(([a, b]) => b - a + 1 > 300);
+    expect(rejected.length).toBeLessThanOrEqual(2 * dep.targets.length);
 
     const r2 = await run({ range, maxBlocksPerPoll: 800 });
     expect(r2).toMatchObject({ fromBlock: 801, toBlock: 1000, events: 1 });
     expect(await storedEvents(dep.chainId, dep.anchor)).toHaveLength(1);
+  });
+
+  it('regrows a reduced range after a run of accepted ones (a transient timeout is not forever)', async () => {
+    chain.mineEmpty(4_000); // no provider limit
+    const range = { maxRange: 250 }; // learned during an earlier timeout
+    await run({ range });
+    expect(range.maxRange).toBeGreaterThan(250);
+    expect(chain.logCalls.slice(0, LOG_RANGE_REGROW_AFTER + 1).map(([a, b]) => b - a + 1)).toEqual([
+      ...Array<number>(LOG_RANGE_REGROW_AFTER).fill(250),
+      500,
+    ]);
+    chain.mineEmpty(20_000);
+    for (let i = 0; i < 4; i++) await run({ range });
+    expect(range.maxRange).toBe(MAX_LOG_RANGE);
+  });
+
+  it('applies each chunk as it arrives: a failure mid-poll keeps the chunks before it', async () => {
+    chain.mineEmpty(49);
+    chain.mine([lockedLog(dep.anchor, 1)]); // block 50
+    chain.mineEmpty(99);
+    chain.mine([lockedLog(dep.anchor, 2)]); // block 150
+    chain.mineEmpty(99);
+    chain.mine([lockedLog(dep.anchor, 3)]); // block 250
+    chain.mineEmpty(50); // head 300
+    chain.onLogs = (logs, from, _to, address) => {
+      if (address === dep.anchor && from > 200) throw new Error('fetch failed');
+      return logs;
+    };
+    await expect(run({ range: { maxRange: 100 } })).rejects.toThrow('fetch failed');
+    expect(await readIndexState(env.DB, dep.chainId, dep.anchor)).toMatchObject({
+      lastBlockNumber: 200,
+      lastBlockHash: chain.blocks[200]!.hash,
+    });
+    expect((await storedEvents(dep.chainId, dep.anchor)).map((e) => e.block_number)).toEqual([
+      50, 150,
+    ]);
+
+    chain.onLogs = null;
+    chain.logCalls.length = 0;
+    const r = await run({ range: { maxRange: 100 } });
+    expect(chain.logCalls).toEqual([[201, 300]]); // the escrow is already at 300
+    expect(r.toBlock).toBe(300);
+    expect((await storedEvents(dep.chainId, dep.anchor)).map((e) => e.block_number)).toEqual([
+      50, 150, 250,
+    ]);
   });
 
   it('recognises provider range errors but not rate limits', () => {

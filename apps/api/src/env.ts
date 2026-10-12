@@ -79,6 +79,28 @@ export interface Env {
   /** Farcaster Quick Auth origin override (e2e mock); honoured only when ENVIRONMENT is 'local'. */
   FARCASTER_AUTH_ORIGIN?: string;
 
+  // Settlement and chain vars (W5-A, W4-F1).
+  /**
+   * Comma-separated drand relay base URLs (src/settlement/beacon.ts). Quicknet defaults to the
+   * public relays; the local stack points it at its drand network.
+   */
+  DRAND_RELAYS?: string;
+  /** Fee cap for every signed transaction, decimal gwei (src/chain/tx.ts; 5 when unset; W13-D). */
+  TX_MAX_FEE_GWEI?: string;
+
+  // Personhood vars (W5-B; src/personhood/config.ts).
+  /**
+   * Coinbase Verifications network: `base` (default; Coinbase's production attester, where real
+   * users' attestations live, staging included) or `base-sepolia` (Coinbase's test attester).
+   */
+  ATTESTATION_NETWORK?: string;
+  /** JSON-RPC for that network; defaults to BASE_RPC_URL on chain 8453. A secret if it holds a key. */
+  ATTESTATION_RPC_URL?: string;
+  /** Coinbase OAuth origin override (e2e/mocks/coinbase); honoured only when ENVIRONMENT is 'local'. */
+  COINBASE_LOGIN_ORIGIN?: string;
+  /** Coinbase API origin override (e2e/mocks/coinbase); honoured only when ENVIRONMENT is 'local'. */
+  COINBASE_API_ORIGIN?: string;
+
   // Secrets (wrangler.jsonc header lists them). Optional until the owning session needs them.
   TURNSTILE_SECRET_KEY?: string;
   RECEIPT_SIGNER_KEY?: string;

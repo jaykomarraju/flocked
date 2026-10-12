@@ -34,9 +34,12 @@ let nextChainRoundId = 1n;
  */
 export async function stakesRound(
   fake: FakeChain,
-  opts: { modes?: ('free' | 'stakes')[] } = {},
+  opts: { modes?: ('free' | 'stakes')[]; opensAt?: number } = {},
 ): Promise<TestRound & { chainRoundId: string }> {
-  const r = await createRound({ modes: opts.modes ?? ['free', 'stakes'] });
+  const r = await createRound({
+    modes: opts.modes ?? ['free', 'stakes'],
+    ...(opts.opensAt !== undefined ? { opensAt: opts.opensAt } : {}),
+  });
   const chainRoundId = (nextChainRoundId++).toString();
   await env.DB.prepare(
     "UPDATE round_modes SET chain_round_id = ?2 WHERE round_id = ?1 AND mode = 'stakes'",

@@ -5,10 +5,24 @@
 // `Withdrawn`; anyone may call `finalize`, `refundTooFew` and `refundTimeout`, and a claim finalizes a
 // due round on the way, so `RoundFinalized`, `Credited` and `RoundRefunded` (except reason 4, a void)
 // are open too. A foreign `Entered` (no ticket) has its own path (entered.ts).
+//
+// The constructor's events (role grants, the initial ticket signer and treasury) are exempt, but only
+// when they really are the deployment's: the transaction creates a contract (directly or through the
+// CREATE2 factory) and the emitting contract had no code before that block. A transaction shape alone
+// is not enough, since a role holder could deploy a contract through the factory whose constructor
+// calls ours. When the provider can't answer for that block (no historical state), the event alerts.
+import type { Hex } from 'viem';
 import type { Env } from '../env.js';
 import { raiseAlert } from '../lib/alert.js';
+import { log } from '../lib/log.js';
 import { isSentTx } from './sent.js';
-import type { ChainEvent, ContractKind, HandlerContext, RpcTransaction } from './types.js';
+import type {
+  ChainEvent,
+  ContractKind,
+  HandlerContext,
+  IndexerRpc,
+  RpcTransaction,
+} from './types.js';
 
 /** `RoundRefunded` reason for `voidRound` (FlockedEscrow REASON_VOIDED). */
 export const REFUND_REASON_VOIDED = 4;
@@ -86,6 +100,28 @@ export function isDeploymentTx(tx: RpcTransaction): boolean {
   return tx.to === null || tx.to === CREATE2_FACTORY;
 }
 
+/**
+ * Whether `contract` had no code before `blockNumber`, so an event it emits in that block comes from
+ * its deployment. null when the provider can't say (it has no state for the previous block).
+ */
+export async function createdInBlock(
+  rpc: IndexerRpc,
+  contract: Hex,
+  blockNumber: number,
+): Promise<boolean | null> {
+  if (blockNumber === 0) return true;
+  try {
+    return (await rpc.code(contract, blockNumber - 1)) === '0x';
+  } catch (err) {
+    log.warn('indexer_code_unavailable', {
+      contract,
+      blockNumber: blockNumber - 1,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
+}
+
 /** The ALERT-8 handler (registered for every event in handlers.ts). */
 export async function unsentTxHandler(
   evt: ChainEvent,
@@ -95,7 +131,10 @@ export async function unsentTxHandler(
   if (evt.removed || eventPolicy(evt) === 'open') return;
   if (await isSentTx(env.DB, evt.chainId, evt.txHash)) return;
   const tx = await ctx.rpc.transaction(evt.txHash);
-  if (tx && isDeploymentTx(tx)) return;
+  // Only a deployment-shaped transaction is worth the code lookup.
+  const created =
+    tx && isDeploymentTx(tx) ? await createdInBlock(ctx.rpc, evt.contract, evt.blockNumber) : false;
+  if (created === true) return;
   raiseAlert(env, 'ALERT_FOREIGN_EVENT', {
     kind: 'unsent_tx',
     chainId: evt.chainId,
@@ -107,5 +146,7 @@ export async function unsentTxHandler(
     from: tx?.from ?? null,
     blockNumber: evt.blockNumber,
     logIndex: evt.logIndex,
+    // A deployment-shaped transaction the provider couldn't check against the contract's code.
+    ...(created === null ? { deploymentCheck: 'unavailable' } : {}),
   });
 }

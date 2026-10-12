@@ -8,14 +8,19 @@
 import { registerLifecycleHandlers } from '../lifecycle/handlers.js';
 import { foreignEntryHandler } from './entered.js';
 import { unsentTxHandler } from './policy.js';
-import { ANY_EVENT, HandlerRegistry } from './registry.js';
+import { ANY_EVENT, HandlerRegistry, type HandlerOptions } from './registry.js';
 import type { EventHandler } from './types.js';
 
-export { ANY_EVENT, HandlerRegistry, type RegisteredHandler } from './registry.js';
+export {
+  ANY_EVENT,
+  HandlerRegistry,
+  type HandlerOptions,
+  type RegisteredHandler,
+} from './registry.js';
 
-/** Registers the W4-B handlers on `registry`. */
+/** Registers the W4-B handlers on `registry`. ALERT-8 runs even past a stuck entry (independent). */
 export function registerBuiltinHandlers(registry: HandlerRegistry): HandlerRegistry {
-  registry.register(ANY_EVENT, 'alert-unsent-tx', unsentTxHandler);
+  registry.register(ANY_EVENT, 'alert-unsent-tx', unsentTxHandler, { independent: true });
   registry.register('Entered', 'foreign-entry', foreignEntryHandler);
   return registry;
 }
@@ -30,6 +35,11 @@ export const handlers: HandlerRegistry = registerLifecycleHandlers(
  * chain_event_handled, so keep it stable across deploys: renaming it re-runs the handler on events
  * still pending.
  */
-export function registerHandler(event: string, name: string, fn: EventHandler): void {
-  handlers.register(event, name, fn);
+export function registerHandler(
+  event: string,
+  name: string,
+  fn: EventHandler,
+  opts?: HandlerOptions,
+): void {
+  handlers.register(event, name, fn, opts);
 }

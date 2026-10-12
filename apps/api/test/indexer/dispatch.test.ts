@@ -1,17 +1,32 @@
 // Handler dispatch: each registered handler sees each event revision once, in chain order, across
-// replays, reorgs and failures; a handler's D1 statements commit with its handled mark.
+// replays, reorgs and failures; removals go first, and only to handlers that saw what they undo; a
+// handler's D1 statements commit with its handled mark; a stuck entry repeats its alert and doesn't
+// silence ALERT-8.
 import { env } from 'cloudflare:test';
+import { newUlid, roundKey } from '@flocked/shared';
 import type { Hex } from 'viem';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { indexOnce } from '../../src/indexer/core.js';
 import {
   DISPATCH_ALERT_ATTEMPTS,
+  DISPATCH_ALERT_REPEAT_MS,
   dispatchPending,
   type DispatchResult,
 } from '../../src/indexer/dispatch.js';
-import { ANY_EVENT, HandlerRegistry } from '../../src/indexer/handlers.js';
+import { ANY_EVENT, HandlerRegistry, registerBuiltinHandlers } from '../../src/indexer/handlers.js';
+import { recordSentTx } from '../../src/indexer/sent.js';
 import type { ChainEvent } from '../../src/indexer/types.js';
-import { captureAlerts, FakeChain, lockedLog, storedEvents, useDeployment } from './helpers.js';
+import { anchorConfirmationHandler } from '../../src/lifecycle/handlers.js';
+import {
+  anchorEvent,
+  captureAlerts,
+  escrowEvent,
+  FakeChain,
+  hash32,
+  lockedLog,
+  storedEvents,
+  useDeployment,
+} from './helpers.js';
 
 let seed = 200;
 let chain: FakeChain;
@@ -27,12 +42,12 @@ const index = () =>
     targets: dep.targets,
     nowMs: Date.now(),
   });
-const dispatch = (): Promise<DispatchResult> =>
+const dispatch = (nowMs = Date.now()): Promise<DispatchResult> =>
   dispatchPending(env, registry, {
     chainId: dep.chainId,
     targets: dep.targets,
     rpc: chain,
-    nowMs: Date.now(),
+    nowMs,
   });
 const cycle = async () => {
   await index();
@@ -186,6 +201,44 @@ describe('idempotent dispatch', () => {
     });
   });
 
+  it('repeats ALERT_DO_ERROR while an entry keeps failing', async () => {
+    registry.register('Locked', 'broken', () => Promise.reject(new Error('bug')));
+    chain.mine([lockedLog(dep.anchor, 1)]);
+    await index();
+    const t0 = Date.now();
+    for (let i = 0; i < DISPATCH_ALERT_ATTEMPTS; i++) await dispatch(t0);
+    await dispatch(t0 + DISPATCH_ALERT_REPEAT_MS - 1);
+    expect(captured.alerts.filter((a) => a.code === 'ALERT_DO_ERROR')).toHaveLength(1);
+    await dispatch(t0 + DISPATCH_ALERT_REPEAT_MS);
+    await dispatch(t0 + DISPATCH_ALERT_REPEAT_MS + 1);
+    const alerts = captured.alerts.filter((a) => a.code === 'ALERT_DO_ERROR');
+    expect(alerts).toHaveLength(2);
+    expect(alerts[1]).toMatchObject({ handler: 'broken', attempts: DISPATCH_ALERT_ATTEMPTS + 2 });
+  });
+
+  it('a stuck entry does not silence ALERT-8 for the events behind it', async () => {
+    registerBuiltinHandlers(registry);
+    registry.register('Locked', 'broken', () => Promise.reject(new Error('bug')));
+    const ours = chain.newTxHash();
+    await recordSentTx(env, { chainId: dep.chainId, txHash: ours, kind: 'lock', roundKey: null });
+    chain.mine([{ ...lockedLog(dep.anchor, 1), txHash: ours }]); // block 1: poison for 'broken'
+    const foreign = chain.mine([
+      escrowEvent(dep.escrow, 'Paused', { account: `0x${'33'.repeat(20)}` }),
+    ]); // block 2: a guardian pause the backend didn't send
+    const r = await cycle();
+    expect(r.failed).toMatchObject({ handler: 'broken' });
+    expect(r.independent).toBe(1);
+    const unsent = captured.alerts.filter((a) => a.code === 'ALERT_FOREIGN_EVENT');
+    expect(unsent).toEqual([
+      expect.objectContaining({ eventName: 'Paused', txHash: foreign.logs[0]!.transactionHash }),
+    ]);
+    // Still stuck, and still once per event.
+    await cycle();
+    expect(captured.alerts.filter((a) => a.code === 'ALERT_FOREIGN_EVENT')).toHaveLength(1);
+    const rows = await storedEvents(dep.chainId, dep.escrow);
+    expect(rows[0]!.dispatched_revision).toBeNull();
+  });
+
   it('dispatches at most `limit` rows per call', async () => {
     recorder('Locked', 'h');
     chain.mine([lockedLog(dep.anchor, 1), lockedLog(dep.anchor, 2), lockedLog(dep.anchor, 3)]);
@@ -196,6 +249,131 @@ describe('idempotent dispatch', () => {
       dispatched: 1,
       more: false,
     });
+  });
+});
+
+describe('reorg order and per-handler removals', () => {
+  it('a lock re-mined at a lower (block, logIndex) keeps lock_tx: the old removal goes first', async () => {
+    registry.register('Locked', 'anchor-confirmation', anchorConfirmationHandler);
+    const id = newUlid(Date.now());
+    const closesAtSec = 1_900_000_000 + seed;
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO rounds (id, kind, opens_at, closes_at, status) VALUES (?1, 'daily', ?2, ?3, 'open')",
+      ).bind(id, (closesAtSec - 86_400) * 1000, closesAtSec * 1000),
+      env.DB.prepare(
+        "INSERT INTO round_modes (round_id, mode, status) VALUES (?1, 'free', 'pending')",
+      ).bind(id),
+    ]);
+    const lockTx = async () =>
+      (
+        await env.DB.prepare(
+          "SELECT lock_tx FROM round_modes WHERE round_id = ?1 AND mode = 'free'",
+        )
+          .bind(id)
+          .first<{ lock_tx: string | null }>()
+      )?.lock_tx;
+    const txHash = chain.newTxHash();
+    const lock = {
+      ...anchorEvent(dep.anchor, 'Locked', {
+        roundKey: roundKey(id, 'free'),
+        closesAt: BigInt(closesAtSec),
+        beaconRound: 1n,
+        questionHash: hash32('q'),
+        configHash: hash32('c'),
+      }),
+      txHash,
+    };
+    chain.mineEmpty(2);
+    chain.mine([lockedLog(dep.anchor, 9), lock]); // block 3: the lock at log index 1
+    await cycle();
+    expect(await lockTx()).toBe(txHash);
+
+    chain.reorg(2); // blocks 2..3 replaced
+    chain.mine([lock]); // block 2, log index 0: a new row; (txHash, 1) is removed
+    chain.mineEmpty(2);
+    expect(await cycle()).toMatchObject({ failed: null });
+    const rows = await storedEvents(dep.chainId, dep.anchor);
+    expect(rows.filter((x) => x.tx_hash === txHash).map((x) => [x.log_index, x.removed])).toEqual([
+      [0, 0],
+      [1, 1],
+    ]);
+    expect(await lockTx()).toBe(txHash);
+  });
+
+  it('a slot that now holds another event is a removal for the old event and an addition for the new', async () => {
+    const locked = recorder('Locked', 'l');
+    const committed = recorder('Committed', 'c');
+    const txHash = chain.newTxHash();
+    chain.mineEmpty(2);
+    chain.mine([{ ...lockedLog(dep.anchor, 1), txHash }]); // block 3, (txHash, 0)
+    await cycle();
+    chain.reorg(1);
+    chain.mine([
+      {
+        ...anchorEvent(dep.anchor, 'Committed', {
+          roundKey: hash32('round-key-1'),
+          commitmentRoot: hash32('root'),
+          entryCount: 1,
+          totalStake: 0n,
+        }),
+        txHash,
+      },
+    ]); // block 3 again: the same slot is now a Committed
+    chain.mineEmpty(1);
+    await cycle();
+    expect(locked).toEqual([
+      { handler: 'l', txHash, removed: false, revision: 0 },
+      { handler: 'l', txHash, removed: true, revision: 1 },
+    ]);
+    expect(committed).toEqual([{ handler: 'c', txHash, removed: false, revision: 2 }]);
+  });
+
+  it('a log re-mined in another block is undone and redone with the new block', async () => {
+    const seen: [boolean, number, number][] = [];
+    registry.register('Locked', 'blocks', (evt) => {
+      seen.push([evt.removed, evt.blockNumber, evt.blockTimestampSec]);
+      return Promise.resolve();
+    });
+    const txHash = chain.newTxHash();
+    chain.mineEmpty(2);
+    const b3 = chain.mine([{ ...lockedLog(dep.anchor, 1), txHash }]); // block 3, log index 0
+    await cycle();
+    chain.reorg(1);
+    chain.mineEmpty(1);
+    const b4 = chain.mine([{ ...lockedLog(dep.anchor, 1), txHash }]); // block 4, log index 0
+    await cycle();
+    expect(seen).toEqual([
+      [false, 3, b3.timestamp],
+      [true, 3, b3.timestamp],
+      [false, 4, b4.timestamp],
+    ]);
+  });
+
+  it('hands a removal only to the handlers that saw the addition it undoes', async () => {
+    const seen = recorder('Locked', 'a');
+    let failing = true;
+    registry.register('Locked', 'b', (evt) => {
+      if (failing) return Promise.reject(new Error('down'));
+      seen.push({ handler: 'b', txHash: evt.txHash, removed: evt.removed, revision: evt.revision });
+      return Promise.resolve();
+    });
+    chain.mineEmpty(2);
+    const txHash = chain.newTxHash();
+    chain.mine([{ ...lockedLog(dep.anchor, 1), txHash }]); // block 3
+    expect(await cycle()).toMatchObject({ failed: { handler: 'b' } }); // 'a' saw it, 'b' didn't
+
+    // A handler deployed later never saw the addition either.
+    const late = recorder('Locked', 'late');
+    failing = false;
+    chain.reorg(1);
+    chain.mineEmpty(2);
+    expect(await cycle()).toMatchObject({ failed: null });
+    expect(seen).toEqual([
+      { handler: 'a', txHash, removed: false, revision: 0 },
+      { handler: 'a', txHash, removed: true, revision: 1 },
+    ]);
+    expect(late).toEqual([]);
   });
 });
 

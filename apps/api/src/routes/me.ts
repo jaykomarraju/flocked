@@ -3,17 +3,22 @@
 // `not_implemented`; every endpoint is registered in ENDPOINTS order.
 import {
   AcceptTosRequestSchema,
+  PersonhoodCallbackQuerySchema,
   UpdateMeRequestSchema,
   type AcceptTosResponse,
+  type MeResponse,
 } from '@flocked/shared';
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { tosVersion } from '../auth/config.js';
 import { buildMe, loadMeUser, parsePrefs, tosView } from '../auth/profile.js';
-import { limitUser } from '../auth/rate-limit.js';
+import { limitAuthIp, limitUser } from '../auth/rate-limit.js';
 import { getUser, requireUser, type AppEnv } from '../lib/auth-context.js';
 import { now } from '../lib/clock.js';
 import { HttpError, errorResponse } from '../lib/errors.js';
 import { validate } from '../lib/validate.js';
+import { personhoodReturnUrl } from '../personhood/config.js';
+import { stakesEligibility } from '../personhood/eligibility.js';
+import { completePersonhood, startPersonhood } from '../personhood/flow.js';
 import { endpointsOf } from './stub.js';
 
 /** Display names: NFC, trimmed, no control or format characters. */
@@ -27,10 +32,29 @@ function cleanDisplayName(raw: string): string {
 
 export const me = new Hono<AppEnv>();
 
-/** W3-A's endpoints; the module's first three ENDPOINTS rows. */
-const OWN = new Set(['GET /me', 'PATCH /me', 'POST /me/tos']);
+/** Endpoints with handlers: W3-A's first three ENDPOINTS rows, and W5-B's personhood rows. */
+const OWN = new Set([
+  'GET /me',
+  'PATCH /me',
+  'POST /me/tos',
+  'POST /me/personhood',
+  'GET /me/personhood/callback',
+]);
 
-me.get('/me', requireUser, async (c) => c.json(await buildMe(c.env, getUser(c).id)));
+/**
+ * The /me view with Stakes eligibility from `stakesEligibility` (W5-B), which also checks the
+ * attestations, `geo.stakes.allow`, the request location and the kill switch.
+ */
+async function meView(c: Context<AppEnv>): Promise<MeResponse> {
+  const user = getUser(c);
+  const [view, stakes] = await Promise.all([
+    buildMe(c.env, user.id),
+    stakesEligibility(c.env, user, c.req.raw),
+  ]);
+  return { ...view, stakes };
+}
+
+me.get('/me', requireUser, async (c) => c.json(await meView(c)));
 
 me.patch(
   '/me',
@@ -87,7 +111,7 @@ me.patch(
       }
       throw err;
     }
-    return c.json(await buildMe(c.env, userId));
+    return c.json(await meView(c));
   },
 );
 
@@ -110,6 +134,29 @@ me.post(
       .run();
     const body: AcceptTosResponse = { tos: tosView(c.env, await loadMeUser(c.env.DB, userId)) };
     return c.json(body);
+  },
+);
+
+// Coinbase personhood (W5-B; src/personhood/). The callback is authenticated by its single-use
+// OAuth state, never by the session; a session of another user than the state's is refused.
+me.post('/me/personhood', requireUser, limitUser('writes'), async (c) =>
+  c.json(await startPersonhood(c.env, getUser(c).id)),
+);
+
+me.get(
+  '/me/personhood/callback',
+  limitAuthIp,
+  validate('query', PersonhoodCallbackQuerySchema),
+  async (c) => {
+    const userId = c.get('user')?.id ?? null;
+    const { outcome } = await completePersonhood(c.env, c.req.valid('query'), userId);
+    c.header('Cache-Control', 'no-store');
+    c.header('Referrer-Policy', 'no-referrer');
+    if ((c.req.header('accept') ?? '').includes('application/json')) return c.json(outcome);
+    const target = new URL(personhoodReturnUrl(c.env));
+    target.searchParams.set('personhood', outcome.status);
+    if (outcome.status === 'failed') target.searchParams.set('reason', outcome.reason);
+    return c.redirect(target.toString(), 302);
   },
 );
 

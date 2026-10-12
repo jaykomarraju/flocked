@@ -7,11 +7,19 @@
 //      (storing `chain_round_id` from the receipt), and the Free lock leaf through the AnchorDO (one
 //      `submitLock` call for every round still waiting for its leaf);
 //   4. calls `RoundDO.init` for every locked round that hasn't closed and whose modes are ready, so
-//      the RoundDO opens it at `opensAt` (a repeated init is how a stalled alarm chain restarts).
+//      the RoundDO opens it at `opensAt` (a repeated init is how a stalled alarm chain restarts);
+//   5. moves every pending operator cancellation one step (W4-F1 T4), starting any whose first
+//      attempt failed (W5-F1 C4).
 // A Stakes round that can't be created before `opensAt` (the contract refuses after it) has its
-// Stakes mode voided and alerts; Free goes on.
+// Stakes mode voided and alerts; Free goes on. A `createRound` still pending then is cancelled, so it
+// can't land late or hold up the operator's nonce.
 import { chainFromEnv, type DrandChain } from '@flocked/tlock';
-import { createRound, type OperatorDeps } from '../chain/operator.js';
+import {
+  cancelCreateRound,
+  createRound,
+  driveCancellations,
+  type OperatorDeps,
+} from '../chain/operator.js';
 import { ANCHOR_SINGLETON } from '../do/anchor-do.js';
 import type { AnchorLockItem } from '../do/types.js';
 import type { Env } from '../env.js';
@@ -44,6 +52,8 @@ export interface TickReport {
   /** Rounds whose Free lock leaf went to the AnchorDO. */
   lockLeaves: string[];
   initialized: string[];
+  /** Operator cancellations moved this tick, by purpose (T4). */
+  cancellations: Record<string, string>;
 }
 
 export type SchedulerEnv = Env;
@@ -129,6 +139,7 @@ async function ensureStakesRound(
   }
   const error = result.status === 'refused' ? result.error : result.status;
   if (result.status === 'pending' && t < r.opens_at) return false;
+  if (result.status === 'cancelled') return true; // voided below, when its cancellation started
   // Refused or reverted, or still pending at opensAt: the contract no longer accepts it after
   // opensAt, so the Stakes mode is voided and Free goes on.
   if (result.status !== 'reverted' && t < r.opens_at) {
@@ -141,6 +152,14 @@ async function ensureStakesRound(
     .bind(r.id, t)
     .run();
   await recordGap(env, t, r.id, 'stakes_create_round_failed', { error, voided: true });
+  if (result.status === 'pending') {
+    // Abandoned: replace it at its nonce (the sweep in schedulerTick finishes the cancellation).
+    try {
+      await cancelCreateRound(env, deps.operator ?? {}, r.id);
+    } catch (err) {
+      log.error('create_round_cancel_failed', { roundId: r.id, error: message(err) });
+    }
+  }
   return true;
 }
 
@@ -154,6 +173,7 @@ export async function schedulerTick(env: Env, deps: SchedulerDeps = {}): Promise
     stakes: {},
     lockLeaves: [],
     initialized: [],
+    cancellations: {},
   };
   await ensureDueRounds(env, t, report);
 
@@ -221,6 +241,13 @@ export async function schedulerTick(env: Env, deps: SchedulerDeps = {}): Promise
     } catch (err) {
       log.error('round_init_failed', { roundId: r.id, error: message(err) });
     }
+  }
+
+  // Step 5.
+  try {
+    report.cancellations = await driveCancellations(env, deps.operator ?? {});
+  } catch (err) {
+    log.error('operator_cancellations_failed', { error: message(err) });
   }
   return report;
 }
