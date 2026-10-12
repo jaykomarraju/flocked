@@ -8,6 +8,8 @@ import {
   atBeaconPlus,
   bundleObjects,
   harness,
+  mirrorCommitted,
+  modeStatus,
   pick,
   seedFreeRound,
   voidCiphertexts,
@@ -93,17 +95,35 @@ describe('SET-4 VOID entries in the pipeline', () => {
     ).toBe(true);
   });
 
-  it('SET-4: without the mirrored count, the anchored root covers every D1 entry', async () => {
+  it('SET-4: without the mirrored count the job waits; once mirrored, later entries are not_anchored', async () => {
     atBeaconPlus(5_000);
-    // No mirror: the anchored set is every D1 entry, and the root must cover all of them.
-    const r = await seedFreeRound(async (roundId) => [
-      { ct: await pick(roundId, 0) },
-      { ct: await pick(roundId, 1) },
-      { ct: await pick(roundId, 1) },
-    ]);
+    // D1 has a fourth entry the anchored commitment does not cover, and the indexer hasn't mirrored
+    // the Committed event yet: the anchored set is unknown, so nothing is decided.
+    const r = await seedFreeRound(
+      async (roundId) => [
+        { ct: await pick(roundId, 0) },
+        { ct: await pick(roundId, 1) },
+        { ct: await pick(roundId, 1) },
+        { ct: await pick(roundId, 0) },
+      ],
+      { anchored: 3, mirror: false },
+    );
     const h = await harness(r.roundId);
-    expect((await h.run()).phase).toBe('done');
-    expect(h.applied[0]?.entries.map((e) => e.voidReason)).toEqual([null, null, null]);
-    expect(h.applied[0]?.manifest.commitment?.entryCount).toBe(3);
+    await h.start();
+    expect(await h.alarm()).toMatchObject({ phase: 'preparing', error: null });
+    expect(await modeStatus(r.roundId)).toBe('pending');
+    expect(h.sent).toEqual([]);
+
+    await mirrorCommitted(r, 3);
+    expect((await h.alarm()).phase).toBe('decrypting');
+    await h.deliver();
+    expect((await h.alarm()).phase).toBe('done');
+    expect(h.applied[0]?.entries.map((e) => e.voidReason)).toEqual([
+      null,
+      null,
+      null,
+      'not_anchored',
+    ]);
+    expect(h.applied[0]?.manifest.commitment).toMatchObject({ root: r.root, entryCount: 3 });
   });
 });

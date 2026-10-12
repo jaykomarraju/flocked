@@ -34,6 +34,7 @@ export interface SettlementRound {
   /** The stored JSON, for the manifest. */
   configJson: unknown;
   status: ModeStatus;
+  refundReason: number | null;
   chainRoundId: string | null;
   commitmentRoot: Hex | null;
   commitTx: Hex | null;
@@ -47,6 +48,7 @@ interface RoundRow {
   locked_at: number | null;
   config_json: string | null;
   status: ModeStatus;
+  refund_reason: number | null;
   chain_round_id: string | null;
   commitment_root: string | null;
   commit_tx: string | null;
@@ -61,7 +63,7 @@ export async function loadRound(
   const r = await db
     .prepare(
       `SELECT r.kind, r.room_id, r.closes_at, r.beacon_round, r.locked_at, r.config_json,
-              m.status, m.chain_round_id, m.commitment_root, m.commit_tx
+              m.status, m.refund_reason, m.chain_round_id, m.commitment_root, m.commit_tx
        FROM rounds r JOIN round_modes m ON m.round_id = r.id AND m.mode = ?2 WHERE r.id = ?1`,
     )
     .bind(roundId, mode)
@@ -80,6 +82,7 @@ export async function loadRound(
     config,
     configJson,
     status: r.status,
+    refundReason: r.refund_reason,
     chainRoundId: r.chain_round_id,
     commitmentRoot: (r.commitment_root?.toLowerCase() ?? null) as Hex | null,
     commitTx: (r.commit_tx?.toLowerCase() ?? null) as Hex | null,
@@ -100,7 +103,7 @@ export type AnchoredCommitment =
       state: 'anchored';
       root: Hex;
       txHash: Hex;
-      /** From the mirrored `Committed` event; null when the indexer hasn't mirrored it. */
+      /** From the mirrored `Committed` event (until it is mirrored the state is `waiting`). */
       entryCount: number | null;
     }
   /** No entries, so nothing was anchored (refund rule 1, not rule 7). */
@@ -117,12 +120,7 @@ export async function anchoredCommitment(
 ): Promise<AnchoredCommitment> {
   const key = roundKey(round.roundId, 'free');
   if (round.commitTx !== null && round.commitmentRoot !== null) {
-    return {
-      state: 'anchored',
-      root: round.commitmentRoot,
-      txHash: round.commitTx,
-      entryCount: await committedEntryCount(env.DB, round.commitTx, key),
-    };
+    return anchoredIn(env.DB, round.commitmentRoot, round.commitTx, key);
   }
   const count = await env.DB.prepare(
     "SELECT COUNT(*) AS n FROM entries WHERE round_id = ?1 AND mode = 'free'",
@@ -133,12 +131,7 @@ export async function anchoredCommitment(
   const anchor = env.ANCHOR.get(env.ANCHOR.idFromName(ANCHOR_SINGLETON));
   const commit = (await anchor.status(key)).commit;
   if (commit.state === 'confirmed' && commit.txHash && round.commitmentRoot !== null) {
-    return {
-      state: 'anchored',
-      root: round.commitmentRoot,
-      txHash: commit.txHash.toLowerCase() as Hex,
-      entryCount: await committedEntryCount(env.DB, commit.txHash.toLowerCase() as Hex, key),
-    };
+    return anchoredIn(env.DB, round.commitmentRoot, commit.txHash.toLowerCase() as Hex, key);
   }
   if (commit.state === 'skipped' || commit.state === 'failed') {
     return { state: 'missing', detail: `${commit.state}: ${commit.detail ?? ''}` };
@@ -146,8 +139,34 @@ export async function anchoredCommitment(
   return { state: 'waiting', detail: `commit ${commit.state}` };
 }
 
-/** `entryCount` of the mirrored `Committed(roundKey, root, entryCount, totalStake)` in `txHash`. */
-async function committedEntryCount(db: D1Database, txHash: Hex, key: Hex): Promise<number | null> {
+/**
+ * The commitment `txHash` anchored, once the indexer has mirrored its `Committed` event: until then
+ * the anchored entry count is unknown, so nothing is decided. The event's root must be D1's root.
+ */
+async function anchoredIn(
+  db: D1Database,
+  root: Hex,
+  txHash: Hex,
+  key: Hex,
+): Promise<AnchoredCommitment> {
+  const committed = await committedEvent(db, txHash, key);
+  if (committed === null) {
+    return { state: 'waiting', detail: `Committed in ${txHash} not mirrored` };
+  }
+  if (committed.root !== root) {
+    throw new IntegrityError(
+      `the onchain root ${committed.root} in ${txHash} differs from D1's ${root}`,
+    );
+  }
+  return { state: 'anchored', root, txHash, entryCount: committed.entryCount };
+}
+
+/** Root and entry count of the mirrored `Committed(roundKey, root, entryCount, totalStake)`. */
+async function committedEvent(
+  db: D1Database,
+  txHash: Hex,
+  key: Hex,
+): Promise<{ root: Hex; entryCount: number } | null> {
   const { results } = await db
     .prepare(
       "SELECT args_json FROM chain_events WHERE tx_hash = ?1 AND event = 'Committed' AND removed = 0",
@@ -155,9 +174,20 @@ async function committedEntryCount(db: D1Database, txHash: Hex, key: Hex): Promi
     .bind(txHash)
     .all<{ args_json: string }>();
   for (const r of results) {
-    const args = JSON.parse(r.args_json) as { roundKey?: string; entryCount?: string | number };
-    if (args.roundKey?.toLowerCase() === key && args.entryCount !== undefined) {
-      return Number(args.entryCount);
+    const args = JSON.parse(r.args_json) as {
+      roundKey?: string;
+      commitmentRoot?: string;
+      entryCount?: string | number;
+    };
+    if (
+      args.roundKey?.toLowerCase() === key &&
+      args.commitmentRoot !== undefined &&
+      args.entryCount !== undefined
+    ) {
+      return {
+        root: args.commitmentRoot.toLowerCase() as Hex,
+        entryCount: Number(args.entryCount),
+      };
     }
   }
   return null;
