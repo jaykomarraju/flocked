@@ -1,8 +1,10 @@
 # Local stack tests (e2e/stack/README.md): drand in Docker, anvil, the CREATE2 deploy, `wrangler dev`
-# and the cron driver, then the stack tests: one real Free round end to end (smoke), the round
-# lifecycle with no manual step, a 50-entry Free round settled and anchored, and the anvil-backed
-# anchor and indexer tests. Runs on integration branches and main only, as the stack takes a minute
-# to start and a round another to reach its beacon.
+# (the API with the ticket signer beside it) and the cron driver, then the stack tests: one real Free
+# round end to end (smoke), the round lifecycle with no manual step, a 50-entry Free round settled
+# and anchored, the anvil-backed anchor and indexer tests, Stakes tickets through the API's signer
+# binding, and a Stakes round settled (last: it moves anvil's clock for good). Runs on integration
+# branches and main only, as the stack takes a minute to start and a round another to reach its
+# beacon.
 name: Stack
 
 on:
@@ -21,7 +23,8 @@ jobs:
   smoke:
     # ubuntu-latest moves to Ubuntu 26 from Oct 19, 2026; pin ubuntu-24.04 if the stack breaks there.
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # The test steps take about 10 minutes on the owner's Mac (W6-D), stakes-settle alone 3.5.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -47,6 +50,11 @@ jobs:
       # snapshots, so each runs on its own step (W4-A, W4-B).
       - run: pnpm --filter @flocked/e2e --fail-if-no-match exec vitest run tests/anchor-tx.test.ts
       - run: pnpm --filter @flocked/e2e --fail-if-no-match exec vitest run tests/indexer-reorg.test.ts
+      # Stakes tickets from the signer's code, then through the API's SIGNER binding (W6-B, W6-D).
+      - run: pnpm --filter @flocked/e2e --fail-if-no-match exec vitest run tests/stakes-ticket.test.ts
+      # A Stakes round settles (W6-A); it moves anvil's clock 2 h forward for good, so it comes last.
+      - run: pnpm --filter @flocked/e2e --fail-if-no-match exec vitest run tests/stakes-settle.test.ts
+      # A later claims-* step (W6-D) goes after stakes-settle and builds on its round.
       - name: Stack status and drand logs
         if: failure()
         run: |
