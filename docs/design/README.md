@@ -131,3 +131,5 @@ From the `Components` page. Code follows these unless a sheet says otherwise.
   artboards. Keep `export` in one place and run it one call at a time (W5-C exported 141 artboards in 9-node calls).
 - `get_screenshot` ignores a `scale` below 1 and returns 1x. For the cards' 25% check, downscale the 1x capture
   (`sips -Z 300 card.png`) and look at that (W6-C).
+- `create_artboard` and `duplicate_nodes` can drop a new artboard into any free spot on the page, including another
+  builder's band. Set `left`/`top` right after each one, and check positions before finishing (W6-C.2).
