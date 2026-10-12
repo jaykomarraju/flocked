@@ -52,6 +52,11 @@ export interface OperatorDeps {
   /** How long one call waits for the receipt before answering `pending` (default 20 s). */
   waitMs?: number;
   stuckAfterMs?: number;
+  /**
+   * Read the account nonce at this block, not `latest` (W5-F1 C1): the head that proved a void
+   * past close, so a node behind it fails rather than answer that nothing was mined.
+   */
+  nonceBlock?: bigint;
 }
 
 export type OperatorTxResult =
@@ -227,7 +232,7 @@ async function runOperatorTx(
 
   const deadline = t() + (deps.waitMs ?? 20_000);
   for (;;) {
-    const c = await op.sender.check(tx, label);
+    const c = await op.sender.check(tx, label, { nonceBlock: deps.nonceBlock });
     if (c.status === 'mined') {
       const status = c.receipt.status === 'success' ? 'mined' : 'reverted';
       await finish(db, purpose, status, c.hash, t());

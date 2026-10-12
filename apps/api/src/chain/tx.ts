@@ -285,19 +285,24 @@ export class TxSender {
     return null;
   }
 
-  /** The newest of `tx`'s versions the node holds, with its fees; null when it holds none. */
-  async heldVersion(tx: SentTx): Promise<{ hash: Hex; fees: Fees } | null> {
+  /**
+   * The newest of `tx`'s versions the node holds, with its fees and whether the node shows it in a
+   * block (`mined`); null when it holds none.
+   */
+  async heldVersion(tx: SentTx): Promise<{ hash: Hex; fees: Fees; mined: boolean } | null> {
     for (const hash of [...tx.hashes].reverse().slice(0, HELD_LOOKUPS)) {
       try {
         const t = await this.client.getTransaction({ hash });
+        const mined = t.blockNumber !== null;
         if (t.maxFeePerGas !== undefined && t.maxPriorityFeePerGas !== undefined) {
           return {
             hash,
             fees: { maxFeePerGas: t.maxFeePerGas, maxPriorityFeePerGas: t.maxPriorityFeePerGas },
+            mined,
           };
         }
         // No EIP-1559 fields: the latest version's fees are at least any earlier one's.
-        return { hash, fees: feesOf(tx) };
+        return { hash, fees: feesOf(tx), mined };
       } catch (err) {
         if (!(err instanceof TransactionNotFoundError)) throw err;
       }
@@ -315,13 +320,19 @@ export class TxSender {
    * was mined at `tx.nonce`. A latest version no node holds (dropped, or a broadcast that never
    * arrived) is rebroadcast as it is, `onTxSent` first; a held one becomes `stuck` once it is
    * `stuckAfterMs` old. With `replaceNow` (a cancellation, T4), an unmined `tx` is `stuck` at once
-   * and nothing is rebroadcast.
+   * and nothing is rebroadcast. With `nonceBlock`, the nonce is read at that block, not `latest`
+   * (W5-F1 C1): a node behind it fails rather than answer that nothing was mined.
    */
-  async check(tx: SentTx, label: string, opts: { replaceNow?: boolean } = {}): Promise<TxCheck> {
-    const count = await this.client.getTransactionCount({
-      address: this.address,
-      blockTag: 'latest',
-    });
+  async check(
+    tx: SentTx,
+    label: string,
+    opts: { replaceNow?: boolean; nonceBlock?: bigint } = {},
+  ): Promise<TxCheck> {
+    const count = await this.client.getTransactionCount(
+      opts.nonceBlock === undefined
+        ? { address: this.address, blockTag: 'latest' }
+        : { address: this.address, blockNumber: opts.nonceBlock },
+    );
     if (count > tx.nonce) {
       const mined = await this.minedVersion(tx);
       if (mined) return { status: 'mined', ...mined };
@@ -342,6 +353,13 @@ export class TxSender {
     const stale = opts.replaceNow === true || this.opts.now() - tx.signedAt >= this.stuckAfterMs;
 
     const held = await this.heldVersion(tx);
+    if (held?.mined) {
+      // In a block, though the nonce read says otherwise: the reads reached different nodes
+      // (W5-F1 C1). Mined, or, while its receipt isn't served, unconfirmed as a taken nonce is.
+      const mined = await this.minedVersion(tx);
+      if (mined) return { status: 'mined', ...mined };
+      return { status: 'pending', nonceTaken: true };
+    }
     if (opts.replaceNow) {
       if (held && !this.canBump(held.fees)) return pending();
       return { status: 'stuck', bumpFrom: held?.fees ?? null };
