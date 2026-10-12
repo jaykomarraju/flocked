@@ -34,7 +34,10 @@ describe('0002_auth', () => {
         .filter((c) => c.nn === 1)
         .map((c) => c.name)
         .sort(),
-    ).toEqual(['created_at', 'id', 'prefs_json', 'ref_code', 'role', 'status'].sort());
+    ).toEqual(
+      // age_attested_min: NOT NULL DEFAULT 18 since 0012 (W6-B).
+      ['age_attested_min', 'created_at', 'id', 'prefs_json', 'ref_code', 'role', 'status'].sort(),
+    );
     const { results: idx } = await env.DB.prepare(
       "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'users' AND name NOT LIKE 'sqlite_%' ORDER BY name",
     ).all<{ name: string }>();

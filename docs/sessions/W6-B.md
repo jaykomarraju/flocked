@@ -23,7 +23,8 @@ Edited: `apps/api/src/routes/{stakes,me}.ts`, `apps/api/src/personhood/{config-s
 | `apps/signer`: typecheck, lint, `vitest run` | pass (18) |
 | `apps/api`: typecheck, lint | pass |
 | `apps/api`: `vitest run test/stakes test/migrations.test.ts test/routes.test.ts test/me test/personhood` | pass (283) |
-| `pnpm check`, `pnpm format:check` | started, result not confirmed before the limit: W6-B.2 runs them first |
+| `pnpm check` | all green except `test/auth/migration.test.ts` (users NOT NULL list lacked `age_attested_min`; fixed, file re-run green; full re-run left to W6-B.2) |
+| `pnpm format:check` | pass |
 | e2e `stakes-ticket.test.ts` | not written |
 
 ## Traceability rows covered
@@ -36,7 +37,7 @@ Edited: `apps/api/src/routes/{stakes,me}.ts`, `apps/api/src/personhood/{config-s
 - Open: e2e integration (ticket verifies in `FlockedEscrow.enter` on anvil).
 
 ## Deviations
-- Edited outside the list, minimally: `test/routes.test.ts` (IMPLEMENTED row, as that file asks owners), `test/me/me.test.ts` (`ageRequired: 18` in a `toEqual`), and `meView` in `routes/me.ts` (GET /me must report `ageRequired`).
+- Edited outside the list, minimally: `test/routes.test.ts` (IMPLEMENTED row, as that file asks owners), `test/me/me.test.ts` (`ageRequired: 18` in a `toEqual`), `test/auth/migration.test.ts` (users NOT NULL columns gain `age_attested_min`), and `meView` in `routes/me.ts` (GET /me must report `ageRequired`).
 - `TosState.ageRequired` is optional only because `packages/shared/test/fixtures/api/me.json` (not mine) lacks it.
 - workerd logs each refused `signTicket` RPC as "uncaught exception … hung" in signer tests; vitest exits 0 (like W5-Z's DO RPC noise).
 
