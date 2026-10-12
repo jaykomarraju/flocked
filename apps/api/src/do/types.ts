@@ -308,12 +308,7 @@ export interface OAuthStateBinding {
 export type OAuthStateResult =
   { ok: true; userId: string; codeVerifier: string } | { ok: false; reason: ConsumeFailure };
 
-export interface AuthDORpc {
-  consumeNonce(nonceHash: string): Promise<ConsumeResult>;
-  consumeEmailCode(attempt: EmailCodeAttempt): Promise<EmailCodeResult>;
-  bindOAuthState(binding: OAuthStateBinding): Promise<void>;
-  consumeOAuthState(stateHash: string): Promise<OAuthStateResult>;
-}
+// AuthDO's RPC surface is `AuthDOMethods` in ./auth-do.ts (W7-B: email codes live in the DO).
 
 // RateLimitDO (spec "API" › Rate limits: per-user and per-IP token buckets) -----------------------
 

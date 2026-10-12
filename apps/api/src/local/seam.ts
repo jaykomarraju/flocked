@@ -55,13 +55,13 @@ export function seamEnabled(env: Pick<Env, 'ENVIRONMENT' | 'FLOCKED_TEST_SEAM_KE
   return env.ENVIRONMENT === 'local' && Boolean(env.FLOCKED_TEST_SEAM_KEY);
 }
 
-const notFound = (path: string) =>
-  Response.json(errorEnvelope('not_found', `no route for ${path}`), { status: 404 });
+/** The app's own 404 (src/lib/errors.ts `notFound`), so the seam can't be told from an unknown path. */
+const notFound = () => Response.json(errorEnvelope('not_found', 'Not found'), { status: 404 });
 
 const guard: MiddlewareHandler<SeamEnv> = async (c, next) => {
   const key = c.env.FLOCKED_TEST_SEAM_KEY;
   const given = c.req.header('Authorization')?.replace(/^Bearer /, '') ?? '';
-  if (!seamEnabled(c.env) || !key || !timingSafeEqual(given, key)) return notFound(c.req.path);
+  if (!seamEnabled(c.env) || !key || !timingSafeEqual(given, key)) return notFound();
   await next();
 };
 
@@ -595,7 +595,7 @@ app.post(
   },
 );
 
-app.notFound((c) => notFound(c.req.path));
+app.notFound(() => notFound());
 
 /** The seam's fetch handler; `src/index.ts` sends `/__test/*` here. */
 export const testSeam = app;

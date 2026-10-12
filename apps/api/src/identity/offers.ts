@@ -27,9 +27,9 @@ export function withFarcasterWallets<E extends Env>(env: E, lookup: FarcasterWal
   return env;
 }
 
-/** The hub origin (a var D adds to `Env`; W7-B note). */
+/** The hub origin (`FARCASTER_HUB_URL`). */
 function hubUrl(env: Env): string | undefined {
-  return (env as Env & { FARCASTER_HUB_URL?: string }).FARCASTER_HUB_URL || undefined;
+  return env.FARCASTER_HUB_URL || undefined;
 }
 
 const MAX_PAGES = 5;

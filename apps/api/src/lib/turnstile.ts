@@ -4,6 +4,16 @@ import type { Env } from '../env.js';
 
 export const SITEVERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
 
+/** Cloudflare's siteverify, or the local stack's mock (`TURNSTILE_SITEVERIFY_URL`, local only). */
+export function siteverifyUrl(
+  env: Partial<Pick<Env, 'ENVIRONMENT' | 'TURNSTILE_SITEVERIFY_URL'>>,
+): string {
+  if (env.ENVIRONMENT === 'local' && env.TURNSTILE_SITEVERIFY_URL) {
+    return env.TURNSTILE_SITEVERIFY_URL;
+  }
+  return SITEVERIFY_URL;
+}
+
 export interface TurnstileResult {
   success: boolean;
   /** Turnstile's `error-codes`, plus `missing-input-secret` when the secret is unset locally. */
@@ -31,7 +41,8 @@ interface SiteverifyBody {
 
 /** Verifies a Turnstile token with siteverify. Never throws for a rejected token. */
 export async function verifyTurnstile(
-  env: Pick<Env, 'TURNSTILE_SECRET_KEY'>,
+  env: Pick<Env, 'TURNSTILE_SECRET_KEY'> &
+    Partial<Pick<Env, 'ENVIRONMENT' | 'TURNSTILE_SITEVERIFY_URL'>>,
   token: string,
   opts: VerifyTurnstileOptions = {},
 ): Promise<TurnstileResult> {
@@ -49,7 +60,7 @@ export async function verifyTurnstile(
   const doFetch = opts.fetch ?? fetch;
   let body: SiteverifyBody;
   try {
-    const res = await doFetch(SITEVERIFY_URL, { method: 'POST', body: form });
+    const res = await doFetch(siteverifyUrl(env), { method: 'POST', body: form });
     if (!res.ok) return { success: false, errorCodes: [`http-${res.status}`] };
     body = await res.json<SiteverifyBody>();
   } catch {

@@ -6,7 +6,6 @@
 import { env, runInDurableObject } from 'cloudflare:test';
 import type { WsServerMessage } from '@flocked/shared';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import type { Env } from '../../src/env.js';
 import {
   DEFAULT_VIEWER_SHARDS,
   shardOf,
@@ -50,7 +49,7 @@ describe('16 shards, 256 sockets', () => {
   it('N defaults to 16; WS_VIEWER_SHARDS sets it (1 to 256), anything else falls back to 16', () => {
     expect(viewerShardCount(env)).toBe(DEFAULT_VIEWER_SHARDS);
     expect(DEFAULT_VIEWER_SHARDS).toBe(SHARDS);
-    const withVar = (v: string) => viewerShardCount({ ...env, WS_VIEWER_SHARDS: v } as Env);
+    const withVar = (v: string) => viewerShardCount({ ...env, WS_VIEWER_SHARDS: v });
     expect(withVar('4')).toBe(4);
     expect(withVar('256')).toBe(256);
     for (const bad of ['0', '257', '-1', '2.5', 'many']) expect(withVar(bad)).toBe(16);

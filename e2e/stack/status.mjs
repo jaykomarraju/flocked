@@ -100,6 +100,7 @@ export async function health(state) {
     farcaster: mockProbe(state.pids?.farcaster, state.farcasterUrl),
     coinbase: mockProbe(state.pids?.coinbase, state.coinbaseUrl),
     eas: mockProbe(state.pids?.eas, state.easUrl),
+    turnstile: mockProbe(state.pids?.turnstile, state.turnstileUrl),
     cron: probe(() => {
       if (!alive(state.pids?.cron)) throw new Error('process not running');
       if (!existsSync(CRON_HEARTBEAT_FILE)) throw new Error('no pass yet');
@@ -131,6 +132,7 @@ export function printStatus(state, h) {
     ['farcaster', h.results.farcaster],
     ['coinbase', h.results.coinbase],
     ['eas', h.results.eas],
+    ['turnstile', h.results.turnstile],
     ['cron', h.results.cron],
   ];
   for (const [name, r] of rows)

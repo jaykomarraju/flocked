@@ -66,6 +66,16 @@ describe('guard', () => {
   it('answers 404 for unknown seam paths', async () => {
     await expectNotFound(await seam('/nope'));
   });
+
+  // W3-Z carry-over: a closed or unknown seam path reads exactly like the app's unknown path.
+  it("answers the app's own 404 body, closed or open", async () => {
+    const app = await exports.default.fetch(new Request('https://flocked.test/api/v1/nope'));
+    expect(app.status).toBe(404);
+    const body = await app.json();
+    expect(body).toEqual({ error: { code: 'not_found', message: 'Not found' } });
+    expect(await (await seam('/nope')).json()).toEqual(body);
+    expect(await (await seam('/clock', { nowMs: T }, null)).json()).toEqual(body);
+  });
 });
 
 describe('with the key, in local', () => {

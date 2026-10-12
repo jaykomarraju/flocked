@@ -57,7 +57,7 @@ export type EmailCodeResult =
       attemptsLeft: number;
     };
 
-/** AuthDO's RPC surface. It supersedes `AuthDORpc` in ./types.ts (W7-B; a note for D). */
+/** AuthDO's RPC surface (W7-B; it replaced `AuthDORpc` in ./types.ts). */
 export interface AuthDOMethods {
   consumeNonce(nonceHash: string): Promise<NonceResult>;
   issueEmailCode(record: EmailCodeRecord): Promise<void>;

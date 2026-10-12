@@ -12,14 +12,11 @@ export const DEFAULT_VIEWER_SHARDS = 16;
 /** Upper bound on N: each broadcast is one RPC per shard. */
 export const MAX_VIEWER_SHARDS = 256;
 
-/** `Env` plus the shard-count var (W7-D adds it to src/env.ts and wrangler.jsonc). */
-type ShardEnv = Env & { WS_VIEWER_SHARDS?: string };
-
 let warned = false;
 
 /** N: `WS_VIEWER_SHARDS` (an integer 1 to 256), or 16 when unset or invalid (logged once). */
 export function viewerShardCount(env: Env): number {
-  const raw = (env as ShardEnv).WS_VIEWER_SHARDS?.trim();
+  const raw = env.WS_VIEWER_SHARDS?.trim();
   if (raw === undefined || raw === '') return DEFAULT_VIEWER_SHARDS;
   const n = Number(raw);
   if (/^[0-9]+$/.test(raw) && n >= 1 && n <= MAX_VIEWER_SHARDS) return n;

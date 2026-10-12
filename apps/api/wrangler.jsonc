@@ -25,6 +25,8 @@
 //   ATTESTATION_NETWORK   `base` (default, every environment) or `base-sepolia` (Coinbase's test
 //                         attester only; W5-B)
 //   DRAND_RELAYS          comma-separated drand relays; quicknet defaults to the public ones (W5-A)
+//   WS_VIEWER_SHARDS      viewer shards per round, 1–256; 16 when unset (src/ws/shards.ts; W7-A)
+//   FARCASTER_HUB_URL     Farcaster hub for wallet offers; unset, nothing is offered (W7-B)
 // The ticket signer key (TICKET_SIGNER_KEY) lives only in apps/signer.
 // Local only, written by `pnpm stack:up` into e2e/stack/.dev.vars (never deployed):
 //   LOCAL_DEPLOYMENT      JSON of contracts/deployments/31337.json (receipt domain on anvil; W3-B)
@@ -32,6 +34,7 @@
 //   FARCASTER_AUTH_ORIGIN Quick Auth mock (e2e/mocks/farcaster; W3-A)
 //   COINBASE_LOGIN_ORIGIN, COINBASE_API_ORIGIN  Coinbase OAuth and API mock (e2e/mocks/coinbase; W5-B)
 //   ATTESTATION_RPC_URL   the EAS mock (e2e/mocks/eas; W5-B)
+//   TURNSTILE_SITEVERIFY_URL  the siteverify mock (e2e/mocks/turnstile; W7-D)
 //   DRAND_RELAYS          the stack's drand HTTP endpoint (W5-A)
 //   FLOCKED_TEST_CLOCK    fixed game clock, epoch ms (src/lib/clock.ts)
 {

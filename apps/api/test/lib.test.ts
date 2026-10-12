@@ -15,7 +15,7 @@ import {
 import { now, nowSeconds } from '../src/lib/clock.js';
 import { HttpError, NotImplementedError, isNotImplemented } from '../src/lib/errors.js';
 import { REDACTED_FIELDS, formatLog, log, redact } from '../src/lib/log.js';
-import { SITEVERIFY_URL, verifyTurnstile } from '../src/lib/turnstile.js';
+import { SITEVERIFY_URL, siteverifyUrl, verifyTurnstile } from '../src/lib/turnstile.js';
 import { validate } from '../src/lib/validate.js';
 import { FIXED_NOW, fakeAdmin, fakeUser, withFixedClock, withSession } from './helpers/index.js';
 
@@ -182,6 +182,23 @@ describe('turnstile', () => {
       errorCodes: ['invalid-input-response'],
     });
     expect(never).not.toHaveBeenCalled();
+  });
+
+  // W7-D: the local stack points siteverify at its mock; nothing else can.
+  it('calls the siteverify override only in local', async () => {
+    const mock = 'http://127.0.0.1:8792/turnstile/v0/siteverify';
+    expect(siteverifyUrl({ ENVIRONMENT: 'local', TURNSTILE_SITEVERIFY_URL: mock })).toBe(mock);
+    expect(siteverifyUrl({ ENVIRONMENT: 'local' })).toBe(SITEVERIFY_URL);
+    for (const e of ['staging', 'production'] as const) {
+      expect(siteverifyUrl({ ENVIRONMENT: e, TURNSTILE_SITEVERIFY_URL: mock })).toBe(
+        SITEVERIFY_URL,
+      );
+    }
+    const f = ok({ success: true });
+    await verifyTurnstile({ ...env, ENVIRONMENT: 'local', TURNSTILE_SITEVERIFY_URL: mock }, 'tok', {
+      fetch: f,
+    });
+    expect(f.mock.calls[0]?.[0]).toBe(mock);
   });
 });
 
