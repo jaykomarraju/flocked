@@ -6,7 +6,11 @@
 //      means there is nothing to post; another bundle's proposal is an integrity failure;
 //   2. the settlement record of this proposal: `proposal_seq` 0, then one more after each proposal
 //      the indexer saw leave the chain (it supersedes the record), superseding the record before
-//      it; each entry's option, validity and VOID reason; `round_modes.bundle_hash`;
+//      it; each entry's option, validity and VOID reason; `round_modes.bundle_hash`. Written once
+//      per proposal (W6-F1 R4): the entries first, then the record, so a call that finds this
+//      proposal's record (every ~23 s while its propose is pending) writes nothing. A new proposal
+//      waits while a settlement hold is open (O1: the indexer opens `refund_vetoed` in the batch
+//      that supersedes a vetoed refund proposal, so the coordinator's own hold check can't race it);
 //   3. `propose(n0, n1, nVoid, payoutRoot, bundleHash)` through the operator, at most once per
 //      `propose:<roundId>:<seq>` (src/chain/operator.ts), so a retry polls the same transaction and
 //      never posts twice. The payout tree's leaves are settle's payouts (win, rebate when r > 0,
@@ -17,6 +21,7 @@ import type { Hex } from 'viem';
 import { propose, type OperatorDeps } from '../../chain/operator.js';
 import type { ModeTally } from '../../do/types.js';
 import type { Env } from '../../env.js';
+import { settlementHold } from '../../indexer/holds.js';
 import { now } from '../../lib/clock.js';
 import { log } from '../../lib/log.js';
 import { manifestKey } from '../keys.js';
@@ -40,6 +45,9 @@ export interface StakesApplyDeps {
 
 /** The proposal is sent and not mined yet; SettlementDO calls again (the same transaction). */
 export class ProposalPendingError extends Error {}
+
+/** A new proposal waits for the guardian: a settlement hold is open (O1). SettlementDO looks later. */
+export class ProposalHeldError extends Error {}
 
 /** Per option `{headcount, total}` (the API's `TallySchema`; also `settlements.tally_json`). */
 export function stakesTally(result: TallyResult): ModeTally {
@@ -102,6 +110,17 @@ async function writeEntries(db: D1Database, result: TallyResult): Promise<void> 
     }
     await db.batch(stmts);
   }
+}
+
+/** The bundle hash of proposal `seq`'s record (lowercase), or null when it has none yet. */
+async function recordedBundle(db: D1Database, roundId: string, seq: number) {
+  const row = await db
+    .prepare(
+      "SELECT bundle_hash FROM settlements WHERE round_id = ?1 AND mode = 'stakes' AND proposal_seq = ?2",
+    )
+    .bind(roundId, seq)
+    .first<{ bundle_hash: string | null }>();
+  return row ? (row.bundle_hash?.toLowerCase() ?? '') : null;
 }
 
 /** The settlement record of proposal `seq`, superseding the ones before it (once). */
@@ -193,8 +212,18 @@ export async function applyStakes(
   }
 
   const seq = await proposalSeq(db, roundId);
-  await writeRecord(db, result, seq, now(env));
-  await writeEntries(db, result);
+  const recorded = await recordedBundle(db, roundId, seq);
+  if (recorded === null) {
+    // Read after proposalSeq: a veto's supersede and its hold commit in one batch, so a new seq
+    // here sees the hold.
+    const hold = await settlementHold(db, roundId, 'stakes');
+    if (hold) throw new ProposalHeldError(`proposal ${seq} waits for its ${hold.reason} hold`);
+    // Entries first: a record means its entries are written (a crash between them writes both again).
+    await writeEntries(db, result);
+    await writeRecord(db, result, seq, now(env));
+  } else if (recorded !== bundleHash.toLowerCase()) {
+    throw new IntegrityError(`stakes proposal ${seq} of ${roundId} is for another bundle`);
+  }
   const r = await propose(env, deps.operator ?? {}, {
     roundId,
     chainRoundId,

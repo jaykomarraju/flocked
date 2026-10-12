@@ -6,8 +6,10 @@
 //     marked provisional;
 //   - `ProposalVetoed`: on a settlement, the record is superseded (`RoundRefunded` reason 5 in the
 //     same transaction refunds the mode); on a refund proposal, the round is Open again onchain, so
-//     the record is superseded, the mode goes back to revealing, it alerts, and the coordinator
-//     settles again; either way an audit_log row;
+//     the record is superseded, the mode goes back to revealing, it alerts and opens a settlement
+//     hold (reason `refund_vetoed`; owner decision O1, Oct 12): the coordinator proposes again only
+//     once the guardian has released it, because the re-proposal is deterministic and would repeat
+//     the same refund (`refundTimeout` stays the backstop); either way an audit_log row;
 //   - `RoundFinalized` (Settled) → settled with final_at, and the `payouts` (win s + w, rebate r when
 //     r > 0, void_refund s);
 //   - `RoundRefunded` reasons 1 (refundTooFew), 2 and 3 (a refund proposal finalized), 5 (a vetoed
@@ -15,9 +17,15 @@
 //     Reason 4 (void) is src/lifecycle/handlers.ts's.
 // A foreign entry (no ticket, so no user) gets no `payouts` row: its payout lives only in the payout
 // tree and the bundle, and its wallet claims onchain like any other (W2-Z carry-over; payouts.user_id
-// stays NOT NULL). A removed event that isn't live again alerts (proposals: the mode goes back to
-// revealing, and the coordinator posts again). Side effects outside D1 (the RoundDO) run at least
-// once; RoundDO.onModeResult ignores a repeat. Handlers never throw for a permanent condition.
+// stays NOT NULL). A removed event that isn't live again alerts and puts D1 back where it was before
+// the event (W6-F1 R3), so a re-mined or replacing event finds what it needs: a proposal → revealing
+// (the coordinator posts again); a veto → the vetoed record current again, and a vetoed refund
+// proposal refund_proposed again (its hold stays for the guardian: only an admin action releases a
+// hold); a refund → the state it refunded from, without its `refund` payouts; a settlement → settle_
+// proposed, without its payouts. A proposal re-mined after its removal was handled puts its record
+// back (R2). Side effects outside D1 (the RoundDO) run at least once; RoundDO.onModeResult ignores a
+// repeat, and a removal can't take one back (the alert covers it). Handlers never throw for a
+// permanent condition.
 import { newUlid } from '@flocked/shared';
 import type { Hex } from 'viem';
 import type { ModeResult, ModeTally } from '../../do/types.js';
@@ -39,16 +47,18 @@ const message = (err: unknown) => (err instanceof Error ? err.message : String(e
 interface StakesMode {
   roundId: string;
   status: string;
+  claimsOpenAt: number | null;
 }
 
 async function stakesModeOf(db: D1Database, evt: ChainEvent): Promise<StakesMode | null> {
   const row = await db
     .prepare(
-      "SELECT round_id, status FROM round_modes WHERE mode = 'stakes' AND chain_round_id = ?1",
+      `SELECT round_id, status, claims_open_at FROM round_modes
+       WHERE mode = 'stakes' AND chain_round_id = ?1`,
     )
     .bind(String(evt.args.roundId))
-    .first<{ round_id: string; status: string }>();
-  return row && { roundId: row.round_id, status: row.status };
+    .first<{ round_id: string; status: string; claims_open_at: number | null }>();
+  return row && { roundId: row.round_id, status: row.status, claimsOpenAt: row.claims_open_at };
 }
 
 /** The log is on the canonical chain again (re-mined elsewhere; removals are dispatched first). */
@@ -77,13 +87,36 @@ interface Proposal {
 }
 
 /** The current (not superseded) settlement record of the Stakes mode. */
-async function currentProposal(db: D1Database, roundId: string): Promise<Proposal | null> {
+function currentProposal(db: D1Database, roundId: string): Promise<Proposal | null> {
+  return proposalWhere(db, roundId, 'superseded_at IS NULL', null);
+}
+
+/** R2: the latest superseded record of the bundle `bundleHash` (a proposal a reorg removed). */
+function supersededProposal(
+  db: D1Database,
+  roundId: string,
+  bundleHash: Hex,
+): Promise<Proposal | null> {
+  return proposalWhere(
+    db,
+    roundId,
+    'superseded_at IS NOT NULL AND lower(bundle_hash) = ?2',
+    bundleHash,
+  );
+}
+
+async function proposalWhere(
+  db: D1Database,
+  roundId: string,
+  where: string,
+  bundleHash: Hex | null,
+): Promise<Proposal | null> {
   const row = await db
     .prepare(
       `SELECT proposal_seq, outcome, bundle_hash, tally_json, winners_json FROM settlements
-       WHERE round_id = ?1 AND mode = 'stakes' AND superseded_at IS NULL`,
+       WHERE round_id = ?1 AND mode = 'stakes' AND ${where} ORDER BY proposal_seq DESC LIMIT 1`,
     )
-    .bind(roundId)
+    .bind(...(bundleHash === null ? [roundId] : [roundId, bundleHash]))
     .first<{
       proposal_seq: number;
       outcome: string;
@@ -131,6 +164,53 @@ const superseded = (db: D1Database, roundId: string, t: number) =>
     )
     .bind(roundId, t);
 
+/** No current record: the one superseded at `t` (by a veto, or a vetoed settlement's refund) is again. */
+const unsupersededAt = (db: D1Database, roundId: string, t: number) =>
+  db
+    .prepare(
+      `UPDATE settlements SET superseded_at = NULL
+       WHERE round_id = ?1 AND mode = 'stakes' AND superseded_at = ?2
+         AND proposal_seq = (SELECT MAX(proposal_seq) FROM settlements
+                             WHERE round_id = ?1 AND mode = 'stakes' AND superseded_at = ?2)
+         AND NOT EXISTS (SELECT 1 FROM settlements
+                         WHERE round_id = ?1 AND mode = 'stakes' AND superseded_at IS NULL)`,
+    )
+    .bind(roundId, t);
+
+/**
+ * O1: the hold a vetoed refund proposal opens. A second veto of the same round reopens the row the
+ * guardian released (PK (round_id, mode, reason)); an open one is left as it is. tx_hash stays NULL
+ * (spec "Data model": only a foreign-entry hold carries one); the veto's transaction is in the
+ * audit_log row and the alert.
+ */
+const refundVetoedHold = (db: D1Database, roundId: string, t: number) =>
+  db
+    .prepare(
+      `INSERT INTO settlement_holds (round_id, mode, reason, tx_hash, created_at)
+       VALUES (?1, 'stakes', 'refund_vetoed', NULL, ?2)
+       ON CONFLICT (round_id, mode, reason) DO UPDATE
+         SET created_at = excluded.created_at, released_at = NULL, released_by = NULL
+         WHERE settlement_holds.released_at IS NOT NULL`,
+    )
+    .bind(roundId, t);
+
+/** R3: the `claimsOpenAt` (ms) a veto's audit row kept for the refund proposal it vetoed. */
+async function vetoedClaimsOpenAt(
+  db: D1Database,
+  roundId: string,
+  txHash: string,
+): Promise<number | null> {
+  const row = await db
+    .prepare(
+      `SELECT json_extract(data_json, '$.claimsOpenAt') AS at FROM audit_log
+       WHERE target = ?1 AND action = 'proposal_vetoed' AND json_extract(data_json, '$.txHash') = ?2
+       ORDER BY created_at DESC LIMIT 1`,
+    )
+    .bind(roundId, txHash)
+    .first<{ at: number | null }>();
+  return row?.at ?? null;
+}
+
 const auditRow = (db: D1Database, evt: ChainEvent, action: string, roundId: string, data: object) =>
   db
     .prepare(
@@ -173,7 +253,26 @@ export const outcomeProposedHandler: EventHandler = async (evt, env) => {
         .bind(roundId, bundleHash, t),
     ];
   }
-  const p = await currentProposal(db, roundId);
+  let p = await currentProposal(db, roundId);
+  const restore: D1PreparedStatement[] = [];
+  if (!p) {
+    // R2: re-mined after its removal was handled (in an earlier poll), which superseded its record:
+    // that record is the proposal onchain again, so RoundFinalized will find it.
+    p = await supersededProposal(db, roundId, bundleHash);
+    if (p) {
+      log.warn('stakes_proposal_restored', { roundId, seq: p.seq, txHash: evt.txHash });
+      restore.push(
+        db
+          .prepare(
+            `UPDATE settlements SET superseded_at = NULL
+             WHERE round_id = ?1 AND mode = 'stakes' AND proposal_seq = ?2
+               AND NOT EXISTS (SELECT 1 FROM settlements
+                               WHERE round_id = ?1 AND mode = 'stakes' AND superseded_at IS NULL)`,
+          )
+          .bind(roundId, p.seq),
+      );
+    }
+  }
   if (!p || p.bundleHash !== bundleHash) {
     // Not the proposal the coordinator recorded (ALERT-8 covers a transaction we didn't send).
     raiseAlert(env, 'ALERT_DO_ERROR', {
@@ -219,6 +318,7 @@ export const outcomeProposedHandler: EventHandler = async (evt, env) => {
   );
   log.info('stakes_proposal_confirmed', { roundId, settle, seq: p.seq, txHash: evt.txHash });
   return [
+    ...restore,
     db
       .prepare(
         `UPDATE round_modes SET status = ?2, claims_open_at = ?3, refund_reason = ?4,
@@ -251,8 +351,25 @@ export const proposalVetoedHandler: EventHandler = async (evt, env) => {
   const { roundId, status } = mode;
   const t = evt.blockTimestampSec * 1000;
   if (evt.removed) {
-    if (!(await liveAgain(db, evt))) reorged(env, roundId, evt, 'stakes_veto_reorged');
-    return;
+    if (await liveAgain(db, evt)) return;
+    reorged(env, roundId, evt, 'stakes_veto_reorged');
+    // R3: the vetoed record is the proposal onchain again. A vetoed refund proposal is
+    // refund_proposed again (claimsOpenAt from the veto's audit row); a vetoed settlement's state is
+    // its RoundRefunded (reason 5) removal's to put back.
+    return [
+      unsupersededAt(db, roundId, t),
+      db
+        .prepare(
+          `UPDATE round_modes SET status = 'refund_proposed', claims_open_at = ?2,
+             refund_reason = COALESCE((SELECT json_extract(s.winners_json, '$.refundReason')
+               FROM settlements s WHERE s.round_id = ?1 AND s.mode = 'stakes'
+                 AND s.superseded_at IS NULL), 1)
+           WHERE round_id = ?1 AND mode = 'stakes' AND status = 'revealing'
+             AND EXISTS (SELECT 1 FROM settlements s WHERE s.round_id = ?1 AND s.mode = 'stakes'
+                           AND s.superseded_at IS NULL AND s.outcome = 'refunded')`,
+        )
+        .bind(roundId, await vetoedClaimsOpenAt(db, roundId, evt.txHash)),
+    ];
   }
   const evidenceHash = String(evt.args.evidenceHash);
   if (status === 'refund_proposed') {
@@ -261,8 +378,10 @@ export const proposalVetoedHandler: EventHandler = async (evt, env) => {
       step: 'refund_proposal_vetoed',
       evidenceHash,
       txHash: evt.txHash,
+      hold: 'refund_vetoed',
     });
     log.warn('stakes_refund_proposal_vetoed', { roundId, txHash: evt.txHash });
+    const vetoed = await currentProposal(db, roundId);
     return [
       superseded(db, roundId, t),
       db
@@ -271,14 +390,25 @@ export const proposalVetoedHandler: EventHandler = async (evt, env) => {
            WHERE round_id = ?1 AND mode = 'stakes' AND status = 'refund_proposed'`,
         )
         .bind(roundId),
-      auditRow(db, evt, 'proposal_vetoed', roundId, { proposal: 'refund', evidenceHash }),
+      refundVetoedHold(db, roundId, t),
+      auditRow(db, evt, 'proposal_vetoed', roundId, {
+        proposal: 'refund',
+        evidenceHash,
+        seq: vetoed?.seq ?? null,
+        claimsOpenAt: mode.claimsOpenAt,
+      }),
     ];
   }
   if (status === 'settle_proposed') {
     log.warn('stakes_settlement_vetoed', { roundId, txHash: evt.txHash });
+    const vetoed = await currentProposal(db, roundId);
     return [
       superseded(db, roundId, t),
-      auditRow(db, evt, 'proposal_vetoed', roundId, { proposal: 'settlement', evidenceHash }),
+      auditRow(db, evt, 'proposal_vetoed', roundId, {
+        proposal: 'settlement',
+        evidenceHash,
+        seq: vetoed?.seq ?? null,
+      }),
     ];
   }
   raiseAlert(env, 'ALERT_DO_ERROR', {
@@ -316,9 +446,36 @@ export const roundFinalizedHandler: EventHandler = async (evt, env) => {
   const mode = await stakesModeOf(db, evt);
   if (!mode) return;
   const { roundId } = mode;
+  const t = evt.blockTimestampSec * 1000;
   if (evt.removed) {
-    if (!(await liveAgain(db, evt))) reorged(env, roundId, evt, 'stakes_finalize_reorged');
-    return;
+    if (await liveAgain(db, evt)) return;
+    reorged(env, roundId, evt, 'stakes_finalize_reorged');
+    // A finalized refund proposal is put back by its RoundRefunded's removal.
+    if (Number(evt.args.status) !== SETTLED) return;
+    // R3: settle_proposed again, without the payouts (a re-mined finalize writes them again). A
+    // claimed one stays: the claim's removal, dispatched first (newest first), clears its mark.
+    return [
+      db
+        .prepare(
+          `UPDATE round_modes SET status = 'settle_proposed', final_at = NULL
+           WHERE round_id = ?1 AND mode = 'stakes' AND status = 'settled'`,
+        )
+        .bind(roundId),
+      db
+        .prepare(
+          `UPDATE settlements SET settled_at = NULL
+           WHERE round_id = ?1 AND mode = 'stakes' AND superseded_at IS NULL AND settled_at = ?2`,
+        )
+        .bind(roundId, t),
+      db
+        .prepare(
+          `DELETE FROM payouts WHERE round_id = ?1 AND mode = 'stakes'
+             AND kind IN ('win', 'rebate', 'void_refund') AND claimed_at IS NULL
+             AND NOT EXISTS (SELECT 1 FROM round_modes m
+                             WHERE m.round_id = ?1 AND m.mode = 'stakes' AND m.status = 'settled')`,
+        )
+        .bind(roundId),
+    ];
   }
   if (Number(evt.args.status) !== SETTLED) return;
   const p = await currentProposal(db, roundId);
@@ -330,7 +487,6 @@ export const roundFinalizedHandler: EventHandler = async (evt, env) => {
     });
     return;
   }
-  const t = evt.blockTimestampSec * 1000;
   // The RoundDO has the outcome from the proposal already.
   log.info('stakes_settled', { roundId, txHash: evt.txHash });
   return [
@@ -360,11 +516,12 @@ export const roundRefundedHandler: EventHandler = async (evt, env) => {
   const mode = await stakesModeOf(db, evt);
   if (!mode) return;
   const { roundId } = mode;
-  if (evt.removed) {
-    if (!(await liveAgain(db, evt))) reorged(env, roundId, evt, 'stakes_refund_reorged');
-    return;
-  }
   const t = evt.blockTimestampSec * 1000;
+  if (evt.removed) {
+    if (await liveAgain(db, evt)) return;
+    reorged(env, roundId, evt, 'stakes_refund_reorged');
+    return refundRemoved(db, roundId, reason, t);
+  }
   if (
     !['pending', 'revealing', 'settle_proposed', 'refund_proposed', 'refunded'].includes(
       mode.status,
@@ -398,6 +555,51 @@ export const roundRefundedHandler: EventHandler = async (evt, env) => {
     db.prepare(INSERT_REFUNDS).bind(roundId),
   ];
 };
+
+/**
+ * R3: a `RoundRefunded` (not reason 4) left the chain: the mode goes back to the state it was refunded
+ * from, without its `refund` payouts (unclaimed; a claim's removal comes first), so the refund
+ * re-mined, or what replaces it (a finalize, a proposal), applies as it would have:
+ *   - reason 5 (a vetoed settlement): settle_proposed, its record current again;
+ *   - a finalized refund proposal (its record current, claims_open_at set): refund_proposed;
+ *   - refundTooFew or refundTimeout (the round was Open): revealing once anything was revealed or
+ *     proposed, pending otherwise.
+ */
+function refundRemoved(
+  db: D1Database,
+  roundId: string,
+  reason: number,
+  t: number,
+): D1PreparedStatement[] {
+  const refundProposal = `claims_open_at IS NOT NULL AND EXISTS (SELECT 1 FROM settlements s
+      WHERE s.round_id = ?1 AND s.mode = 'stakes' AND s.superseded_at IS NULL AND s.outcome = 'refunded')`;
+  return [
+    ...(reason === REASON_VETOED ? [unsupersededAt(db, roundId, t)] : []),
+    db
+      .prepare(
+        `UPDATE round_modes SET
+           status = CASE
+             WHEN ?2 = ${REASON_VETOED} THEN 'settle_proposed'
+             WHEN ${refundProposal} THEN 'refund_proposed'
+             WHEN revealed_at IS NOT NULL OR EXISTS (SELECT 1 FROM settlements s
+               WHERE s.round_id = ?1 AND s.mode = 'stakes') THEN 'revealing'
+             ELSE 'pending' END,
+           refund_reason = CASE WHEN ?2 <> ${REASON_VETOED} AND ${refundProposal}
+             THEN refund_reason ELSE NULL END,
+           final_at = NULL
+         WHERE round_id = ?1 AND mode = 'stakes' AND status = 'refunded' AND refund_reason = ?2`,
+      )
+      .bind(roundId, reason),
+    db
+      .prepare(
+        `DELETE FROM payouts WHERE round_id = ?1 AND mode = 'stakes' AND kind = 'refund'
+           AND claimed_at IS NULL
+           AND EXISTS (SELECT 1 FROM round_modes m WHERE m.round_id = ?1 AND m.mode = 'stakes'
+                         AND m.status NOT IN ('refunded', 'voided'))`,
+      )
+      .bind(roundId),
+  ];
+}
 
 /**
  * Registers the Stakes outcome handlers on `registry`. Names are stable (chain_event_handled). The
