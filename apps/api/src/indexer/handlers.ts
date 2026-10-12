@@ -4,8 +4,9 @@
 // Built in (W4-B): ALERT-8 for every role-only event the backend didn't send, and the foreign-entry
 // path for `Entered`. W4-D's lifecycle handlers (src/lifecycle/handlers.ts: Stakes entry counters,
 // Locked/Committed confirmations, the guardian void) are registered on the default registry below;
-// W6-A adds proposal, veto, refund and finalize the same way.
+// W6-A adds proposal, veto, refund and finalize the same way, and W6-D the claims (src/read/claimed.ts).
 import { registerLifecycleHandlers } from '../lifecycle/handlers.js';
+import { registerClaimHandlers } from '../read/claimed.js';
 import { foreignEntryHandler } from './entered.js';
 import { unsentTxHandler } from './policy.js';
 import { ANY_EVENT, HandlerRegistry, type HandlerOptions } from './registry.js';
@@ -25,9 +26,9 @@ export function registerBuiltinHandlers(registry: HandlerRegistry): HandlerRegis
   return registry;
 }
 
-/** The registry IndexerDO dispatches through: the built-in handlers, then the lifecycle ones. */
-export const handlers: HandlerRegistry = registerLifecycleHandlers(
-  registerBuiltinHandlers(new HandlerRegistry()),
+/** The registry IndexerDO dispatches through: the built-in handlers, the lifecycle ones, the claims. */
+export const handlers: HandlerRegistry = registerClaimHandlers(
+  registerLifecycleHandlers(registerBuiltinHandlers(new HandlerRegistry())),
 );
 
 /**

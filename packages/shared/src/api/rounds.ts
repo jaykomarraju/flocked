@@ -134,9 +134,10 @@ export const SettlementViewSchema = z.object({
   dust: DecimalBigintSchema,
   payoutRoot: Hex32Schema.nullable(),
   bundleHash: Hex32Schema.nullable(),
-  /** Stakes proposal transaction. */
+  /** Free: the manifest anchor transaction. Stakes: the proposal transaction. */
   txHash: Hex32Schema.nullable(),
-  settledAt: EpochMsSchema,
+  /** Free: when the settlement was applied. Stakes: when it was finalized; null while proposed. */
+  settledAt: EpochMsSchema.nullable(),
 });
 export type SettlementView = z.infer<typeof SettlementViewSchema>;
 

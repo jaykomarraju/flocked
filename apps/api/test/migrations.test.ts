@@ -650,6 +650,20 @@ describe('0011 (W6-A)', () => {
   });
 });
 
+describe('0013 (W6-D)', () => {
+  it("GET /claims?wallet= finds a wallet's Stakes entries through an index", async () => {
+    const plan = await env.DB.prepare(
+      `EXPLAIN QUERY PLAN SELECT e.round_id FROM entries e JOIN rounds r ON r.id = e.round_id
+       WHERE e.wallet = ?1 AND e.mode = 'stakes' AND r.kind = 'daily'`,
+    )
+      .bind('0x0000000000000000000000000000000000000001')
+      .all<{ detail: string }>();
+    const details = plan.results.map((r) => r.detail).join('\n');
+    expect(details).toContain('entries_stakes_wallet_idx');
+    expect(details).not.toMatch(/SCAN e\b/);
+  });
+});
+
 describe('fixture', () => {
   it('seeds against the schema', async () => {
     const f = await seedFixture(env.DB);
