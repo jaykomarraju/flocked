@@ -251,3 +251,81 @@ header link (Settings is reached from the avatar menu). Exports are at
   action have a 2px ink border; read-only notices a 1.5px line border.
 - **Sheets:** bottom sheet on mobile, 400-wide modal on a scrim from tablet up (Core flow pattern), dismissed with a
   "Not now" text button.
+
+## Cards and notifications
+
+Paper page `Cards and notifications`. Freeze: OA-D4. Cards are light only (they are images on other apps' feeds).
+Each card artboard is the card frame `card__<kind>__<state>__<variant>` at the exact variant size plus a
+`notes (not part of the card)` band with the satori note and the 25% check; the export is the card frame (README
+"Exporting"). On the canvas, one row per state, 1600 apart: `og` at x 0, `embed` at 1400, `square` at 2800 (wins,
+losses, streak, teaser, round); refunds in a second band, `og` at 4400, `embed` at 5800, `square` at 7200.
+
+### Share cards
+
+Spec: "Share cards and distribution" (Card content). Route: `GET /cards/:shareId/:variant.png` (result, teaser) and
+`GET /rounds/:id/card/:variant.png` (round); rendered by satori (W10-A). Each row covers `og`, `embed` and `square`.
+
+| Artboard | Spec heading | Route or component | States covered | Export | Freeze |
+| --- | --- | --- | --- | --- | --- |
+| `cards/result/free-win/{og,embed,square}` | Share cards and distribution (Card content) | result card | Free win: "Free · Oct 12", question, 62/38 split, accent on the winning bar, "Your pick", UNFLOCKED +86 pts, smug sheep, handle and avatar, wordmark and URL | `exports/cards/result__free-win__{og,embed,square}.png` | review |
+| `cards/result/free-win-streak/{og,embed,square}` | Share cards and distribution (Card content: stray streak if ≥ 2) | result card | free win plus the "3-day stray streak" pill in the header row | `exports/cards/result__free-win-streak__{og,embed,square}.png` | review |
+| `cards/result/free-loss/{og,embed,square}` | Share cards and distribution | result card | Free loss: pick on the 62% side, winning bar still accent, GOT FLOCKED in ink, the flock | `exports/cards/result__free-loss__{og,embed,square}.png` | review |
+| `cards/result/stakes-win-multiple/{og,embed,square}` | Share cards and distribution (Stakes amounts off, the default) | result card | Stakes win with the multiple: UNFLOCKED 2.6x | `exports/cards/result__stakes-win-multiple__{og,embed,square}.png` | review |
+| `cards/result/stakes-win-amount/{og,embed,square}` | Share cards and distribution (show amounts on cards) | result card | Stakes win with the amount: UNFLOCKED +16.00 USDC | `exports/cards/result__stakes-win-amount__{og,embed,square}.png` | review |
+| `cards/result/stakes-loss/{og,embed,square}` | Share cards and distribution | result card | Stakes loss: GOT FLOCKED, the flock | `exports/cards/result__stakes-loss__{og,embed,square}.png` | review |
+| `cards/teaser/sealed/{og,embed,square}` | Share cards and distribution (Share surfaces: pre-reveal share) | teaser card | question and both options as plain outlines, sealed badge, "I sealed my pick. Can you out-think the flock?"; no per-option data (reveal gating) | `exports/cards/teaser__sealed__{og,embed,square}.png` | review |
+| `cards/round/free/{og,embed,square}` | Share cards and distribution (Generation: generic round card) | round card | split only: "Free · Oct 12 · 1,204 players", bars, "38% strayed. They won."; no player, pick or handle | `exports/cards/round__free__{og,embed,square}.png` | review |
+| `cards/round/stakes/{og,embed,square}` | Share cards and distribution (Generation: generic round card) | round card | as Free, "Stakes · Oct 12 · 214 players" | `exports/cards/round__stakes__{og,embed,square}.png` | review |
+
+### Refund cards
+
+Spec: "Settlement and payout math" (Refund rules); Design_Language.md refund lines. One state per rule and mode,
+named after `REFUND_REASONS[].name` in `packages/shared/src/reasons.ts`. No accent on any refund card.
+
+| Artboard | Spec heading | Route or component | States covered | Export | Freeze |
+| --- | --- | --- | --- | --- | --- |
+| `cards/result/free-refund-too-few-entrants/{og,embed,square}` | Refund rules (rule 1) | result card | room round, 2 players, split kept, rule 1 line | `exports/cards/result__free-refund-too-few-entrants__{og,embed,square}.png` | review |
+| `cards/result/free-refund-one-sided/{og,embed,square}` | Refund rules (rule 2) | result card | 100% / 0%, rule 2 line | `exports/cards/result__free-refund-one-sided__{og,embed,square}.png` | review |
+| `cards/result/free-refund-headcount-tie/{og,embed,square}` | Refund rules (rule 3) | result card | 50% / 50%, the "Refunded (tie only)" line | `exports/cards/result__free-refund-headcount-tie__{og,embed,square}.png` | review |
+| `cards/result/free-refund-voided/{og,embed,square}` | Refund rules (rule 4) | result card | entrant count and sealed badge instead of bars, rule 4 line | `exports/cards/result__free-refund-voided__{og,embed,square}.png` | review |
+| `cards/result/free-refund-commitment-not-anchored/{og,embed,square}` | Refund rules (rule 7); Decision log Oct 12 | result card | entrant count and sealed badge, rule 7 line ("Points returned.") | `exports/cards/result__free-refund-commitment-not-anchored__{og,embed,square}.png` | review |
+| `cards/result/free-refund-beacon-unavailable/{og,embed,square}` | Refund rules (rule 8); Decision log Oct 12 | result card | entrant count and sealed badge, rule 8 line ("Points returned.") | `exports/cards/result__free-refund-beacon-unavailable__{og,embed,square}.png` | review |
+| `cards/result/stakes-refund-too-few-entrants/{og,embed,square}` | Refund rules (rule 1) | result card | 14 players (under 20), 64% / 36%, rule 1 line | `exports/cards/result__stakes-refund-too-few-entrants__{og,embed,square}.png` | review |
+| `cards/result/stakes-refund-one-sided/{og,embed,square}` | Refund rules (rule 2) | result card | 100% / 0%, rule 2 line | `exports/cards/result__stakes-refund-one-sided__{og,embed,square}.png` | review |
+| `cards/result/stakes-refund-headcount-tie/{og,embed,square}` | Refund rules (rule 3) | result card | 50% / 50%, tie line | `exports/cards/result__stakes-refund-headcount-tie__{og,embed,square}.png` | review |
+| `cards/result/stakes-refund-voided/{og,embed,square}` | Refund rules (rule 4) | result card | entrant count and sealed badge, rule 4 line | `exports/cards/result__stakes-refund-voided__{og,embed,square}.png` | review |
+| `cards/result/stakes-refund-vetoed/{og,embed,square}` | Refund rules (rule 5) | result card | 62% / 38% kept with no accent, rule 5 line | `exports/cards/result__stakes-refund-vetoed__{og,embed,square}.png` | review |
+| `cards/result/stakes-refund-timeout/{og,embed,square}` | Refund rules (rule 6) | result card | entrant count instead of bars, rule 6 line | `exports/cards/result__stakes-refund-timeout__{og,embed,square}.png` | review |
+
+### Cards decisions (W6-C)
+
+- **Layout:** Design_Language "Share cards" order, as one flex column with space-between: mode and day label (with
+  the streak pill or sealed badge on the right), question (≤ 2 lines in `og` and `embed`, ≤ 3 in `square`), split
+  bars (label row with "Your pick" and the % in a 120px right-aligned slot, then the track), the result line with the
+  sheep, then handle and avatar left, wordmark and URL right. The square stacks the result line.
+- **Result line:** two text runs (`result-label` "UNFLOCKED", `result-value` "+86 pts" / "2.6x" / "+16.00 USDC")
+  so the value never breaks alone. Fredoka 700: 88 / 92 / 112px (`og` / `embed` / `square`); the Stakes amount
+  drops to 76 / 74px in `og` / `embed` to stay on one line. GOT FLOCKED and "Refunded" are ink.
+- **Accent:** only the winning bar, UNFLOCKED, the stray-streak pill, and the smug sheep's glint (README component
+  conventions). A loss keeps the accent on the winning bar. Refund cards have none (no winner), so both bars are ink.
+  Round cards keep the winning bar but put their line ("38% strayed. They won.") in ink.
+- **Refunds:** title "Refunded" (the result-card component's refunded title) plus the why line, exactly as in
+  Design_Language's refund table, Inter 600 ≤ 2 lines. Rules 1, 2, 3 and 5 keep the split with "Your pick"; rules
+  4, 6, 7 and 8 replace the bars with the entrant count ("1,204 players"), and 4, 7 and 8 add the sealed badge
+  because no pick was ever opened. Neutral sheep.
+- **Teaser:** the question, both options as plain 2px ink outlines, the sealed badge and "I sealed my pick. Can you
+  out-think the flock?" (spec share text) as the big line; no per-option data, no accent. **Round:** no player,
+  pick, handle or avatar; the footer keeps only the brand.
+- **Mascot:** smug on wins, the five-sheep flock on losses, neutral on refunds, teaser and round. The sheep SVGs keep
+  their fixed Foundations colours (raw `#141414` / `#FFFFFF`, and the accent glint). satori should get each pose,
+  and the flock, as one inline SVG.
+- **25% check:** `get_screenshot` at 1x, downscaled with `sips -Z` to 300 wide (`og`, `embed`) or 270 (`square`).
+  The result line, "Refunded" and the teaser line read on every card (16–28px at 25%); the question and the bars
+  read; the meta label, "Your pick", the why line and the URL are texture. Each card's notes band records its
+  check.
+- **satori:** every card is flex only (no grid, no transforms, no tabular figures: the % sits in a fixed slot); bar
+  fills are % widths of a fixed track. Each notes band names that card's primitives. Fonts: Fredoka 600/700 and
+  Inter 500/600/700 as TTF.
+- **Example values:** the Core flow question ("Would you rather fight one horse-sized duck or 100 duck-sized
+  horses?"), 62/38, @woolgatherer, "Oct 12", 1,204 Free and 212–214 Stakes players, URL "flocked.app" (a
+  placeholder: the spec names no domain).

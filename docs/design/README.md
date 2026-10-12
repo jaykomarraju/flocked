@@ -15,10 +15,14 @@ Each design session creates and edits only the pages its prompt names.
 
 `<surface>/<screen>/<state>/<breakpoint>`, lowercase kebab-case, for example `core/today/open-free/mobile`.
 
-- `surface`: `foundations`, `components`, `core`, `social`, `settings`, `cards`, `admin`. `settings` artboards live
-  on the `Social` page and export to `exports/settings/` (W5-C).
+- `surface`: `foundations`, `components`, `core`, `social`, `settings`, `cards`, `notifications`, `admin`.
+  `settings` artboards live on the `Social` page and export to `exports/settings/` (W5-C). `notifications`
+  artboards (per-channel copy sheets and email templates) live on the `Cards and notifications` page and export to
+  `exports/notifications/` (W6-C).
 - `breakpoint`: `mobile` (380 wide), `tablet` (768), `desktop` (1120). Foundation and component sheets are 1120
-  wide and use `desktop`.
+  wide and use `desktop`. Share cards use the card variant instead (`CARD_VARIANTS` in
+  `packages/shared/src/api/cards.ts`): `og` (1200×630), `embed` (1200×800), `square` (1080×1080), for example
+  `cards/result/free-win/og`. The screen is the card kind (`result`, `teaser`, `round`).
 - `state`: the screen state (`open-free`, `sealed`, `revealed-win`), or `light` / `dark` for sheets. A sheet that
   shows both modes uses `light-dark`.
 - Each component sheet has a light and a dark artboard.
@@ -39,6 +43,11 @@ changes, change it in both places, and only after a Z-raised decision for colors
    `foundations_mascot_dark_desktop@2x.png` → `exports/foundations/mascot__dark__desktop.png`.
 4. Update the row in `screens.md`. Exports are the Playwright screenshot baselines, so re-export whenever an
    artboard changes.
+
+Share cards are the exception (W6-C). Each card artboard holds the card as a frame named
+`card__<kind>__<state>__<variant>` at exactly the variant size, then a `notes (not part of the card)` band with the
+satori note and the 25% check. Export the **card frame**, not the artboard, so the PNG is exactly 2x the variant
+(2400×1260, 2400×1600, 2160×2160): `card__result__free-win__og@2x.png` → `exports/cards/result__free-win__og.png`.
 
 ## Rules that came out of contrast checks
 
@@ -120,3 +129,5 @@ From the `Components` page. Code follows these unless a sheet says otherwise.
   swap the order of sibling sections. Screenshot every duplicated overlay screen (W5-C).
 - Several builder subagents can work on one page at once if each has its own canvas band and touches only its own
   artboards. Keep `export` in one place and run it one call at a time (W5-C exported 141 artboards in 9-node calls).
+- `get_screenshot` ignores a `scale` below 1 and returns 1x. For the cards' 25% check, downscale the 1x capture
+  (`sips -Z 300 card.png`) and look at that (W6-C).
