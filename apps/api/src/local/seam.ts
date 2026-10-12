@@ -4,7 +4,9 @@
 // expression's jobs (the stack's cron driver, e2e/stack/cron.mjs, calls it in place of Cloudflare's
 // cron triggers, which `wrangler dev` doesn't fire); opens a round's entries with a beacon
 // signature inside the Worker, so the e2e smoke test runs tlock in the `wrangler dev` bundle; and
-// shows a round's settlement and serves its R2 bundle objects (W5-D, e2e/tests/free-settle.test.ts).
+// shows a round's settlement and serves its R2 bundle objects (W5-D, e2e/tests/free-settle.test.ts);
+// and, for Stakes (W6-A, e2e/tests/stakes-settle.test.ts), schedules rounds with a Stakes mode, records
+// the test's entry tickets, and shows the Stakes mode, its proposals, payouts and entries.
 //
 // It answers 404, exactly like an unknown path, unless ENVIRONMENT is 'local', FLOCKED_TEST_SEAM_KEY
 // is set (only `pnpm stack:up` sets it, per run) and the request carries that key as a Bearer token,
@@ -80,14 +82,48 @@ const CreateRoundSchema = z
   })
   .refine((r) => r.closesAt > r.opensAt, 'closesAt must be after opensAt');
 
+/** A Stakes mode for a scheduled round: the launch defaults, any of them overridden (W6-A). */
+const StakesOptionsSchema = z.strictObject({
+  stake: z
+    .string()
+    .regex(/^[1-9][0-9]*$/)
+    .optional(),
+  feeBps: z.int().optional(),
+  creatorBps: z.int().optional(),
+  capMultiple: z.int().optional(),
+  minEntrants: z.int().optional(),
+  creator: z
+    .string()
+    .regex(/^0x[0-9a-f]{40}$/)
+    .optional(),
+});
+
 const ScheduledRoundSchema = z
   .strictObject({
     opensAt: WholeSecondMs,
     closesAt: WholeSecondMs,
     beaconDelay: z.int().min(MIN_BEACON_DELAY).max(MAX_BEACON_DELAY).default(MIN_BEACON_DELAY),
     prompt: z.string().min(1).max(200).default('Sheep or goats?'),
+    /** False: no Free mode (a Stakes-only round). */
+    free: z.boolean().default(true),
+    stakes: StakesOptionsSchema.optional(),
   })
-  .refine((r) => r.closesAt > r.opensAt, 'closesAt must be after opensAt');
+  .refine((r) => r.closesAt > r.opensAt, 'closesAt must be after opensAt')
+  .refine((r) => r.free || r.stakes !== undefined, 'at least one mode');
+
+/** A Stakes round's creator when the test names none (any nonzero address). */
+const TEST_CREATOR = `0x${'c0'.repeat(20)}`;
+
+const TicketSchema = z.strictObject({
+  roundId: UlidSchema,
+  /** The ticket's user; a new one when absent. */
+  userId: UlidSchema.optional(),
+  wallet: z.string().regex(/^0x[0-9a-f]{40}$/),
+  personTag: z.string().regex(/^0x[0-9a-f]{64}$/),
+  /** Unix seconds, as signed. */
+  expiry: z.int().positive(),
+  ticketHash: z.string().regex(/^0x[0-9a-f]{64}$/),
+});
 
 const CronSchema = z.strictObject({
   cron: z.string().refine((c) => c in CRON_JOBS, 'not a configured cron expression'),
@@ -187,17 +223,27 @@ app.post('/rounds', validate('json', CreateRoundSchema), async (c) => {
 });
 
 /**
- * POST /__test/rounds/scheduled: a daily-shaped round with a Free mode and its question, unlocked, as
- * the scheduler's hourly job creates them but with any open and close time (minutes apart, say). The
- * scheduler's tick locks it once opensAt − 6 h has passed, queues its lock leaf and inits its
- * RoundDO; nothing else is done here.
+ * POST /__test/rounds/scheduled: a daily-shaped round and its question, unlocked, as the scheduler's
+ * hourly job creates them but with any open and close time (minutes apart, say). A Free mode by
+ * default; `stakes` adds a Stakes mode (W6-A) and `free: false` drops Free. The scheduler's tick
+ * locks it once opensAt − 6 h has passed (Stakes: `createRound` onchain; Free: its lock leaf) and
+ * inits its RoundDO; nothing else is done here.
  */
 app.post('/rounds/scheduled', validate('json', ScheduledRoundSchema), async (c) => {
   const body = c.req.valid('json');
-  const config = {
+  const config = LockedConfigSchema.parse({
     beaconDelay: body.beaconDelay,
-    free: { ...LOCKED_CONFIG_DEFAULTS.free, awardRecipient: null },
-  };
+    ...(body.free ? { free: { ...LOCKED_CONFIG_DEFAULTS.free, awardRecipient: null } } : {}),
+    ...(body.stakes
+      ? {
+          stakes: {
+            ...LOCKED_CONFIG_DEFAULTS.stakes,
+            creator: TEST_CREATOR,
+            ...body.stakes,
+          },
+        }
+      : {}),
+  });
   const t = now(c.env);
   const roundId = newUlid();
   const questionId = newUlid();
@@ -223,6 +269,31 @@ app.post('/rounds/scheduled', validate('json', ScheduledRoundSchema), async (c) 
   return c.json({ roundId, questionId }, 201);
 });
 
+/**
+ * POST /__test/stakes/tickets: records an entry ticket the test signed itself (with the stack's
+ * ticket-signer key, which the API never holds), as the signer path stores it before signing (W6-B).
+ * The indexer maps the round's `Entered` to its user through it; without it the entry is foreign.
+ */
+app.post('/stakes/tickets', validate('json', TicketSchema), async (c) => {
+  const body = c.req.valid('json');
+  const userId = body.userId ?? newUlid();
+  await c.env.DB.prepare(
+    `INSERT INTO stakes_tickets (ticket_hash, round_id, person_tag, user_id, wallet, expiry, issued_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`,
+  )
+    .bind(
+      body.ticketHash,
+      body.roundId,
+      body.personTag,
+      userId,
+      body.wallet,
+      body.expiry,
+      now(c.env),
+    )
+    .run();
+  return c.json({ userId }, 201);
+});
+
 /** POST /__test/cron {cron}: runs that cron expression's jobs (src/cron.ts), as its trigger would. */
 app.post('/cron', validate('json', CronSchema), async (c) => {
   const { cron } = c.req.valid('json');
@@ -231,20 +302,22 @@ app.post('/cron', validate('json', CronSchema), async (c) => {
 });
 
 /**
- * GET /__test/rounds/:id: the RoundDO state, what D1 holds for the round's Free mode, and the Free
- * round key's anchor events the indexer mirrored.
+ * GET /__test/rounds/:id: the RoundDO state, what D1 holds for the round's Free mode (null without
+ * one), the Free round key's anchor events the indexer mirrored, and the Stakes mode (W6-A).
  */
 app.get('/rounds/:id', validate('param', RoundParamsSchema), async (c) => {
   const { id } = c.req.valid('param');
   const round = await c.env.DB.prepare(
     'SELECT r.status, m.status AS free_status, m.commitment_root, m.lock_tx, m.commit_tx, ' +
       'm.refund_reason, m.bundle_hash, m.revealed_at FROM rounds r ' +
-      "JOIN round_modes m ON m.round_id = r.id AND m.mode = 'free' WHERE r.id = ?1",
+      "LEFT JOIN round_modes m ON m.round_id = r.id AND m.mode = 'free' WHERE r.id = ?1 " +
+      // Unlocked rounds have no modes yet.
+      'AND EXISTS (SELECT 1 FROM round_modes x WHERE x.round_id = r.id)',
   )
     .bind(id)
     .first<{
       status: string;
-      free_status: string;
+      free_status: string | null;
       commitment_root: string | null;
       lock_tx: string | null;
       commit_tx: string | null;
@@ -296,7 +369,7 @@ app.get('/rounds/:id', validate('param', RoundParamsSchema), async (c) => {
   return c.json({
     state: await roundStub(c.env, id).getState(),
     status: round.status,
-    free: {
+    free: round.free_status && {
       status: round.free_status,
       commitmentRoot: round.commitment_root,
       lockTx: round.lock_tx,
@@ -305,6 +378,7 @@ app.get('/rounds/:id', validate('param', RoundParamsSchema), async (c) => {
       bundleHash: round.bundle_hash,
       revealedAt: round.revealed_at,
     },
+    stakes: await stakesOf(c.env.DB, id),
     settlement: settlement && {
       outcome: settlement.outcome,
       bundleHash: settlement.bundle_hash,
@@ -333,6 +407,88 @@ app.get('/rounds/:id', validate('param', RoundParamsSchema), async (c) => {
     })),
   });
 });
+
+/** The Stakes mode as D1 holds it: status, proposals, payouts and entries (W6-A); null without one. */
+async function stakesOf(db: D1Database, id: string) {
+  const mode = await db
+    .prepare(
+      `SELECT status, chain_round_id, lock_tx, refund_reason, bundle_hash, revealed_at, claims_open_at,
+         final_at FROM round_modes WHERE round_id = ?1 AND mode = 'stakes'`,
+    )
+    .bind(id)
+    .first<{
+      status: string;
+      chain_round_id: string | null;
+      lock_tx: string | null;
+      refund_reason: number | null;
+      bundle_hash: string | null;
+      revealed_at: number | null;
+      claims_open_at: number | null;
+      final_at: number | null;
+    }>();
+  if (!mode) return null;
+  const [settlements, payouts, entries] = await db.batch([
+    db
+      .prepare(
+        `SELECT proposal_seq, outcome, bundle_hash, tx_hash, payout_root, settled_at, superseded_at,
+           winners_json FROM settlements WHERE round_id = ?1 AND mode = 'stakes' ORDER BY proposal_seq`,
+      )
+      .bind(id),
+    db
+      .prepare(
+        "SELECT user_id, wallet, kind, amount FROM payouts WHERE round_id = ?1 AND mode = 'stakes' ORDER BY wallet, kind",
+      )
+      .bind(id),
+    db
+      .prepare(
+        `SELECT id, user_id, wallet, tx_hash, block_number, log_index, option_index, valid, void_reason,
+           foreign_entry, ciphertext IS NULL AS archived FROM entries
+         WHERE round_id = ?1 AND mode = 'stakes' ORDER BY block_number, log_index`,
+      )
+      .bind(id),
+  ]);
+  type Row = Record<string, string | number | null>;
+  const rows = (r: D1Result | undefined) => (r?.results ?? []) as Row[];
+  return {
+    status: mode.status,
+    chainRoundId: mode.chain_round_id,
+    lockTx: mode.lock_tx,
+    refundReason: mode.refund_reason,
+    bundleHash: mode.bundle_hash,
+    revealedAt: mode.revealed_at,
+    claimsOpenAt: mode.claims_open_at,
+    finalAt: mode.final_at,
+    settlements: rows(settlements).map((r) => ({
+      seq: r.proposal_seq,
+      outcome: r.outcome,
+      bundleHash: r.bundle_hash,
+      txHash: r.tx_hash,
+      payoutRoot: r.payout_root,
+      settledAt: r.settled_at,
+      supersededAt: r.superseded_at,
+      winners: r.winners_json === null ? null : (JSON.parse(String(r.winners_json)) as unknown),
+    })),
+    payouts: rows(payouts).map((r) => ({
+      userId: r.user_id,
+      wallet: r.wallet,
+      kind: r.kind,
+      amount: r.amount,
+    })),
+    entries: rows(entries).map((r) => ({
+      id: r.id,
+      userId: r.user_id,
+      wallet: r.wallet,
+      txHash: r.tx_hash,
+      blockNumber: r.block_number,
+      logIndex: r.log_index,
+      optionIndex: r.option_index,
+      valid: r.valid === null ? null : r.valid === 1,
+      voidReason: r.void_reason,
+      foreign: r.foreign_entry === 1,
+      archived: r.archived === 1,
+    })),
+  };
+}
 
 /** GET /__test/bundles/:id/:mode/:file: a settlement bundle object from R2, byte for byte. */
 app.get('/bundles/:id/:mode/:file', validate('param', BundleParamsSchema), async (c) => {

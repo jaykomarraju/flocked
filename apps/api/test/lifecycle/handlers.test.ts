@@ -2,9 +2,9 @@
 // lifecycle": `RoundRefunded` reason 4 before close that the backend didn't start → Stakes voided,
 // Free continues), ticketed `Entered` → RoundDO.ingestStakesEntry, and `Locked` / `Committed` →
 // round_modes.lock_tx / commit_tx.
-import { env } from 'cloudflare:test';
+import { env, runInDurableObject } from 'cloudflare:test';
 import { roundKey } from '@flocked/shared';
-import { keccak256, toHex, type Hex } from 'viem';
+import { bytesToHex, keccak256, toHex, type Hex } from 'viem';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { LockedRound } from '../../src/do/types.js';
 import { handlers } from '../../src/indexer/handlers.js';
@@ -55,7 +55,12 @@ describe('registrations', () => {
     expect(names('Entered')).toEqual(['alert-unsent-tx', 'foreign-entry', 'stakes-ingest']);
     expect(names('Locked')).toEqual(['alert-unsent-tx', 'anchor-confirmation']);
     expect(names('Committed')).toEqual(['alert-unsent-tx', 'anchor-confirmation']);
-    expect(names('RoundRefunded')).toEqual(['alert-unsent-tx', 'stakes-void']);
+    expect(names('RoundRefunded')).toEqual(['alert-unsent-tx', 'stakes-void', 'stakes-refunded']);
+    // W6-A: the Stakes outcome handlers.
+    expect(names('OutcomeProposed')).toEqual(['alert-unsent-tx', 'stakes-proposal']);
+    expect(names('ProposalVetoed')).toEqual(['alert-unsent-tx', 'stakes-veto']);
+    expect(names('RoundFinalized')).toEqual(['alert-unsent-tx', 'stakes-finalized']);
+    expect(names('ManifestAnchored')).toEqual(['alert-unsent-tx', 'anchor-confirmation']);
   });
 });
 
@@ -270,6 +275,74 @@ describe('ticketed Entered → the RoundDO Stakes counters', () => {
     expect(again).toEqual({ counted: false, entrantCount: 2, pool: String(BigInt(stake) * 2n) });
   });
 
+  it('W6-A: stores the entry with its ciphertext, keeps a re-added log’s new block, and un-counts a removed one', async () => {
+    const fake = fakeChainAt(T0);
+    const r = await stakesRound(fake);
+    setClock(T0);
+    await r.stub.init(r.locked);
+    const user = await createUser(0);
+    const player = '0x00000000000000000000000000000000000000c1' as Hex;
+    const personTag = keccak256(toHex('person-w6a'));
+    const ticketHash = keccak256(toHex('ticket-w6a'));
+    await env.DB.prepare(
+      'INSERT INTO stakes_tickets (ticket_hash, round_id, person_tag, user_id, wallet, expiry, issued_at) VALUES (?1, ?2, ?3, ?4, ?5, 0, 0)',
+    )
+      .bind(ticketHash, r.locked.roundId, personTag, user, player)
+      .run();
+    const stake = String(r.locked.config.stakes?.stake);
+    const ciphertext: Hex = `0x${'ab'.repeat(80)}`;
+    const evt = chainEvent(
+      'escrow',
+      'Entered',
+      { roundId: r.chainRoundId, player, personTag, ticketHash, ciphertext },
+      { blockNumber: 200 },
+    );
+    const stored = () =>
+      env.DB.prepare(
+        'SELECT user_id, wallet, ciphertext, commitment, block_number FROM entries WHERE tx_hash = ?1',
+      )
+        .bind(evt.txHash)
+        .first<{
+          user_id: string;
+          wallet: string;
+          ciphertext: ArrayBuffer;
+          commitment: string;
+          block_number: number;
+        }>();
+    const doBlocks = () =>
+      runInDurableObject(r.stub, (_o, state) =>
+        state.storage.sql
+          .exec<{ block_number: number }>('SELECT block_number FROM stakes_entries')
+          .toArray()
+          .map((x) => x.block_number),
+      );
+    const counts = async () => (await r.stub.getState()).modes.stakes;
+
+    await commitStatements(await stakesIngestHandler(evt, env, ctx));
+    const row = await stored();
+    expect(row).toMatchObject({ user_id: user, wallet: player, commitment: keccak256(ciphertext) });
+    expect(bytesToHex(new Uint8Array(row?.ciphertext ?? new ArrayBuffer(0)))).toBe(ciphertext);
+    expect(await counts()).toMatchObject({ entrantCount: 1, pool: stake });
+
+    // A reorg: the log leaves the chain (dispatched first), then comes back in another block.
+    await commitStatements(
+      await stakesIngestHandler({ ...evt, removed: true, revision: 2 }, env, ctx),
+    );
+    expect(await stored()).toBeNull();
+    expect(await counts()).toMatchObject({ entrantCount: 0, pool: '0' });
+    const moved = { ...evt, blockNumber: 205, revision: 3 };
+    await commitStatements(await stakesIngestHandler(moved, env, ctx));
+    expect((await stored())?.block_number).toBe(205);
+    expect(await counts()).toMatchObject({ entrantCount: 1, pool: stake });
+    expect(await doBlocks()).toEqual([205]);
+
+    // An addition at a slot already stored keeps the new block fields (in D1 and the RoundDO).
+    await commitStatements(await stakesIngestHandler({ ...moved, blockNumber: 207 }, env, ctx));
+    expect((await stored())?.block_number).toBe(207);
+    expect(await doBlocks()).toEqual([207]);
+    expect(await counts()).toMatchObject({ entrantCount: 1, pool: stake });
+  });
+
   it('an entry the RoundDO refuses for good (another chain round) alerts and returns (V3)', async () => {
     const fake = fakeChainAt(T0);
     const r = await stakesRound(fake);
@@ -299,8 +372,10 @@ describe('ticketed Entered → the RoundDO Stakes counters', () => {
       ticketHash,
       ciphertext: '0x0102',
     });
-    // Rethrown, it would stop dispatch at this row for good.
-    await expect(stakesIngestHandler(evt, env, ctx)).resolves.toBeUndefined();
+    // Rethrown, it would stop dispatch at this row for good. The entry is still stored in D1 (W6-A):
+    // the RoundDO's counters are a display value, D1 the settlement's input.
+    const stmts = await stakesIngestHandler(evt, env, ctx);
+    expect(stmts).toHaveLength(1);
     captured.restore();
     expect(
       captured.alerts.filter((a) => a.roundId === r.locked.roundId && a.code === 'ALERT_DO_ERROR'),

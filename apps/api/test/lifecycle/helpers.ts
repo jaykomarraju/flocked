@@ -57,14 +57,21 @@ export async function stakesRound(
   return { ...r, chainRoundId };
 }
 
+/**
+ * One operator key per fake chain: a fresh chain starts every account at nonce 0, while D1's
+ * `operator_txs` keeps the file's earlier sends, whose nonces the operator's allocator skips (W6-A).
+ */
+const operatorKeys = new WeakMap<FakeChain, string>();
+
 /** Points the env's operator at the fake chain and the RoundDO's void at it too. */
 export async function useFakeOperator(
   stub: DurableObjectStub<RoundDO>,
   fake: FakeChain,
 ): Promise<void> {
+  if (!operatorKeys.has(fake)) operatorKeys.set(fake, generatePrivateKey());
   Object.assign(env, {
     CHAIN_ID: '31337',
-    OPERATOR_KEY: (env as { OPERATOR_KEY?: string }).OPERATOR_KEY ?? generatePrivateKey(),
+    OPERATOR_KEY: operatorKeys.get(fake),
     LOCAL_DEPLOYMENT: FAKE_DEPLOYMENT,
   });
   await runInDurableObject(stub, (inst: RoundDO) => {

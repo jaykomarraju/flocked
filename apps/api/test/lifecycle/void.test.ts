@@ -230,9 +230,11 @@ describe('a void that misses close is abandoned', () => {
     expect(state.voidRequested).toBe(false);
     expect(entered.entry.stake).toBe('25');
 
-    // Both modes are settled as usual at beacon time.
+    // Stakes settlement starts at close (W6-A: it streams the entry set until the beacon); both
+    // modes are enqueued as usual at beacon time.
+    expect(queues.settled.map((m) => m.mode)).toEqual(['stakes']);
     await alarmAt(r.stub, r.locked.beaconTimeSec * 1000);
-    expect(queues.settled.map((m) => m.mode).sort()).toEqual(['free', 'stakes']);
+    expect(queues.settled.map((m) => m.mode).sort()).toEqual(['free', 'stakes', 'stakes']);
     // No RoundDO alert (the AnchorDO alerts on its own: it has no ANCHOR_KEY in this test).
     captured.restore();
     expect(captured.alerts.filter((x) => x.roundId === r.locked.roundId)).toEqual([]);

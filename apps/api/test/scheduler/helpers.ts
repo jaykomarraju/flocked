@@ -2,6 +2,7 @@
 // AnchorDO singleton.
 import { env, runDurableObjectAlarm, runInDurableObject } from 'cloudflare:test';
 import { newUlid } from '@flocked/shared';
+import { custom, type Transport } from 'viem';
 import { generatePrivateKey } from 'viem/accounts';
 import { vi } from 'vitest';
 import { ANCHOR_SINGLETON, type AnchorDO } from '../../src/do/anchor-do.js';
@@ -98,4 +99,37 @@ export function failFirstMark(purpose: string) {
       },
     } as unknown as D1PreparedStatement;
   });
+}
+
+/**
+ * The fake chain behind a node whose `pending` nonce is its latest block's, as if it saw none of the
+ * account's pooled transactions: it answers the same stale value until something is mined (W6-A).
+ * The first `together` pending reads are held until all of them have arrived, so that many
+ * concurrent sends read it before any of them can store a transaction.
+ */
+export function stalePendingNonce(fake: FakeChain, together = 0): Transport {
+  const inner = fake.transport({}).request as unknown as (a: {
+    method: string;
+    params: unknown[];
+  }) => Promise<unknown>;
+  let arrived = 0;
+  let release = () => {};
+  const all = new Promise<void>((resolve) => (release = resolve));
+  return custom(
+    {
+      request: async ({ method, params }: { method: string; params?: unknown }) => {
+        const p = (params ?? []) as unknown[];
+        if (method !== 'eth_getTransactionCount' || p[1] !== 'pending') {
+          return inner({ method, params: p });
+        }
+        if (arrived < together) {
+          arrived += 1;
+          if (arrived === together) release();
+          await all;
+        }
+        return inner({ method, params: [p[0], 'latest'] });
+      },
+    },
+    { retryCount: 0 },
+  );
 }

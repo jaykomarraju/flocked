@@ -93,6 +93,11 @@ export interface StakesEntryEvent {
   blockNumber: number;
   logIndex: number;
   blockTimestampSec: number;
+  /**
+   * W6-A: the log left the canonical chain (a reorg), so a counted entry is un-counted. A log
+   * re-mined in another block comes back as a new event with the new block fields.
+   */
+  removed?: boolean;
 }
 
 export interface StakesIngestResult {

@@ -603,6 +603,21 @@ describe('constraints reject bad rows', () => {
   });
 });
 
+describe('0011 (W6-A)', () => {
+  it('Stakes entries are read in chain order through an index', async () => {
+    const plan = await env.DB.prepare(
+      `EXPLAIN QUERY PLAN SELECT id FROM entries WHERE round_id = ?1 AND mode = 'stakes'
+         AND (block_number > ?2 OR (block_number = ?2 AND log_index > ?3))
+       ORDER BY block_number, log_index LIMIT 500`,
+    )
+      .bind('r', 0, 0)
+      .all<{ detail: string }>();
+    const details = plan.results.map((r) => r.detail).join('\n');
+    expect(details).toContain('entries_round_stakes_chain_idx');
+    expect(details).not.toContain('TEMP B-TREE');
+  });
+});
+
 describe('fixture', () => {
   it('seeds against the schema', async () => {
     const f = await seedFixture(env.DB);

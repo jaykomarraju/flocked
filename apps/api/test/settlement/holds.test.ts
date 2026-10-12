@@ -94,7 +94,7 @@ describe('ALERT-5 anomalous VOID rate', () => {
 });
 
 describe('Stakes holds and the safe head', () => {
-  it('waits for the safe-head flag (stubbed false until W6-A) before decrypting', async () => {
+  it('waits for the safe head (stubbed) before decrypting', async () => {
     atBeaconPlus(5_000);
     const r = await seedStakesRound([0, 1, 1]);
     const h = await harness(r.roundId, { mode: 'stakes' });
@@ -107,7 +107,8 @@ describe('Stakes holds and the safe head', () => {
   it('never calls applyStakes while settlementHold(round, stakes) is open', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     atBeaconPlus(5_000);
-    const r = await seedStakesRound([0, 1, 1]);
+    // Three entries meet a minimum of 3, so the round reveals (fewer would be refundTooFew's).
+    const r = await seedStakesRound([0, 1, 1], 7n, { minEntrants: 3 });
     await env.DB.prepare(
       "INSERT INTO settlement_holds (round_id, mode, reason, tx_hash, created_at) VALUES (?1, 'stakes', 'foreign_entry', ?2, 1)",
     )
@@ -121,18 +122,20 @@ describe('Stakes holds and the safe head', () => {
     expect(h.applied).toHaveLength(0);
 
     await release(r.roundId, 'stakes', 'foreign_entry');
-    expect((await h.alarm()).phase).toBe('done');
+    // Proposed: the job follows the proposal onchain until the round is final (W6-A).
+    expect((await h.alarm()).phase).toBe('proposing');
     const result = h.applied[0];
     expect(result?.entries.map((e) => [e.account, e.option])).toEqual(
       r.wallets.map((w, i) => [w, [0, 1, 1][i]]),
     );
-    // Three entries are fewer than the 20 Stakes needs: refund rule 1, so no payout tree.
-    expect(result?.record).toMatchObject({ outcome: 'refunded', refundReason: 1 });
+    // One against two: option 0, the minority, wins; the payout tree is over the Stakes leaves.
+    expect(result?.record).toMatchObject({ outcome: 'settled', winner: 0 });
     expect(result?.manifest).toMatchObject({
       mode: 'stakes',
       chainRoundId: '7',
-      payoutRoot: null,
+      payoutRoot: expect.stringMatching(/^0x[0-9a-f]{64}$/) as unknown,
       commitment: null,
+      closeBlock: { number: 999, hash: `0x${'cb'.repeat(32)}` },
     });
   });
 });

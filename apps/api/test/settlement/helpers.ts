@@ -33,6 +33,13 @@ import { settlementName, type SettlementDO } from '../../src/do/settlement-do.js
 import type { AnchorManifestItem, ModeResult, SettlementStatus } from '../../src/do/types.js';
 import { decryptHandler } from '../../src/queues/decrypt.js';
 import { applyFree, refundFree, type FreeApplyDeps } from '../../src/settlement/apply/free.js';
+import type { SettlementRound } from '../../src/settlement/prepare.js';
+import {
+  enteredFileKey,
+  type EntrySetState,
+  type EntrySetStep,
+  type StreamedEntry,
+} from '../../src/settlement/stakes/entry-set.js';
 import type { TallyResult } from '../../src/settlement/types.js';
 
 /** Recorded quicknet beacons. */
@@ -262,12 +269,13 @@ export function seedPicks(
 export async function seedStakesRound(
   options: readonly (0 | 1)[],
   chainRoundId = 7n,
+  stakes: Partial<NonNullable<LockedConfig['stakes']>> = {},
 ): Promise<{ roundId: string; wallets: Hex[] }> {
   const roundId = newUlid();
   const closesAt = BEACON_TIME_MS - 120_000 - 1000 * seeded++;
   const config = LockedConfigSchema.parse({
     beaconDelay: 120,
-    stakes: { ...LOCKED_CONFIG_DEFAULTS.stakes, creator: `0x${'de'.repeat(20)}` },
+    stakes: { ...LOCKED_CONFIG_DEFAULTS.stakes, creator: `0x${'de'.repeat(20)}`, ...stakes },
   });
   const roundRef = roundRefFromChainId(chainRoundId);
   const rows = await Promise.all(
@@ -440,7 +448,10 @@ export async function harness(
     /** Wipes the DO's storage first: a fresh run of the same (round, mode). */
     fresh?: boolean;
     mode?: Mode;
-    /** Stakes: stand in for W6-A's safe-head flag. */
+    /**
+     * Stakes: stand in for the safe head and the streamed entry set (true: the D1 entries, as
+     * reconciled; false: still waiting for the safe head).
+     */
     safeHead?: boolean;
   } = {},
 ): Promise<Harness> {
@@ -477,7 +488,11 @@ export async function harness(
     }
     if (opts.safeHead !== undefined) {
       const ready = opts.safeHead;
-      o.hooks = { ...o.hooks, safeHeadReady: () => Promise.resolve(ready) };
+      o.hooks = {
+        ...o.hooks,
+        safeHeadReady: () => Promise.resolve(ready),
+        stakesEntrySet: (_e, round, s) => entrySetFromD1(round, s, ready),
+      };
     }
   });
   const h: Harness = {
@@ -502,6 +517,49 @@ export async function harness(
     },
   };
   return h;
+}
+
+/**
+ * A stand-in for the streamed entry set: the round's D1 Stakes entries in chain order, written as
+ * one entry-set file and marked reconciled (`ready`), or a wait for the safe head.
+ */
+export async function entrySetFromD1(
+  round: SettlementRound,
+  s: EntrySetState,
+  ready: boolean,
+): Promise<EntrySetStep> {
+  if (!ready) return { status: 'wait', ms: 60_000, detail: 'the safe head (test)' };
+  const { results } = await env.DB.prepare(
+    `SELECT tx_hash, log_index, block_number, wallet, person_tag, commitment FROM entries
+     WHERE round_id = ?1 AND mode = 'stakes' ORDER BY block_number, log_index`,
+  )
+    .bind(round.roundId)
+    .all<{
+      tx_hash: Hex;
+      log_index: number;
+      block_number: number;
+      wallet: Hex;
+      person_tag: Hex;
+      commitment: Hex;
+    }>();
+  const entries = results.map((e, seq): StreamedEntry => ({
+    seq,
+    txHash: e.tx_hash.toLowerCase() as Hex,
+    logIndex: e.log_index,
+    blockNumber: e.block_number,
+    player: e.wallet.toLowerCase() as Hex,
+    personTag: e.person_tag,
+    ticketHash: `0x${'00'.repeat(32)}`,
+    commitment: e.commitment.toLowerCase() as Hex,
+  }));
+  await env.BUCKET.put(
+    enteredFileKey(round.roundId, 0),
+    JSON.stringify({ roundId: round.roundId, index: 0, entries }),
+  );
+  const hash: Hex = `0x${'cb'.repeat(32)}`;
+  const closeBlock = { number: 999, hash, timestamp: 0 };
+  Object.assign(s, { files: 1, count: entries.length, reconciled: true, closeBlock });
+  return { status: 'ready', count: entries.length, closeBlock };
 }
 
 /** Every bundle object of the round, key → bytes. */
