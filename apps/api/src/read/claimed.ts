@@ -3,7 +3,8 @@
 // player, amount)` mark the wallet's `payouts` row claimed (`claimed_at` = the block's time,
 // `claim_tx`), so GET /claims and GET /rounds/:id/me stop listing it. A wallet claims a round at most
 // once (`hasClaimed`). A removed log (a reorg) clears the mark it set; the re-mined log sets it again.
-// A claim with no payouts row (a foreign entry, which has none) changes nothing.
+// A claim with no payouts row (a foreign entry, which has none) changes nothing; a refund claimed from
+// a voided round adds the row the void didn't write.
 //
 // Runs in Node too (e2e/tests/indexer-reorg.test.ts imports src/indexer/**): no `cloudflare:workers`.
 import type { PayoutKind } from '@flocked/shared';
@@ -39,6 +40,23 @@ export const claimedHandler: EventHandler = async (evt, env) => {
     ];
   }
   return [
+    // A void (rule 4) writes no Stakes refund rows (src/lifecycle/handlers.ts), unlike every other
+    // refund: the claim adds the ticketed entry's row so the refund reads as claimed. A no-op when the
+    // row exists; a foreign entry (no account) still has none.
+    ...(kind === 'refund'
+      ? [
+          db
+            .prepare(
+              `INSERT INTO payouts (round_id, mode, user_id, wallet, kind, amount, claimed_at, claim_tx)
+               SELECT e.round_id, 'stakes', e.user_id, lower(e.wallet), 'refund', e.stake, NULL, NULL
+               FROM entries e
+               WHERE e.round_id = ?1 AND e.mode = 'stakes' AND lower(e.wallet) = ?2
+                 AND e.user_id IS NOT NULL
+               ON CONFLICT DO NOTHING`,
+            )
+            .bind(mode.round_id, wallet),
+        ]
+      : []),
     db
       .prepare(
         `UPDATE payouts SET claimed_at = ?5, claim_tx = ?4
