@@ -129,4 +129,29 @@ describe('W6-A: one owner of the operator nonce', () => {
       txHash: fake.sent[1]!.hash,
     });
   });
+
+  it('a re-sign racing a new send, both reading the same stale count, never shares its nonce', async () => {
+    const t = Date.UTC(2027, 7, 3, 12, 0, 0);
+    const { fake, deps } = await chainHarness(t);
+    setClock(t);
+    fake.automine = false;
+    const [x, z] = [newUlid(), newUlid()];
+    expect((await createRound(env, deps.operator, { roundId: x, cfg: cfg(t) })).status).toBe(
+      'pending',
+    );
+    fake.consumeNonce(fake.sent[0]!.from);
+    expect(await createRound(env, deps.operator, { roundId: x, cfg: cfg(t) })).toMatchObject({
+      nonceTaken: true,
+    });
+    fake.block += 1n;
+    // x's re-sign and z's first send read the pending count together, before either is stored.
+    const d = { ...deps.operator, transport: stalePendingNonce(fake, 2) };
+    await Promise.all([
+      createRound(env, d, { roundId: x, cfg: cfg(t) }),
+      createRound(env, d, { roundId: z, cfg: cfg(t) }),
+    ]);
+    const nonces = [await nonceOf(`createRound:${x}`), await nonceOf(`createRound:${z}`)];
+    expect(new Set(nonces).size).toBe(2);
+    expect([...nonces].sort((p, q) => p - q)).toEqual([1, 2]);
+  });
 });

@@ -5,6 +5,7 @@
 // (SET-1b rule 6), and a proposal a reorg removed being posted again.
 import { env } from 'cloudflare:test';
 import { stakesPayoutTree, type StakesLeafKind } from '@flocked/settle';
+import { newUlid } from '@flocked/shared';
 import { bytesToHex, type Hex } from 'viem';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { applyStakes } from '../../src/settlement/apply/stakes.js';
@@ -239,7 +240,14 @@ describe('D1 against the streamed entry set', () => {
     // Two of the three stored: still waiting, nothing decrypted or posted.
     await env.DB.batch(r.entries.slice(0, 2).map((e) => entryRow(r.roundId, r.stake, e)));
     expect(await h.alarm()).toMatchObject({ phase: 'preparing', chunksTotal: 0 });
+    // The right count, but the third row isn't the chain's (a reorged-out entry not yet removed).
+    const third = r.entries[2];
+    if (!third) throw new Error('no third entry');
+    const stale = { ...third, id: newUlid(), userId: newUlid(), txHash: randomHash() };
+    await entryRow(r.roundId, r.stake, stale).run();
+    expect(await h.alarm()).toMatchObject({ phase: 'preparing', chunksTotal: 0 });
     expect(r.chain.calls).toEqual([]);
+    await env.DB.prepare('DELETE FROM entries WHERE id = ?1').bind(stale.id).run();
     await env.DB.batch(r.entries.slice(2).map((e) => entryRow(r.roundId, r.stake, e)));
     expect(await h.alarm()).toMatchObject({ phase: 'decrypting' });
     await h.deliver();
