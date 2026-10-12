@@ -5,7 +5,9 @@
 // close is abandoned and every mode follows the normal close path.
 import { env, runInDurableObject } from 'cloudflare:test';
 import { custom, toHex, type Hex } from 'viem';
+import { generatePrivateKey } from 'viem/accounts';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { driveCancellations } from '../../src/chain/operator.js';
 import { VOID_REFUSED_ALERT_AFTER, type RoundDO } from '../../src/do/round-do.js';
 import { recordSentTx } from '../../src/indexer/sent.js';
 import { stakesVoidHandler } from '../../src/lifecycle/handlers.js';
@@ -13,6 +15,7 @@ import type { RpcResult, EnterFreeResponse } from '../../src/do/types.js';
 import { VOID_RESOLVE_GRACE_MS } from '../../src/lifecycle/void.js';
 import type { FakeChain } from '../anchor-do/fake-chain.js';
 import { captureAlerts } from '../indexer/helpers.js';
+import { failFirstMark } from '../scheduler/helpers.js';
 import {
   alarmAt,
   balance,
@@ -598,5 +601,42 @@ describe('W5-F1: a void is abandoned at close only on proof', () => {
     // Fixed: the push answers definitely again (unmined, and it can only revert now).
     await alarmAt(r.stub, closesAt + 3_000);
     expect(await voidRecord(r.stub)).toMatchObject({ state: 'abandoned' });
+  });
+
+  it('a voidRound whose cancel fails when the void is abandoned is cancelled by the sweep (C4)', async () => {
+    queues = recordQueues();
+    // Its own operator account: the sweep also moves this file's other cancellations.
+    Object.assign(env, { OPERATOR_KEY: generatePrivateKey() });
+    const closesAt = Date.UTC(2026, 9, 15, 1, 0, 0);
+    const fake = fakeChainAt(closesAt - 10_000);
+    const r = await stakesRound(fake, { opensAt: closesAt - 24 * 3_600_000 });
+    setClock(closesAt - 10_000);
+    await r.stub.init(r.locked);
+    fake.automine = false;
+    await r.stub.requestVoid();
+    await alarmAt(r.stub, closesAt - 9_000);
+    const voidTx = fake.sent[0]!;
+
+    // At close the head is past closesAt with voidRound unmined: abandoned. Its cancellation dies
+    // before it marks the row.
+    fake.time = Math.floor(closesAt / 1000) + 1;
+    const spy = failFirstMark(`voidRound:${r.locked.roundId}`);
+    try {
+      await alarmAt(r.stub, closesAt);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(await voidRecord(r.stub)).toMatchObject({ state: 'abandoned' });
+    const ours = () => fake.sent.filter((x) => x.from === voidTx.from);
+    expect(ours()).toHaveLength(1);
+
+    // The tick's sweep finds it all the same and replaces it at its nonce.
+    const purpose = `voidRound:${r.locked.roundId}`;
+    const deps = { transport: fake.transport, waitMs: 0 };
+    expect((await driveCancellations(env, deps))[purpose]).toBe('pending');
+    expect(ours()[1]).toMatchObject({ nonce: voidTx.nonce, to: voidTx.from, data: '0x' });
+    fake.mine();
+    expect((await driveCancellations(env, deps))[purpose]).toBe('cancelled');
+    expect(fake.escrowRounds.get(BigInt(r.chainRoundId))?.open).toBe(true);
   });
 });

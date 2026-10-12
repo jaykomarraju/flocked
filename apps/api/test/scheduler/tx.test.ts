@@ -25,7 +25,15 @@ import {
 import { dailySlot, insertDailyRound } from '../../src/scheduler/create.js';
 import { schedulerTick } from '../../src/scheduler/tick.js';
 import { drand } from '../anchor-do/helpers.js';
-import { HOUR, MIN, chainHarness, insertQuestion, modeRows, setClock } from './helpers.js';
+import {
+  HOUR,
+  MIN,
+  chainHarness,
+  failFirstMark,
+  insertQuestion,
+  modeRows,
+  setClock,
+} from './helpers.js';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -335,5 +343,47 @@ describe('W5-F1: bumps from a version a node accepted but does not serve (C2)', 
     } finally {
       delete (env as { TX_MAX_FEE_GWEI?: string }).TX_MAX_FEE_GWEI;
     }
+  });
+});
+
+describe('W5-F1: a cancellation whose first attempt failed is still made (C4)', () => {
+  it('a createRound whose cancel throws at opensAt is cancelled by the sweep, and never lands', async () => {
+    const slot = dailySlot('2027-07-10');
+    const id = (await insertDailyRound(env.DB, slot)) as string;
+    const qId = await insertQuestion({ status: 'scheduled' });
+    await env.DB.prepare('UPDATE rounds SET question_id = ?2, config_json = ?3 WHERE id = ?1')
+      .bind(
+        id,
+        qId,
+        JSON.stringify({
+          beaconDelay: 120,
+          free: { ...LOCKED_CONFIG_DEFAULTS.free, awardRecipient: null },
+          stakes: {
+            ...LOCKED_CONFIG_DEFAULTS.stakes,
+            creator: '0x000000000000000000000000000000000000dead',
+          },
+        }),
+      )
+      .run();
+    const lockAt = slot.opensAt - 6 * HOUR;
+    const { fake, deps } = await chainHarness(lockAt);
+    setClock(lockAt);
+    fake.automine = false;
+    expect((await schedulerTick(env, deps)).stakes[id]).toBe('pending');
+
+    // At opensAt Stakes is voided, and its cancellation dies before it marks the row.
+    setClock(slot.opensAt + MIN);
+    fake.time = slot.opensAt / 1000 - 30;
+    failFirstMark(`createRound:${id}`);
+    const report = await schedulerTick(env, deps);
+    expect((await modeRows(id)).find((m) => m.mode === 'stakes')?.status).toBe('voided');
+    // The tick's sweep finds it all the same and replaces it at its nonce.
+    expect(report.cancellations[`createRound:${id}`]).toBe('pending');
+    const last = fake.sent[fake.sent.length - 1]!;
+    expect(last).toMatchObject({ nonce: fake.sent[0]!.nonce, to: fake.sent[0]!.from, data: '0x' });
+
+    fake.mine();
+    expect((await schedulerTick(env, deps)).cancellations[`createRound:${id}`]).toBe('cancelled');
+    expect(fake.roundCount).toBe(0n);
   });
 });

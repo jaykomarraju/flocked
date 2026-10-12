@@ -8,7 +8,8 @@
 //      `submitLock` call for every round still waiting for its leaf);
 //   4. calls `RoundDO.init` for every locked round that hasn't closed and whose modes are ready, so
 //      the RoundDO opens it at `opensAt` (a repeated init is how a stalled alarm chain restarts);
-//   5. moves every pending operator cancellation one step (W4-F1 T4).
+//   5. moves every pending operator cancellation one step (W4-F1 T4), starting any whose first
+//      attempt failed (W5-F1 C4).
 // A Stakes round that can't be created before `opensAt` (the contract refuses after it) has its
 // Stakes mode voided and alerts; Free goes on. A `createRound` still pending then is cancelled, so it
 // can't land late or hold up the operator's nonce.
