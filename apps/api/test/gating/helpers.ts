@@ -33,6 +33,7 @@ import {
   atBeaconPlus,
   harness,
   pick,
+  tamperedPick,
   recordedDeps,
   type SeededRound,
 } from '../settlement/helpers.js';
@@ -139,7 +140,7 @@ let freeSeeded = 0;
  * hours before the Stakes rounds' (BEACON_TIME_MS − 120 s − k s), so the windows don't overlap.
  */
 export async function seedFree(
-  picks: readonly (0 | 1)[],
+  picks: readonly Pick[],
   opts: { room?: string } = {},
 ): Promise<SeededRound> {
   const roundId = newUlid();
@@ -152,7 +153,8 @@ export async function seedFree(
   });
   const rows = await Promise.all(
     picks.map(async (o, seq) => {
-      const ct = await pick(roundId, o);
+      // A VOID: a plaintext whose option index is 2 (`bad_option`).
+      const ct = o === 'void' ? await tamperedPick(roundId, 17, 2) : await pick(roundId, o);
       const userId = newUlid();
       const userIdHash = receiptUserIdHash(roundId, userId);
       return { id: newUlid(), userId, userIdHash, stake: 10, commitment: keccak256(ct), ct, seq };

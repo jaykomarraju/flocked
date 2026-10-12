@@ -1,7 +1,7 @@
 // PIPE-1 (API half) and AC-2 (API part), spec "API" › Reveal gating: no endpoint exposes per-option
 // data for a mode until that mode's `revealed_at` is set. Every GET route of the pinned ENDPOINTS
-// table (plus the bundle objects) is walked anonymously and as a signed-in entrant, for a Free round
-// and a Stakes round, at each stage of the round:
+// table (plus the bundle objects and `/claims?wallet=`) is walked anonymously and as two signed-in
+// entrants (a winner and one whose pick is VOID), for a Free round and a Stakes round, at each stage:
 //   1. open, entries in;
 //   2. closed, before the beacon;
 //   3. the dangerous window: settlement has written its per-option data to D1 and R2 but
@@ -64,8 +64,12 @@ interface Subject {
   /** The signed-in entrant (an entry in `mode`, on the winning side). */
   entrant: string;
   headers: Record<string, string>;
+  /** A second signed-in entrant whose pick is a VOID. */
+  voider: Record<string, string>;
   /** The entrant's Stakes wallet, or a wallet with no entries. */
   wallet: string;
+  /** The wallets `/claims?wallet=` is asked about: the entrant's, then the voider's. */
+  wallets: string[];
 }
 
 interface Probe {
@@ -75,17 +79,21 @@ interface Probe {
   headers: Record<string, string>;
 }
 
-/** Every GET route of ENDPOINTS, anonymous and signed in, plus `/claims?wallet=` and the bundles. */
+/**
+ * Every GET route of ENDPOINTS, anonymous and as both entrants, plus `/claims?wallet=` for their
+ * wallets and the round's four possible bundle objects.
+ */
 function probes(s: Subject): Probe[] {
   const ids = { round: s.roundId, room: FIXTURE_IDS.room, user: s.entrant };
   const out: Probe[] = [];
   const who = [
     ['anon', {}],
     ['entrant', s.headers],
+    ['voider', s.voider],
   ] as const;
   for (const ep of GET_ENDPOINTS) {
     const paths = [concretePath(ep.path, ids)];
-    if (ep.path === '/claims') paths.push(`/claims?wallet=${s.wallet}`);
+    if (ep.path === '/claims') paths.push(...s.wallets.map((w) => `/claims?wallet=${w}`));
     if (ep.path === '/rounds') paths[0] = '/rounds?limit=100';
     for (const path of paths) {
       for (const [w, headers] of who) out.push({ key: `${w} GET ${path}`, path, ep, headers });
@@ -176,23 +184,24 @@ function expectReached(w: Walk, s: Subject): void {
   const id = s.roundId;
   const ok = (who: string, path: string) =>
     expect(w.answers.get(`${who} GET ${path}`)?.status, `${who} GET ${path}`).toBe(200);
-  for (const who of ['anon', 'entrant']) {
+  for (const who of ['anon', 'entrant', 'voider']) {
     for (const path of [
       '/rounds/today',
       '/rounds?limit=100',
       `/rounds/${id}`,
       `/rounds/${id}/verify`,
-      `/claims?wallet=${s.wallet}`,
+      ...s.wallets.map((wallet) => `/claims?wallet=${wallet}`),
     ]) {
       ok(who, path);
     }
   }
-  for (const path of ['/me', `/rounds/${id}/me`, '/claims']) ok('entrant', path);
   for (const path of ['/me', `/rounds/${id}/me`, '/claims']) {
+    ok('entrant', path);
+    ok('voider', path);
     expect(w.answers.get(`anon GET ${path}`)?.status, `anon GET ${path}`).toBe(401);
   }
-  // Every GET route of the table, anonymous and signed in, plus `?wallet=` and four bundle objects.
-  expect(w.answers.size).toBe(2 * (GET_ENDPOINTS.length + 1 + 4));
+  // Every GET route of the table, three ways, plus the `?wallet=` asks and four bundle objects.
+  expect(w.answers.size).toBe(3 * (GET_ENDPOINTS.length + s.wallets.length + 4));
 }
 
 /** After the reveal: the per-option data is served on every read that carries it. */
@@ -214,6 +223,14 @@ function expectRevealed(w: Walk, s: Subject, winner: 0 | 1): void {
   expect(mine?.entry).toMatchObject({ optionIndex: winner, valid: true, voidReason: null });
   expect(mine?.result).toBe('win');
   expect(mine?.payouts.map((p) => p.kind)).toEqual(['win']);
+  const voided = body(w, `voider GET /rounds/${s.roundId}/me`, RoundMeResponseSchema).modes[s.mode];
+  expect(voided?.entry).toMatchObject({
+    optionIndex: null,
+    valid: false,
+    voidReason: 'bad_option',
+  });
+  expect(voided?.result).toBe('void');
+  expect(voided?.payouts.map((p) => p.kind)).toEqual(['void_refund']);
 
   const verify = body(w, `anon GET /rounds/${s.roundId}/verify`, RoundVerifyResponseSchema);
   expect(Object.keys(verify.modes)).toEqual([s.mode]);
@@ -231,22 +248,24 @@ function expectRevealed(w: Walk, s: Subject, winner: 0 | 1): void {
 }
 
 describe('PIPE-1 (API half), AC-2 (API part): a Free round, every GET route, before and after the reveal', () => {
-  // Option 0 is the minority; the entrant (entry 0) picked it.
-  const PICKS = [0, 1, 1] as const;
+  // Option 0 is the minority; the entrant (entry 0) picked it, the voider's pick (entry 3) is VOID.
   let s: Subject;
   let times: { opensAt: number; closesAt: number };
   let window: FreeWindow;
   let meBefore: unknown;
 
   beforeAll(async () => {
-    const r = await seedFree(PICKS);
+    const r = await seedFree([0, 1, 1, 'void']);
     const entrant = r.entries[0]?.userId as string;
+    const wallet = randomWallet();
     s = {
       roundId: r.roundId,
       mode: 'free',
       entrant,
       headers: await signIn(entrant),
-      wallet: randomWallet(),
+      voider: await signIn(r.entries[3]?.userId as string),
+      wallet,
+      wallets: [wallet],
     };
     times = await roundTimes(r.roundId);
   });
@@ -315,22 +334,26 @@ describe('PIPE-1 (API half), AC-2 (API part): a Free round, every GET route, bef
 });
 
 describe('PIPE-1 (API half), AC-2 (API part): a Stakes round, every GET route, before and after the reveal', () => {
-  // Option 0 is the minority (2 against 3); the entrant (entry 0) picked it.
+  // Option 0 is the minority (2 against 3); the entrant (entry 0) picked it, the voider's pick
+  // (entry 5) is VOID.
   let s: Subject;
   let times: { opensAt: number; closesAt: number };
   let window: StakesWindow;
   let stakesRound: SeededStakes;
 
   beforeAll(async () => {
-    const r = await seedStakesRound([0, 0, 1, 1, 1]);
+    const r = await seedStakesRound([0, 0, 1, 1, 1, 'void']);
     const first = r.entries[0];
-    if (!first?.userId) throw new Error('no entrant');
+    const voider = r.entries[5];
+    if (!first?.userId || !voider?.userId) throw new Error('no entrants');
     s = {
       roundId: r.roundId,
       mode: 'stakes',
       entrant: first.userId,
       headers: await signIn(first.userId),
+      voider: await signIn(voider.userId),
       wallet: first.wallet,
+      wallets: [first.wallet, voider.wallet],
     };
     times = await roundTimes(r.roundId);
     stakesRound = r;
@@ -373,15 +396,19 @@ describe('PIPE-1 (API half), AC-2 (API part): a Stakes round, every GET route, b
     expectRevealed(w, s, 0);
     const mine = body(w, `entrant GET /rounds/${s.roundId}/me`, RoundMeResponseSchema).modes.stakes;
     expect(mine?.payouts[0]?.proof?.length).toBeGreaterThan(0);
-    for (const [key, userId] of [
-      ['entrant GET /claims', s.entrant],
-      [`anon GET /claims?wallet=${s.wallet}`, null],
+    const voidWallet = s.wallets[1] as string;
+    for (const [key, kind, account, userId] of [
+      ['entrant GET /claims', 'win', s.wallet, s.entrant],
+      [`anon GET /claims?wallet=${s.wallet}`, 'win', s.wallet, null],
+      ['voider GET /claims', 'void_refund', voidWallet, undefined],
+      [`anon GET /claims?wallet=${voidWallet}`, 'void_refund', voidWallet, null],
     ] as const) {
       const claims = body(w, key, ClaimsResponseSchema).claims.filter(
         (c) => c.roundId === s.roundId,
       );
-      expect(claims).toHaveLength(1);
-      expect(claims[0]).toMatchObject({ kind: 'win', account: s.wallet, userId });
+      expect(claims, key).toHaveLength(1);
+      expect(claims[0]).toMatchObject({ kind, account });
+      if (userId !== undefined) expect(claims[0]?.userId).toBe(userId);
       expect(claims[0]?.proof?.length).toBeGreaterThan(0);
     }
   });
