@@ -1,10 +1,21 @@
 #!/usr/bin/env node
 // `pnpm stack:status`: what the stack is and whether each part answers. Exits 1 when the stack is
 // down or any part is unhealthy, so scripts can gate on it.
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { CRON_HEARTBEAT_FILE } from './cron.mjs';
-import { alive, getJson, readDevVars, readState, rpc } from './env.mjs';
+import {
+  API_DIR,
+  SIGNER_RUN_DIR,
+  SIGNER_VARS_FILE,
+  alive,
+  getJson,
+  parseJsonc,
+  readDevVars,
+  readState,
+  rpc,
+} from './env.mjs';
 
 async function probe(fn) {
   try {
@@ -20,6 +31,46 @@ function mockProbe(pid, url) {
     if (!alive(pid)) throw new Error('process not running');
     await getJson(`${url}/health`);
     return url;
+  });
+}
+
+/**
+ * The ticket signer (W6-B): a Worker of the stack's `wrangler dev`, named as the API's `SIGNER`
+ * binding names it, on the API's D1, with TICKET_SIGNER_KEY in its env file and not in the API's
+ * (NFR-7). wrangler's Local Explorer API (`/cdn-cgi/local/explorer/api`, local only) lists the
+ * Workers a `wrangler dev` runs and their D1 bindings. e2e/tests/stakes-ticket.test.ts takes a
+ * ticket through the binding itself.
+ */
+function signerProbe(state) {
+  return probe(async () => {
+    if (!alive(state.pids?.wrangler)) throw new Error('wrangler dev not running');
+    if (!state.signer) throw new Error('not started by this stack');
+    const apiConfig = parseJsonc(readFileSync(join(API_DIR, 'wrangler.jsonc'), 'utf8'));
+    const bound = apiConfig.services?.find((s) => s.binding === 'SIGNER')?.service;
+    if (bound !== state.signer.name) {
+      throw new Error(`the API binds SIGNER to ${bound ?? 'nothing'}`);
+    }
+    const workers = (await getJson(`${state.apiUrl}/cdn-cgi/local/explorer/api/local/workers`))
+      .result;
+    const api = workers.find((w) => w.name === apiConfig.name);
+    const signer = workers.find((w) => w.name === state.signer.name);
+    if (!signer?.isSelf) throw new Error(`${state.signer.name} is not running in wrangler dev`);
+    const db = (w) => w?.bindings?.d1?.find((b) => b.bindingName === 'DB')?.id;
+    if (!db(signer) || db(signer) !== db(api) || signer.persistenceScope !== api.persistenceScope) {
+      throw new Error("not on the API's D1");
+    }
+    if ('TICKET_SIGNER_KEY' in (readDevVars() ?? {})) {
+      throw new Error('TICKET_SIGNER_KEY is in the API .dev.vars');
+    }
+    const envFile = join(SIGNER_RUN_DIR, '.dev.vars');
+    if (
+      !existsSync(envFile) ||
+      realpathSync(envFile) !== realpathSync(SIGNER_VARS_FILE) ||
+      !('TICKET_SIGNER_KEY' in (readDevVars(SIGNER_VARS_FILE) ?? {}))
+    ) {
+      throw new Error('no TICKET_SIGNER_KEY in its env file');
+    }
+    return `${signer.name}, the API's SIGNER`;
   });
 }
 
@@ -45,6 +96,7 @@ export async function health(state) {
       if (res.status !== 401) throw new Error(`GET /api/v1/me answered ${res.status}`);
       return state.apiUrl;
     }),
+    signer: signerProbe(state),
     farcaster: mockProbe(state.pids?.farcaster, state.farcasterUrl),
     coinbase: mockProbe(state.pids?.coinbase, state.coinbaseUrl),
     eas: mockProbe(state.pids?.eas, state.easUrl),
@@ -75,6 +127,7 @@ export function printStatus(state, h) {
     ['drand', h.results.drand],
     ['anvil', h.results.anvil],
     ['api', h.results.api],
+    ['signer', h.results.signer],
     ['farcaster', h.results.farcaster],
     ['coinbase', h.results.coinbase],
     ['eas', h.results.eas],
