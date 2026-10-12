@@ -6,7 +6,8 @@
 // signature inside the Worker, so the e2e smoke test runs tlock in the `wrangler dev` bundle; and
 // shows a round's settlement and serves its R2 bundle objects (W5-D, e2e/tests/free-settle.test.ts);
 // and, for Stakes (W6-A, e2e/tests/stakes-settle.test.ts), schedules rounds with a Stakes mode, records
-// the test's entry tickets, and shows the Stakes mode, its proposals, payouts and entries.
+// the test's entry tickets, and shows the Stakes mode, its proposals, payouts and entries; and it
+// releases a settlement hold as the guardian's admin action would (W6-F1 O1, for E2E-6).
 //
 // It answers 404, exactly like an unknown path, unless ENVIRONMENT is 'local', FLOCKED_TEST_SEAM_KEY
 // is set (only `pnpm stack:up` sets it, per run) and the request carries that key as a Bearer token,
@@ -128,6 +129,15 @@ const TicketSchema = z.strictObject({
 const CronSchema = z.strictObject({
   cron: z.string().refine((c) => c in CRON_JOBS, 'not a configured cron expression'),
 });
+
+const HoldReleaseSchema = z.strictObject({
+  roundId: UlidSchema,
+  mode: z.enum(['free', 'stakes']),
+  reason: z.enum(['foreign_entry', 'void_rate', 'refund_vetoed']),
+});
+
+/** `settlement_holds.released_by` for a release through the seam (no admin user exists locally). */
+export const SEAM_HOLD_RELEASER = 'test-seam';
 
 const RoundParamsSchema = z.strictObject({ id: UlidSchema });
 const BundleParamsSchema = z.strictObject({
@@ -292,6 +302,42 @@ app.post('/stakes/tickets', validate('json', TicketSchema), async (c) => {
     )
     .run();
   return c.json({ userId }, 201);
+});
+
+/**
+ * POST /__test/holds/release {roundId, mode, reason}: releases an open settlement hold as the
+ * guardian's admin action does (W11-A builds it for staging and production): `released_at` (the game
+ * clock), `released_by` SEAM_HOLD_RELEASER and an `audit_log` row (actor admin, action
+ * `settlement_hold_released`), in one batch. 404 when no such hold is open. The coordinator sees the
+ * release on its next hold poll (HOLD_POLL_MS).
+ */
+app.post('/holds/release', validate('json', HoldReleaseSchema), async (c) => {
+  const { roundId, mode, reason } = c.req.valid('json');
+  const t = now(c.env);
+  const db = c.env.DB;
+  const [released] = await db.batch([
+    db
+      .prepare(
+        `UPDATE settlement_holds SET released_at = ?4, released_by = ?5
+         WHERE round_id = ?1 AND mode = ?2 AND reason = ?3 AND released_at IS NULL`,
+      )
+      .bind(roundId, mode, reason, t, SEAM_HOLD_RELEASER),
+    // Only when the update released the hold (changes() is the batch's previous statement's).
+    db
+      .prepare(
+        `INSERT INTO audit_log (id, actor, actor_user_id, action, target, data_json, created_at)
+         SELECT ?1, 'admin', NULL, 'settlement_hold_released', ?2, ?3, ?4 WHERE changes() > 0`,
+      )
+      .bind(
+        newUlid(t),
+        roundId,
+        JSON.stringify({ mode, reason, releasedBy: SEAM_HOLD_RELEASER }),
+        t,
+      ),
+  ]);
+  if (!released?.meta.changes) throw new HttpError('not_found', 'no such open hold');
+  log.warn('test_hold_released', { roundId, mode, reason });
+  return c.json({ roundId, mode, reason, releasedAt: t, releasedBy: SEAM_HOLD_RELEASER });
 });
 
 /** POST /__test/cron {cron}: runs that cron expression's jobs (src/cron.ts), as its trigger would. */

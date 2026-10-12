@@ -322,3 +322,29 @@ export async function stakesRecords(roundId: string) {
     }>();
   return results;
 }
+
+/** The round's Stakes settlement holds. */
+export async function stakesHolds(roundId: string) {
+  const { results } = await env.DB.prepare(
+    "SELECT reason, tx_hash, released_at, released_by FROM settlement_holds WHERE round_id = ?1 AND mode = 'stakes' ORDER BY reason",
+  )
+    .bind(roundId)
+    .all<{
+      reason: string;
+      tx_hash: string | null;
+      released_at: number | null;
+      released_by: string | null;
+    }>();
+  return results;
+}
+
+/** The guardian's release of a hold, as its admin action records it (the seam does the same locally). */
+export async function releaseHold(roundId: string, reason: string): Promise<void> {
+  const r = await env.DB.prepare(
+    `UPDATE settlement_holds SET released_at = 1, released_by = 'guardian-admin'
+     WHERE round_id = ?1 AND mode = 'stakes' AND reason = ?2 AND released_at IS NULL`,
+  )
+    .bind(roundId, reason)
+    .run();
+  if (r.meta.changes !== 1) throw new Error(`no open ${reason} hold on ${roundId}`);
+}

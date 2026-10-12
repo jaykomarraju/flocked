@@ -2,7 +2,11 @@
 // (the RoundDO commit protocol answers it); GET /rounds/:id/me is W6-D's (src/read/me.ts), gated
 // like every round read (room rounds for members only; nothing per option before the reveal).
 //
-// Before the RoundDO, the route applies two anti-abuse rules (spec "Anti-abuse"; W4-A):
+// Before anything else about the round answers, a room round is invisible outside its room (spec
+// "API" › Reveal gating; W6-F1 R10): a signed-in non-member gets the 404 an unknown round gets, never
+// `not_member` or a Turnstile error that would say the round exists.
+//
+// Then, before the RoundDO, the route applies two anti-abuse rules (spec "Anti-abuse"; W4-A):
 //   * Turnstile on the user's first Free entry of the game day (the New York date of the round's
 //     `closesAt`): without a Free entry in any round closing that day, `turnstileToken` is required
 //     and verified;
@@ -26,7 +30,7 @@ import { HttpError } from '../lib/errors.js';
 import { log } from '../lib/log.js';
 import { verifyTurnstile } from '../lib/turnstile.js';
 import { validate } from '../lib/validate.js';
-import { accessFor } from '../read/access.js';
+import { accessFor, isRoomMember } from '../read/access.js';
 import { PRIVATE_CACHE_CONTROL } from '../read/cache.js';
 import { readRoundMe } from '../read/me.js';
 import { recordPriorTransactions } from '../rounds/grant.js';
@@ -36,6 +40,7 @@ const app = new Hono<AppEnv>();
 
 interface RoundTimes {
   kind: string;
+  room_id: string | null;
   closes_at: number;
 }
 
@@ -98,11 +103,20 @@ app.post(
     const user = getUser(c);
     const { id: roundId } = c.req.valid('param');
     const body = c.req.valid('json');
-    const round = await c.env.DB.prepare('SELECT kind, closes_at FROM rounds WHERE id = ?1')
+    const round = await c.env.DB.prepare(
+      'SELECT kind, room_id, closes_at FROM rounds WHERE id = ?1',
+    )
       .bind(roundId)
       .first<RoundTimes>();
     // An unknown round falls through to the RoundDO, which answers not_found.
     if (round) {
+      // A room round for a non-member: the RoundDO's answer for an unknown round, first.
+      if (
+        round.kind === 'room' &&
+        (round.room_id === null || !(await isRoomMember(c.env.DB, round.room_id, user.id)))
+      ) {
+        throw new HttpError('not_found', 'no such round');
+      }
       await requireFirstEntryTurnstile(c, user.id, round, body.turnstileToken);
       if (round.kind === 'daily') {
         await recordPriorTransactions(c.env, { userId: user.id, roundId, now: now(c.env) });

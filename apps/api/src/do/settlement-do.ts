@@ -16,8 +16,10 @@
 //   applying   → waits while settlementHold(round, mode) is open, then calls applyFree / applyStakes.
 //   proposing  → Stakes: follows the proposal onchain until the round is final: `finalize` once
 //                claimsOpenAt has passed, and the proposal posted again when the one that landed is
-//                gone (a vetoed refund proposal, or a reorg). Every Stakes job that hasn't ended the
-//                round (a failed one included) calls `refundTimeout` once closesAt + 72 h has passed.
+//                gone (a reorg, or a vetoed refund proposal once the guardian has released the
+//                `refund_vetoed` hold its veto opened: O1, W6-F1). Every Stakes job that hasn't ended
+//                the round (a failed or held one included) calls `refundTimeout` once closesAt + 72 h
+//                has passed.
 //   done | failed.
 //
 // An integrity failure (a root that doesn't match D1, a reconciliation mismatch, a bundle object
@@ -39,6 +41,7 @@ import { log } from '../lib/log.js';
 import { settleKey } from '../rounds/schedule.js';
 import { applyFree, refundFree } from '../settlement/apply/free.js';
 import {
+  ProposalHeldError,
   ProposalPendingError,
   applyStakes,
   type StakesApplyDeps,
@@ -275,6 +278,11 @@ export class SettlementDO extends DurableObject<Env> implements SettlementDORpc 
       if (err instanceof ProposalPendingError) {
         log.info('settlement_waiting', { roundId: job.roundId, mode: job.mode, why: err.message });
         return this.retryIn(job, TX_PENDING_MS);
+      }
+      // A hold opened after this step's own check (O1: a refund veto indexed meanwhile).
+      if (err instanceof ProposalHeldError) {
+        log.warn('settlement_held', { roundId: job.roundId, mode: job.mode, why: err.message });
+        return this.retryIn(job, HOLD_POLL_MS);
       }
       await this.failed(job, err);
     }
@@ -703,7 +711,9 @@ export class SettlementDO extends DurableObject<Env> implements SettlementDORpc 
           return this.afterTx(job, 'refundTooFew', await refundTooFew(this.env, operator, ids));
         }
         // No proposal onchain: applyStakes polls one still pending, waits on one that landed until
-        // the indexer marks it gone, and posts the next one after a veto or a reorg.
+        // the indexer marks it gone, and posts the next one after a veto or a reorg. Not while a
+        // hold is open (O1: a vetoed refund proposal holds until the guardian releases it); the
+        // refund timeout above is the backstop.
         if (await settlementHold(this.env.DB, job.roundId, job.mode))
           return this.wake(HOLD_POLL_MS);
         const result = await this.reduce(job);

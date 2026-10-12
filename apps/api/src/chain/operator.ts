@@ -8,12 +8,15 @@
 // This module is the only owner of the operator key's nonce (W6-A). Its callers run independently
 // (the scheduler tick, RoundDO and SettlementDO alarms), each in its own isolate, so two of them can
 // read the same `pending` count and sign two transactions at one nonce, one of which then replaces or
-// blocks the other. A new nonce is therefore past both the chain's pending count and every nonce in
-// `operator_txs` for the key, and it is claimed in D1 by a conditional write that fails if any other
-// row has reached it; the loser discards its signature (never broadcast) and takes the next one.
-// Replacements (a stuck bump, a cancellation) keep their nonce and claim nothing. A stored nonce no
-// node holds leaves a gap below later ones until it is rebroadcast: `check` does that on the row's
-// next call, and the allocator does it for every row in the gap it allocates above.
+// blocks the other. A new nonce is therefore the lowest one at or past the chain's pending count that
+// no `pending` row in `operator_txs` holds for the key, and it is claimed in D1 by a conditional write
+// that fails if another pending row holds it; the loser discards its signature (never broadcast) and
+// takes the next one. Replacements (a stuck bump, a cancellation) keep their nonce and claim nothing.
+// Only pending rows hold a nonce (W6-F1 R1): a finished row (mined, reverted, cancelled) at or past
+// the chain's pending count is one a reorg dropped, and its nonce is free again, or every later
+// operator send would wait behind a gap nothing fills. A stored nonce no node holds leaves a gap
+// below later ones until it is rebroadcast: `check` does that on the row's next call, and the
+// allocator does it for every pending row at or past the chain's count.
 //
 // An abandoned purpose (a `createRound` still pending at opensAt, a `voidRound` abandoned at close)
 // is cancelled (W4-F1 T4): its pending transaction is replaced by a 0-value send to the operator
@@ -112,9 +115,9 @@ const NONCE_ATTEMPTS = 5;
 /** SQL: an `operator_txs` row's key and nonce (`tx_json` is its SentTx). */
 const ROW_FROM = "lower(json_extract(tx_json, '$.from'))";
 const ROW_NONCE = "CAST(json_extract(tx_json, '$.nonce') AS INTEGER)";
-/** SQL: no row but purpose `?1`'s holds nonce `?n` or a later one for the key `?k`. */
-const noNonceFrom = (k: number, n: number) =>
-  `NOT EXISTS (SELECT 1 FROM operator_txs WHERE purpose <> ?1 AND ${ROW_FROM} = lower(?${k}) AND ${ROW_NONCE} >= ?${n})`;
+/** SQL: no pending row but purpose `?1`'s holds nonce `?n` for the key `?k` (R1: finished rows hold none). */
+const nonceFree = (k: number, n: number) =>
+  `NOT EXISTS (SELECT 1 FROM operator_txs WHERE purpose <> ?1 AND status = 'pending' AND ${ROW_FROM} = lower(?${k}) AND ${ROW_NONCE} = ?${n})`;
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const lastHash = (tx: SentTx) => tx.hashes[tx.hashes.length - 1] as Hex;
@@ -190,7 +193,7 @@ async function swapTx(db: D1Database, purpose: string, from: SentTx, to: SentTx,
 /** How a claim of a new nonce went: `changed` means the purpose's row moved first (another run). */
 type Claim = 'claimed' | 'nonce_taken' | 'changed';
 
-/** Stores `tx` as `purpose`'s first transaction, if no other row has reached its nonce. */
+/** Stores `tx` as `purpose`'s first transaction, if no other pending row holds its nonce. */
 async function insertAtNewNonce(
   db: D1Database,
   purpose: string,
@@ -200,7 +203,7 @@ async function insertAtNewNonce(
   const r = await db
     .prepare(
       `INSERT INTO operator_txs (purpose, status, tx_json, tx_hash, created_at, updated_at)
-       SELECT ?1, 'pending', ?2, NULL, ?3, ?3 WHERE ${noNonceFrom(4, 5)} ON CONFLICT DO NOTHING`,
+       SELECT ?1, 'pending', ?2, NULL, ?3, ?3 WHERE ${nonceFree(4, 5)} ON CONFLICT DO NOTHING`,
     )
     .bind(purpose, JSON.stringify(tx), t, tx.from, tx.nonce)
     .run();
@@ -208,7 +211,7 @@ async function insertAtNewNonce(
   return (await readRow(db, purpose)) ? 'changed' : 'nonce_taken';
 }
 
-/** swapTx to `to`, re-signed at a new nonce, if no other row has reached that nonce. */
+/** swapTx to `to`, re-signed at a new nonce, if no other pending row holds that nonce. */
 async function swapToNewNonce(
   db: D1Database,
   purpose: string,
@@ -219,7 +222,7 @@ async function swapToNewNonce(
   const r = await db
     .prepare(
       `UPDATE operator_txs SET tx_json = ?2, updated_at = ?4
-       WHERE purpose = ?1 AND status = 'pending' AND tx_json = ?3 AND ${noNonceFrom(5, 6)}`,
+       WHERE purpose = ?1 AND status = 'pending' AND tx_json = ?3 AND ${nonceFree(5, 6)}`,
     )
     .bind(purpose, JSON.stringify(to), JSON.stringify(from), t, to.from, to.nonce)
     .run();
@@ -231,27 +234,31 @@ async function swapToNewNonce(
 }
 
 /**
- * A new nonce for the operator key: the chain's pending count, or past every nonce stored for the key
- * if one has reached it (another send signed and not yet seen by this node). Those rows still pending
- * are rebroadcast first, so a gap left by one no node holds doesn't hold up the new one (an abandoned
- * call is left to its cancellation).
+ * A new nonce for the operator key: the lowest one at or past the chain's pending count that no
+ * pending row holds (another send signed and not yet seen by this node holds its own). A finished row
+ * holds nothing (R1): one at or past the chain's count was dropped by a reorg, and its nonce is the
+ * gap to fill. The pending rows are rebroadcast first, so a gap left by one no node holds doesn't hold
+ * up the new one (an abandoned call is left to its cancellation).
  */
 async function newNonce(op: Operator, db: D1Database): Promise<number> {
   const pending = await op.sender.nextNonce();
   const { results } = await db
     .prepare(
-      `SELECT purpose, status, tx_json FROM operator_txs WHERE ${ROW_FROM} = lower(?1) AND ${ROW_NONCE} >= ?2`,
+      `SELECT purpose, tx_json FROM operator_txs
+       WHERE status = 'pending' AND ${ROW_FROM} = lower(?1) AND ${ROW_NONCE} >= ?2`,
     )
     .bind(op.sender.address, pending)
-    .all<OperatorTxRow & { purpose: string }>();
-  let next = pending;
+    .all<{ purpose: string; tx_json: string }>();
+  const held = new Set<number>();
   for (const r of results) {
     const tx = JSON.parse(r.tx_json) as StoredTx;
-    next = Math.max(next, tx.nonce + 1);
-    if (r.status === 'pending' && (!isAbandoned(tx) || isCancel(tx))) {
+    held.add(tx.nonce);
+    if (!isAbandoned(tx) || isCancel(tx)) {
       await broadcastQuietly(op, tx, labelOf(r.purpose), r.purpose);
     }
   }
+  let next = pending;
+  while (held.has(next)) next += 1;
   return next;
 }
 

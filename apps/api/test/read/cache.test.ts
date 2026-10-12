@@ -4,8 +4,10 @@
 import { env } from 'cloudflare:test';
 import { Hono } from 'hono';
 import { describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import type { Env } from '../../src/env.js';
 import type { AppEnv } from '../../src/lib/auth-context.js';
+import { validate } from '../../src/lib/validate.js';
 import {
   EDGE_CACHE_SECONDS,
   PRIVATE_CACHE_CONTROL,
@@ -130,5 +132,52 @@ describe('edge cache for reads', () => {
       expect(res.headers.get('Cache-Control')).toBe(PUBLIC_CACHE_CONTROL);
     }
     expect(f.calls).toEqual({ cache: 0, match: 0, put: 0 });
+  });
+});
+
+describe('edge cache key (W6-F1 R7)', () => {
+  /** A read route with a query schema (two known parameters), counting the bodies it builds. */
+  function listApp(deps: EdgeCacheDeps) {
+    let served = 0;
+    const sub = new Hono<AppEnv>();
+    const schema = z.object({ b: z.string().optional(), a: z.coerce.number().optional() });
+    sub.get('/list', validate('query', schema), async (c) => {
+      const cached = await cachedRead(c, deps);
+      if (cached) return cached;
+      served += 1;
+      return readResponse(c, { served, query: c.req.valid('query') }, { membersOnly: false }, deps);
+    });
+    return { app: withSession(sub), served: () => served };
+  }
+
+  it('drops unknown parameters: a random one is served from the cache', async () => {
+    const f = fakeCache();
+    const r = readApp(f.deps, false);
+    const app = withSession(r.sub);
+    for (const junk of ['1', crypto.randomUUID(), crypto.randomUUID()]) {
+      const res = await app.request(`${URL}?x=${junk}`, {}, staging());
+      expect(await res.json()).toEqual({ served: 1 });
+    }
+    expect(r.served()).toBe(1);
+    expect([...f.store.keys()]).toEqual([URL]);
+  });
+
+  it('keys on the validated query, sorted, without the unknown parameters', async () => {
+    const f = fakeCache();
+    const r = listApp(f.deps);
+    const base = 'https://flocked.test/list';
+    const first = await r.app.request(`${base}?b=x&a=1&junk=${crypto.randomUUID()}`, {}, staging());
+    expect(await first.json()).toEqual({ served: 1, query: { a: 1, b: 'x' } });
+    // The same validated query in another order, with other junk: a hit.
+    const second = await r.app.request(`${base}?zz=1&a=1&b=x`, {}, staging());
+    expect(await second.json()).toEqual({ served: 1, query: { a: 1, b: 'x' } });
+    expect([...f.store.keys()]).toEqual([`${base}?a=1&b=x`]);
+    // Another value is another entry; no query at all is a third.
+    const third = await r.app.request(`${base}?a=2&b=x`, {}, staging());
+    expect(await third.json()).toEqual({ served: 2, query: { a: 2, b: 'x' } });
+    const bare = await r.app.request(`${base}?y=1`, {}, staging());
+    expect(await bare.json()).toEqual({ served: 3, query: {} });
+    expect([...f.store.keys()]).toEqual([`${base}?a=1&b=x`, `${base}?a=2&b=x`, base]);
+    expect(r.served()).toBe(3);
   });
 });

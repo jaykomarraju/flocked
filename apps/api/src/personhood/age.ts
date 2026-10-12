@@ -4,6 +4,8 @@
 //     ("US-MS") does not, because region rules apply to the request location only (Decision log,
 //     Oct 12, 2026);
 //   * the request location: a whole-country entry for its country, or the entry for its region.
+//     A request with no region code needs 21 when any entry names a region of its country (O3,
+//     Oct 12, 2026): the region it may be in can't be ruled out.
 // The Stakes sheet's age checkbox names this age, `POST /me/tos` records an attestation of it
 // (`users.age_attested_min`, migration 0012), and an attestation of a lower age doesn't count.
 import type { GeoRule } from './config-store.js';
@@ -22,7 +24,11 @@ export function requiredAge(
     age21.some((r) => r.country === verifiedCountry && r.region === null);
   const location =
     loc.country !== null &&
-    age21.some((r) => r.country === loc.country && (r.region === null || r.region === loc.region));
+    age21.some(
+      (r) =>
+        r.country === loc.country &&
+        (r.region === null || loc.region === null || r.region === loc.region),
+    );
   return country || location ? 21 : 18;
 }
 

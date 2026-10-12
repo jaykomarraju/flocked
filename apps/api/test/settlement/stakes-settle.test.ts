@@ -1,8 +1,9 @@
 // Stakes settlement end to end against a fake Base node (W6-A): the entry set streamed from close and
 // reconciled at the close block (ALERT-1), the safe-head wait (ALERT-3), the proposal and its
 // amounts (NFR-4, part), idempotent proposing (NFR-6), finalize at claimsOpenAt with the payouts,
-// refundTooFew, the vetoes (SET-1b rule 5, and a refund proposal settling again), refundTimeout
-// (SET-1b rule 6), and a proposal a reorg removed being posted again.
+// refundTooFew, the vetoes (SET-1b rule 5, and a refund proposal settling again once the guardian
+// releases the hold its veto opened: W6-F1 O1), refundTimeout (SET-1b rule 6), and a proposal a reorg
+// removed being posted again.
 import { env, runInDurableObject } from 'cloudflare:test';
 import { stakesPayoutTree, type StakesLeafKind } from '@flocked/settle';
 import { newUlid } from '@flocked/shared';
@@ -20,6 +21,8 @@ import {
   stakesEnv,
   stakesHarness,
   stakesMode,
+  releaseHold,
+  stakesHolds,
   stakesPayouts,
   stakesRecords,
   type SeededStakes,
@@ -346,7 +349,7 @@ describe('Stakes refunds and vetoes', () => {
     expect(r.chain.calls).toEqual([`propose:${r.chainRoundId}`]);
   });
 
-  it('a vetoed refund proposal returns the mode to revealing, alerts, and it settles again', async () => {
+  it('a vetoed refund proposal returns the mode to revealing, alerts and holds (O1); once the guardian releases the hold it settles again', async () => {
     // A tie: refund rule 3, so a refund proposal with no payout tree.
     const r = await seedStakes([0, 1, 0, 1]);
     const h = await toProposing(r);
@@ -367,7 +370,17 @@ describe('Stakes refunds and vetoes', () => {
     expect(alerts.codes()).toContain('ALERT_DO_ERROR');
     expect((await stakesRecords(r.roundId))[0]?.superseded_at).not.toBeNull();
 
-    // The coordinator sees the round Open again and posts the next proposal.
+    // W6-F1 O1: the veto opened a refund_vetoed hold, and nothing is proposed while it is open.
+    expect(await stakesHolds(r.roundId)).toEqual([
+      { reason: 'refund_vetoed', tx_hash: null, released_at: null, released_by: null },
+    ]);
+    expect(await h.alarm()).toMatchObject({ phase: 'proposing', error: null });
+    expect(await h.alarm()).toMatchObject({ phase: 'proposing', error: null });
+    expect(r.chain.calls).toEqual([`propose:${r.chainRoundId}`]);
+
+    // The guardian releases it (the admin action): the coordinator sees the round Open again and
+    // posts the next proposal.
+    await releaseHold(r.roundId, 'refund_vetoed');
     expect(await h.alarm()).toMatchObject({ phase: 'proposing', error: null });
     expect(r.chain.calls).toEqual([`propose:${r.chainRoundId}`, `propose:${r.chainRoundId}`]);
     expect(r.chain.round(r.chainRoundId).status).toBe(STATUS.RefundProposed);
