@@ -22,7 +22,14 @@ import {
   type UserRow,
 } from '../auth/accounts.js';
 import { authDeps } from '../auth/deps.js';
-import { checkEmailCode, emailHash, issueEmailCode, normalizeEmail } from '../auth/email.js';
+import {
+  NO_VALID_CODE,
+  checkEmailCode,
+  emailHash,
+  issueEmailCode,
+  normalizeEmail,
+  silentSender,
+} from '../auth/email.js';
 import { verifyQuickAuth } from '../auth/farcaster.js';
 import { clientIp, emailCodeBucket, enforce, limitAuthIp } from '../auth/rate-limit.js';
 import {
@@ -149,16 +156,19 @@ auth.post(
     await enforce(c, emailCodeBucket(await emailHash(email)));
     if (body.turnstileToken !== undefined) await requireTurnstile(c, body.turnstileToken);
 
-    let linked = false;
-    try {
-      linked = (await findAccount(c.env.DB, 'email', email)) !== null;
-    } catch (err) {
-      if (!(err instanceof HttpError)) throw err;
-    }
-    if (linked) {
-      const sender = authDeps(c.env).email;
-      await inBackground(c, 'email_code_send', () => issueEmailCode(c.env, sender, email));
-    }
+    // An address with no account gets a code too, sent nowhere, so /auth/email/verify answers a
+    // wrong code the same way for every address (W3-Z carry-over). The lookup runs in the same
+    // background task, so timing reveals nothing either.
+    const sender = authDeps(c.env).email;
+    await inBackground(c, 'email_code_send', async () => {
+      let linked = false;
+      try {
+        linked = (await findAccount(c.env.DB, 'email', email)) !== null;
+      } catch (err) {
+        if (!(err instanceof HttpError)) throw err;
+      }
+      await issueEmailCode(c.env, linked ? sender : silentSender, email);
+    });
     return c.json({ ok: true } satisfies EmailStartResponse);
   },
 );
@@ -173,7 +183,8 @@ auth.post(
     const email = normalizeEmail(body.email);
     await checkEmailCode(c.env, email, body.code);
     const user = await findAccount(c.env.DB, 'email', email);
-    if (!user) throw new HttpError('invalid_code', 'No account uses this email address');
+    // Only a guessed code reaches this for an address with no account: answer as for a used one.
+    if (!user) throw new HttpError('invalid_code', NO_VALID_CODE);
     const response = await respondWithSession(c, user, false, body.transport ?? 'cookie');
     await enqueueSecurityNotice(c.env, user.id, 'email_sign_in', now(c.env));
     return response;

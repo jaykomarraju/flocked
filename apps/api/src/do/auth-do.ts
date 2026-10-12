@@ -1,21 +1,24 @@
 // AuthDO: single-use SIWE nonces, email codes and OAuth state with attempt counters (spec "Data
-// model": nonces and email codes live in KV with a 5-minute TTL, stored only as hashes, and AuthDO
-// consumes each one atomically and counts attempts; "Identity and personhood": OAuth state).
+// model": nonces and email codes are stored only as hashes with a 5-minute TTL, and AuthDO consumes
+// each one atomically and counts attempts; "Identity and personhood": OAuth state).
 //
 // One instance per subject (`authDOFor`): a nonce, an email address or an OAuth state. Each method
-// runs inside blockConcurrencyWhile, so a KV read cannot interleave with a second consume of the
-// same subject; the instance's own storage records use, because KV deletes are eventually
-// consistent. An alarm deletes everything once the subject has expired.
+// runs inside blockConcurrencyWhile, so two consumes of the same subject never interleave; the
+// instance's own storage records use, because KV deletes are eventually consistent. An alarm
+// deletes everything once the subject has expired.
+//
+// Email codes live in the instance's storage, not KV (W3-Z carry-over): KV's edge cache can serve a
+// replaced code for about a minute, so a resent code could fail while the old one still worked.
+// Nonces are still issued into KV (src/auth/siwe.ts). A KV call that throws answers `unavailable`
+// instead of throwing, because an exception inside blockConcurrencyWhile resets the object.
 import { DurableObject } from 'cloudflare:workers';
 import { timingSafeEqual } from '../auth/crypto.js';
 import type { Env } from '../env.js';
 import { now } from '../lib/clock.js';
 import { log } from '../lib/log.js';
 import type {
-  AuthDORpc,
-  ConsumeResult,
+  ConsumeFailure,
   EmailCodeAttempt,
-  EmailCodeResult,
   OAuthStateBinding,
   OAuthStateResult,
 } from './types.js';
@@ -32,7 +35,7 @@ export interface NonceRecord {
   expiresAt: number;
 }
 
-/** KV record of the latest email code for an address, at `emailCodeKvKey(emailHash)`. */
+/** The latest email code for an address, kept in its AuthDO instance (`issueEmailCode`). */
 export interface EmailCodeRecord {
   /** Identifies this code; attempts and use are counted per ID. */
   id: string;
@@ -41,7 +44,27 @@ export interface EmailCodeRecord {
 }
 
 export const nonceKvKey = (nonceHash: string) => `auth:nonce:${nonceHash}`;
-export const emailCodeKvKey = (emailHash: string) => `auth:email-code:${emailHash}`;
+
+/** `unavailable`: KV could not be read; the caller answers 503. */
+export type NonceResult = { ok: true } | { ok: false; reason: ConsumeFailure | 'unavailable' };
+
+export type EmailCodeResult =
+  | { ok: true }
+  | {
+      ok: false;
+      reason: ConsumeFailure | 'wrong_code' | 'too_many_attempts';
+      /** Of 5 per code (spec "API" › Rate limits). */
+      attemptsLeft: number;
+    };
+
+/** AuthDO's RPC surface. It supersedes `AuthDORpc` in ./types.ts (W7-B; a note for D). */
+export interface AuthDOMethods {
+  consumeNonce(nonceHash: string): Promise<NonceResult>;
+  issueEmailCode(record: EmailCodeRecord): Promise<void>;
+  consumeEmailCode(attempt: EmailCodeAttempt): Promise<EmailCodeResult>;
+  bindOAuthState(binding: OAuthStateBinding): Promise<void>;
+  consumeOAuthState(stateHash: string): Promise<OAuthStateResult>;
+}
 
 /** The AuthDO instance for one subject. */
 export function authDOFor(
@@ -52,34 +75,56 @@ export function authDOFor(
   return env.AUTH.get(env.AUTH.idFromName(`${subject}:${hash}`));
 }
 
-export class AuthDO extends DurableObject<Env> implements AuthDORpc {
+const EMAIL_CODE_KEY = 'email-code';
+
+function errorText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+export class AuthDO extends DurableObject<Env> implements AuthDOMethods {
   private async cleanupAt(expiresAt: number): Promise<void> {
     const at = expiresAt + CLEANUP_GRACE_MS;
     const current = await this.ctx.storage.getAlarm();
     if (current === null || current < at) await this.ctx.storage.setAlarm(at);
   }
 
-  consumeNonce(nonceHash: string): Promise<ConsumeResult> {
-    return this.ctx.blockConcurrencyWhile(async () => {
+  consumeNonce(nonceHash: string): Promise<NonceResult> {
+    return this.ctx.blockConcurrencyWhile(async (): Promise<NonceResult> => {
       if (await this.ctx.storage.get<boolean>('used')) return { ok: false, reason: 'used' };
-      const record = await this.env.KV.get<NonceRecord>(nonceKvKey(nonceHash), 'json');
+      let record: NonceRecord | null;
+      try {
+        record = await this.env.KV.get<NonceRecord>(nonceKvKey(nonceHash), 'json');
+      } catch (err) {
+        log.error('auth_kv_unavailable', { op: 'get', error: errorText(err) });
+        return { ok: false, reason: 'unavailable' };
+      }
       if (!record) return { ok: false, reason: 'unknown' };
       const t = now(this.env);
       // Burn it either way: an expired nonce must not become valid again.
       await this.ctx.storage.put('used', true);
       await this.cleanupAt(Math.max(record.expiresAt, t));
-      await this.env.KV.delete(nonceKvKey(nonceHash));
+      try {
+        await this.env.KV.delete(nonceKvKey(nonceHash));
+      } catch (err) {
+        // The `used` marker already refuses a replay, and KV's TTL removes the record.
+        log.warn('auth_kv_unavailable', { op: 'delete', error: errorText(err) });
+      }
       if (t >= record.expiresAt) return { ok: false, reason: 'expired' };
       return { ok: true };
     });
   }
 
+  /** Stores a new code for this address. It replaces any earlier code, whose attempts stop mattering. */
+  issueEmailCode(record: EmailCodeRecord): Promise<void> {
+    return this.ctx.blockConcurrencyWhile(async () => {
+      await this.ctx.storage.put(EMAIL_CODE_KEY, record);
+      await this.cleanupAt(record.expiresAt);
+    });
+  }
+
   consumeEmailCode(attempt: EmailCodeAttempt): Promise<EmailCodeResult> {
     return this.ctx.blockConcurrencyWhile(async (): Promise<EmailCodeResult> => {
-      const record = await this.env.KV.get<EmailCodeRecord>(
-        emailCodeKvKey(attempt.emailHash),
-        'json',
-      );
+      const record = await this.ctx.storage.get<EmailCodeRecord>(EMAIL_CODE_KEY);
       if (!record) return { ok: false, reason: 'unknown', attemptsLeft: 0 };
       if (await this.ctx.storage.get<boolean>(`used:${record.id}`)) {
         return { ok: false, reason: 'used', attemptsLeft: 0 };
@@ -96,7 +141,7 @@ export class AuthDO extends DurableObject<Env> implements AuthDORpc {
       const attempts = used + 1;
       await this.ctx.storage.put(attemptsKey, attempts);
       if (!timingSafeEqual(attempt.codeHash, record.codeHash)) {
-        // A spent code stays in KV until its TTL so later attempts keep answering
+        // A spent code stays stored until it expires, so later attempts keep answering
         // `too_many_attempts`; the counter here is what refuses them.
         return {
           ok: false,
@@ -105,7 +150,6 @@ export class AuthDO extends DurableObject<Env> implements AuthDORpc {
         };
       }
       await this.ctx.storage.put(`used:${record.id}`, true);
-      await this.env.KV.delete(emailCodeKvKey(attempt.emailHash));
       return { ok: true };
     });
   }

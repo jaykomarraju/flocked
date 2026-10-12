@@ -1,7 +1,11 @@
 // GET /me, PATCH /me, POST /me/tos (spec "API"), validated against the P2.4 schemas, through real
 // sessions and the session middleware.
 import { env } from 'cloudflare:test';
-import { AcceptTosResponseSchema, MeResponseSchema } from '@flocked/shared';
+import {
+  AcceptTosResponseSchema,
+  MeResponseSchema,
+  ReferralsResponseSchema,
+} from '@flocked/shared';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { FIXTURE_IDS, realSession, seedFixture, withFixedClock } from '../helpers/index.js';
 import { TOS, authEnv, call, errorCode } from '../auth/fixtures.js';
@@ -213,7 +217,7 @@ describe('POST /me/tos', () => {
       fixed,
       'POST',
       '/me/tos',
-      { tosVersion: TOS, ageAttested: true },
+      { tosVersion: TOS, ageAttested: 18 },
       s.headers,
     );
     expect(res.status).toBe(200);
@@ -229,35 +233,41 @@ describe('POST /me/tos', () => {
     expect(view?.stakes.reasons).toEqual(['not_verified', 'geo_blocked', 'stakes_disabled']);
   });
 
-  it('409 for a stale version; 400 without the age attestation', async () => {
+  it('409 for a stale version; 400 without an age (18 or 21) in the attestation', async () => {
     const t = authEnv();
     const s = await realSession(t.env, FIXTURE_IDS.otherUser);
     const stale = await call(
       t.env,
       'POST',
       '/me/tos',
-      { tosVersion: '2025-01-01', ageAttested: true },
+      { tosVersion: '2025-01-01', ageAttested: 18 },
       s.headers,
     );
     expect(stale.status).toBe(409);
     expect(await errorCode(stale)).toBe('conflict');
-    const noAge = await call(
-      t.env,
-      'POST',
-      '/me/tos',
-      { tosVersion: TOS, ageAttested: false },
-      s.headers,
-    );
-    expect(noAge.status).toBe(400);
+    for (const ageAttested of [false, true, 19]) {
+      const noAge = await call(
+        t.env,
+        'POST',
+        '/me/tos',
+        { tosVersion: TOS, ageAttested },
+        s.headers,
+      );
+      expect(noAge.status).toBe(400);
+    }
   });
 });
 
-describe('the rest of the me module', () => {
-  it('still answers 501 for endpoints owned by later sessions', async () => {
+describe('GET /me/referrals', () => {
+  it("answers the caller's code and no referrals until W8-B", async () => {
     const t = authEnv();
     const s = await realSession(t.env, FIXTURE_IDS.user);
-    const res = await call(t.env, 'POST', '/me/email', { email: 'a@flocked.test' }, s.headers);
-    expect(res.status).toBe(501);
-    expect(await errorCode(res)).toBe('not_implemented');
+    const res = await call(t.env, 'GET', '/me/referrals', undefined, s.headers);
+    expect(res.status).toBe(200);
+    expect(ReferralsResponseSchema.parse(await res.json())).toEqual({
+      refCode: 'REFUSER1',
+      referrals: [],
+      rewardTotal: '0',
+    });
   });
 });

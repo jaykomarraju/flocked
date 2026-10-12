@@ -131,6 +131,10 @@ export const STAKES_INELIGIBILITY_REASONS = INELIGIBLE_REASONS;
 /** @deprecated See `IneligibleReason`. */
 export type StakesIneligibilityReason = IneligibleReason;
 
+/** An age attestation: the age the Stakes checkbox named (spec "Compliance and responsible play"). */
+export const AgeAttestationSchema = z.union([z.literal(18), z.literal(21)]);
+export type AgeAttestation = z.infer<typeof AgeAttestationSchema>;
+
 /** ToS and age attestation state. */
 export const TosStateSchema = z.object({
   currentVersion: z.string().min(1),
@@ -140,10 +144,9 @@ export const TosStateSchema = z.object({
   /**
    * The age the Stakes age checkbox names ("I'm 18 or older", or 21 where `geo.stakes.age21` lists
    * the verified country or the request's region; spec "Compliance and responsible play"). `POST
-   * /me/tos` records an attestation of this age. The API always sends it (W6-B); it is optional only
-   * until the shared API fixtures carry it.
+   * /me/tos` refuses an attestation below it.
    */
-  ageRequired: z.union([z.literal(18), z.literal(21)]).optional(),
+  ageRequired: AgeAttestationSchema,
 });
 export type TosState = z.infer<typeof TosStateSchema>;
 
@@ -214,10 +217,14 @@ export type UpdateMeResponse = MeResponse;
 
 // POST /me/tos ----------------------------------------------------------------------------------
 
-/** POST /me/tos: accept the current ToS version and attest the age requirement. */
+/**
+ * POST /me/tos: accept the current ToS version and attest an age. `ageAttested` is the age the
+ * checkbox named (`TosState.ageRequired`); one below the age the request's location requires is
+ * refused.
+ */
 export const AcceptTosRequestSchema = z.strictObject({
   tosVersion: z.string().min(1).max(64),
-  ageAttested: z.literal(true),
+  ageAttested: AgeAttestationSchema,
 });
 export type AcceptTosRequest = z.infer<typeof AcceptTosRequestSchema>;
 export const AcceptTosResponseSchema = z.object({ tos: TosStateSchema });

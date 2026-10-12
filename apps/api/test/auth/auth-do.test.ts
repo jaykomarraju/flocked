@@ -2,10 +2,10 @@
 // OAuth state). Exercised directly over RPC.
 import { env, runDurableObjectAlarm, runInDurableObject } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
+import type { Env } from '../../src/env.js';
 import {
   EMAIL_CODE_MAX_ATTEMPTS,
   authDOFor,
-  emailCodeKvKey,
   nonceKvKey,
   type AuthDO,
 } from '../../src/do/auth-do.js';
@@ -53,13 +53,64 @@ describe('consumeNonce', () => {
   });
 });
 
+// W3-Z carry-over: a KV failure answers `unavailable`; it must not throw inside
+// blockConcurrencyWhile, which would reset the object.
+describe('consumeNonce with KV down', () => {
+  it('answers unavailable, keeps the nonce unburnt, and the object keeps working', async () => {
+    const h = fresh('kvdown');
+    await env.KV.put(nonceKvKey(h), JSON.stringify({ expiresAt: Date.now() + 60_000 }));
+    const stub = authDOFor(env, 'nonce', h);
+    const down = {
+      get: () => Promise.reject(new Error('KV unavailable')),
+      delete: () => Promise.reject(new Error('KV unavailable')),
+    };
+    const result = await runInDurableObject(stub, async (instance: AuthDO) => {
+      const live = instance as unknown as { env: Env };
+      const real = live.env;
+      live.env = { ...real, KV: down as unknown as KVNamespace };
+      try {
+        return await instance.consumeNonce(h);
+      } finally {
+        live.env = real;
+      }
+    });
+    expect(result).toEqual({ ok: false, reason: 'unavailable' });
+    expect(await stub.consumeNonce(h)).toEqual({ ok: true });
+  });
+
+  it('a failed KV delete after the burn still refuses a replay', async () => {
+    const h = fresh('kvdel');
+    await env.KV.put(nonceKvKey(h), JSON.stringify({ expiresAt: Date.now() + 60_000 }));
+    const stub = authDOFor(env, 'nonce', h);
+    const result = await runInDurableObject(stub, async (instance: AuthDO) => {
+      const live = instance as unknown as { env: Env };
+      const real = live.env;
+      live.env = {
+        ...real,
+        KV: {
+          get: real.KV.get.bind(real.KV),
+          delete: () => Promise.reject(new Error('KV unavailable')),
+        } as unknown as KVNamespace,
+      };
+      try {
+        return await instance.consumeNonce(h);
+      } finally {
+        live.env = real;
+      }
+    });
+    expect(result).toEqual({ ok: true });
+    expect(await stub.consumeNonce(h)).toEqual({ ok: false, reason: 'used' });
+  });
+});
+
 describe('consumeEmailCode', () => {
   it(`counts ${EMAIL_CODE_MAX_ATTEMPTS} attempts per code and reports what is left`, async () => {
     const e = fresh('email');
-    await env.KV.put(
-      emailCodeKvKey(e),
-      JSON.stringify({ id: 'c1', codeHash: 'right', expiresAt: Date.now() + 60_000 }),
-    );
+    await authDOFor(env, 'email', e).issueEmailCode({
+      id: 'c1',
+      codeHash: 'right',
+      expiresAt: Date.now() + 60_000,
+    });
     const stub = authDOFor(env, 'email', e);
     const left = [];
     for (let i = 0; i < EMAIL_CODE_MAX_ATTEMPTS; i++) {
@@ -81,24 +132,45 @@ describe('consumeEmailCode', () => {
 
   it('right code → ok, then used', async () => {
     const e = fresh('email');
-    await env.KV.put(
-      emailCodeKvKey(e),
-      JSON.stringify({ id: 'c2', codeHash: 'right', expiresAt: Date.now() + 60_000 }),
-    );
+    await authDOFor(env, 'email', e).issueEmailCode({
+      id: 'c2',
+      codeHash: 'right',
+      expiresAt: Date.now() + 60_000,
+    });
     const stub = authDOFor(env, 'email', e);
     expect(await stub.consumeEmailCode({ emailHash: e, codeHash: 'right' })).toEqual({ ok: true });
     expect(await stub.consumeEmailCode({ emailHash: e, codeHash: 'right' })).toMatchObject({
       ok: false,
-      reason: 'unknown',
+      reason: 'used',
     });
+  });
+
+  // W3-Z carry-over: codes live in the instance, not KV, so a resent code replaces the old one at
+  // once (KV's edge cache could serve the old record for about a minute).
+  it('a new code replaces the old one at once, with fresh attempts', async () => {
+    const e = fresh('email');
+    const stub = authDOFor(env, 'email', e);
+    await stub.issueEmailCode({ id: 'old', codeHash: 'first', expiresAt: Date.now() + 60_000 });
+    expect(await stub.consumeEmailCode({ emailHash: e, codeHash: 'wrong' })).toMatchObject({
+      reason: 'wrong_code',
+      attemptsLeft: EMAIL_CODE_MAX_ATTEMPTS - 1,
+    });
+    await stub.issueEmailCode({ id: 'new', codeHash: 'second', expiresAt: Date.now() + 60_000 });
+    expect(await stub.consumeEmailCode({ emailHash: e, codeHash: 'first' })).toMatchObject({
+      reason: 'wrong_code',
+      attemptsLeft: EMAIL_CODE_MAX_ATTEMPTS - 1,
+    });
+    expect(await stub.consumeEmailCode({ emailHash: e, codeHash: 'second' })).toEqual({ ok: true });
+    expect(await env.KV.list({ prefix: 'auth:email-code:' })).toMatchObject({ keys: [] });
   });
 
   it('expired → expired', async () => {
     const e = fresh('email');
-    await env.KV.put(
-      emailCodeKvKey(e),
-      JSON.stringify({ id: 'c3', codeHash: 'right', expiresAt: Date.now() - 1 }),
-    );
+    await authDOFor(env, 'email', e).issueEmailCode({
+      id: 'c3',
+      codeHash: 'right',
+      expiresAt: Date.now() - 1,
+    });
     expect(
       await authDOFor(env, 'email', e).consumeEmailCode({ emailHash: e, codeHash: 'right' }),
     ).toMatchObject({ ok: false, reason: 'expired' });

@@ -89,6 +89,16 @@ const IMPLEMENTED = new Set([
   'GET /rounds/:id/verify',
   'GET /rounds/:id/bundles/:mode/:file',
   'GET /claims',
+  // W7-B (test/identity/, test/limits/, test/me/)
+  'POST /me/identities/link',
+  'POST /me/merges/:id/confirm',
+  'DELETE /me/identities/:id',
+  'POST /me/email',
+  'POST /me/email/verify',
+  'GET /me/referrals',
+  'DELETE /me',
+  'PUT /me/limits',
+  'POST /me/limits/exclusion-lift',
 ]);
 
 /**

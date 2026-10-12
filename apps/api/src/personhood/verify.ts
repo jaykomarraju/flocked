@@ -4,21 +4,24 @@
 // person_id). Nothing else from Coinbase reaches D1.
 //
 // - The person ID bound to another account: a pending merge (never a merge inside the callback;
-//   W7-B builds the confirmation). Nothing is set on the caller's account.
+//   the user confirms it with POST /me/merges/:id/confirm). Nothing is set on the caller's account.
 // - The caller already bound to a different person ID: refused (`person_mismatch`).
 // - A person tombstone for this ID (a deleted account of the same person): its daily cap state is
-//   copied into the account's `limits` and the tombstone is deleted, in the same batch as the bind.
-//   The stricter of two caps wins, and an inherited pending increase keeps its original timer.
+//   copied into the account's `limits`, the deleted account's Stakes tickets of today and later game
+//   days move to this account, and the tombstone is deleted, in the same batch as the bind. The
+//   stricter of two caps wins, and an inherited pending increase keeps its original timer.
 // - No personal details: the person ID is still bound (so the Coinbase account cannot verify a
 //   second account), with `kyc_status = 'unverified'` and no country, which is "not verified".
-import { newUlid, type Merge, type PersonhoodCallbackResponse } from '@flocked/shared';
+import { newUlid, type PersonhoodCallbackResponse } from '@flocked/shared';
 import { enqueueSecurityNotice } from '../auth/accounts.js';
+import { createPendingMerge } from '../identity/merge.js';
+import { carryTicketsStatement } from '../identity/sql.js';
 import { log } from '../lib/log.js';
 import type { PersonLocation } from './coinbase.js';
 import type { PersonhoodEnv } from './config.js';
 
-/** A pending merge waits this long for confirmation (the spec sets no TTL; a W5-B spec issue). */
-export const MERGE_PENDING_TTL_MS = 7 * 24 * 3600 * 1000;
+/** A pending merge waits this long for confirmation (src/identity/merge.ts). */
+export { MERGE_PENDING_TTL_MS } from '../identity/merge.js';
 
 export const PERSONHOOD_FAILURES = [
   'invalid_state',
@@ -52,8 +55,8 @@ async function account(db: D1Database, where: 'id' | 'person_id', value: string)
 }
 
 /**
- * The pending merge between `me` and `other` (the account holding the person ID), reusing an open
- * one between the same two accounts. The kept account is the one created first.
+ * The pending merge between `me` and `other` (the account holding the person ID), through the
+ * coinbase identity (src/identity/merge.ts; an open one between the same two accounts is reused).
  */
 async function pendingMerge(
   env: PersonhoodEnv,
@@ -62,50 +65,19 @@ async function pendingMerge(
   personId: string,
   t: number,
 ): Promise<PersonhoodCallbackResponse> {
-  const db = env.DB;
-  const identity = await db
-    .prepare("SELECT id FROM identities WHERE provider = 'coinbase' AND external_id = ?1")
+  const identity = await env.DB.prepare(
+    "SELECT id FROM identities WHERE provider = 'coinbase' AND external_id = ?1",
+  )
     .bind(personId)
     .first<{ id: string }>();
   if (!identity) {
     log.error('personhood_identity_missing', { userId: other.id });
     return failed('unavailable');
   }
-  const meFirst =
-    me.created_at < other.created_at || (me.created_at === other.created_at && me.id < other.id);
-  const [kept, losing] = meFirst ? [me, other] : [other, me];
-  const open = await db
-    .prepare(
-      "SELECT id, created_at, expires_at FROM merges WHERE status = 'pending' AND expires_at > ?3 AND " +
-        '((kept_user_id = ?1 AND losing_user_id = ?2) OR (kept_user_id = ?2 AND losing_user_id = ?1))',
-    )
-    .bind(kept.id, losing.id, t)
-    .first<{ id: string; created_at: number; expires_at: number }>();
-  let merge = open;
-  if (!merge) {
-    merge = { id: newUlid(t), created_at: t, expires_at: t + MERGE_PENDING_TTL_MS };
-    await db
-      .prepare(
-        'INSERT INTO merges (id, kept_user_id, losing_user_id, identity_id, status, expires_at, created_at) ' +
-          "VALUES (?1, ?2, ?3, ?4, 'pending', ?5, ?6)",
-      )
-      .bind(merge.id, kept.id, losing.id, identity.id, merge.expires_at, merge.created_at)
-      .run();
-    log.info('merge_pending_created', { mergeId: merge.id, provider: 'coinbase' });
-    await enqueueSecurityNotice(env, other.id, 'merge_pending', t);
-  }
-  const view: Merge = {
-    id: merge.id,
-    status: 'pending',
-    keptUserId: kept.id,
-    losingUserId: losing.id,
-    provider: 'coinbase',
-    otherHandle: other.handle,
-    createdAt: merge.created_at,
-    expiresAt: merge.expires_at,
-    confirmedAt: null,
+  return {
+    status: 'merge_pending',
+    merge: await createPendingMerge(env, me, other, identity.id, t),
   };
-  return { status: 'merge_pending', merge: view };
 }
 
 /** SQL: the user (parameter `user`) holds the person ID (parameter `person`). */
@@ -170,6 +142,19 @@ function bindStatements(
             'ELSE limits.pending_cap_effective_at END',
         )
         .bind(userId, personId),
+      // The deleted account's tickets of today and later game days count for this account, so
+      // deleting and verifying again never restarts the day's cap at zero (W6-Z carry-over).
+      carryTicketsStatement(
+        db,
+        {
+          from: '(SELECT user_id FROM person_tombstones WHERE person_id = ?2)',
+          to: '?1',
+          where: holds('?1', '?2'),
+        },
+        t,
+        userId,
+        personId,
+      ),
       db
         .prepare(`DELETE FROM person_tombstones WHERE person_id = ?1 AND ${holds('?2', '?1')}`)
         .bind(personId, userId),
