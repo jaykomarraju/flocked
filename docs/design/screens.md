@@ -44,16 +44,34 @@ keeps its fixed outline and wool colors (Foundations rule), with legs and shock 
 | Artboard | Spec heading | Route or component | States covered | Export | Freeze |
 | --- | --- | --- | --- | --- | --- |
 | `components/option-card/{light,dark}/desktop` | Client app (Today, Reveal) | option card | idle, hover, pressed, selected, focus, disabled, revealed-win, revealed-loss (with "Your pick" pill), rounding note | `exports/components/option-card__{light,dark}__desktop.png` | review |
-| `components/actions/{light,dark}/desktop` | Client app (Today) | primary CTA pill, secondary pill, mode toggle, tabs | CTA default, pressed, loading, disabled; secondary default, hover/pressed, disabled, small; toggle Free, Stakes, Stakes hidden (static label); tabs active, rest, hover | `exports/components/actions__{light,dark}__desktop.png` | review |
+| `components/actions/{light,dark}/desktop` | Client app (Today) | primary CTA pill, secondary pill, mode toggle, tabs | CTA default, pressed, loading, disabled; secondary default, hover/pressed, disabled, small; toggle Free, Stakes (the selected segment has a check), Stakes hidden (static label); tabs active, rest, hover | `exports/components/actions__{light,dark}__desktop.png` | review |
 | `components/stake-selector/{light,dark}/desktop` | Client app (Today) | stake selector | Free: preset picked, slider between presets, low balance (presets above the balance disabled); Stakes: fixed, over the daily cap | `exports/components/stake-selector__{light,dark}__desktop.png` | review |
 | `components/round-status/{light,dark}/desktop` | Client app (Today, Sealed, Reveal) | countdown, entrant/pool counter, padlock sealed badge, sealed pick, split bars | countdown to close and to reveal (hh:mm:ss), note on the one exception: the unsealing countdown is m:ss (Oct 9 decision, W5-C); counter Free and Stakes; badge and locked pick; bars equal, settled with win accent, tie (refund), extreme (<1% / >99%) | `exports/components/round-status__{light,dark}__desktop.png` | review |
 | `components/result-card/{light,dark}/desktop` | Client app (Reveal); Decision log (voice lines) | result card | unflocked (winLine(38)), got flocked (lossLine(62)), refunded (tie), unflocked provisional with "Final at" (Stakes) | `exports/components/result-card__{light,dark}__desktop.png` | review |
 | `components/feedback/{light,dark}/desktop` | Client app | toast/error, empty state, skeleton, offline banner | toast with action, error with retry, error with a known cause (4xx), empty state (neutral sheep), skeleton of Today, offline banner under the mobile header | `exports/components/feedback__{light,dark}__desktop.png` | review |
-| `components/lists/{light,dark}/desktop` | Client app (Leaderboards, Archive, Profile) | list row, leaderboard row, avatar | archive rows (win, loss, refunded) with mini split; leaderboard default, live stray streak (accent pill), you; avatar 64/40/32/24 | `exports/components/lists__{light,dark}__desktop.png` | review |
-| `components/forms-overlays/{light,dark}/desktop` | Client app (Submit, Settings, Onboarding) | form field, modal, bottom sheet | field empty, focus, error; onboarding modal (card 1 of 3) on a scrim; bottom sheet (Stakes verification) | `exports/components/forms-overlays__{light,dark}__desktop.png` | review |
-| `components/navigation/{light,dark}/desktop` | Client app | nav bar (mobile), header (desktop and mobile) | nav bar active on each of Today, Archive, Boards, Rooms, You; desktop header signed in (Today) and signed out (Boards); mobile header, with the note that the balance slot shows points in Free and the 30-day net in Stakes (Oct 9 decision, W5-C; replaced "balance hidden in Stakes") | `exports/components/navigation__{light,dark}__desktop.png` | review |
+| `components/lists/{light,dark}/desktop` | Client app (Leaderboards, Archive, Profile) | list row, leaderboard row, avatar | archive rows (win, loss, refunded) with mini split; leaderboard default, live stray streak (accent pill), you (rank 148 in the 32px rank slot); avatar 64/40/32/24 | `exports/components/lists__{light,dark}__desktop.png` | review |
+| `components/forms-overlays/{light,dark}/desktop` | Client app (Submit, Settings, Onboarding) | form field, modal, bottom sheet | field empty, focus, error; onboarding modal (card 1 of 3) on a scrim; bottom sheet (Stakes verification, closed by a "Not now" text button) | `exports/components/forms-overlays__{light,dark}__desktop.png` | review |
+| `components/navigation/{light,dark}/desktop` | Client app | nav bar (mobile), header (desktop and mobile) | nav bar active on each of Today, Archive, Boards, Rooms, You; desktop header signed in (Today) and signed out (Boards), links Today, Archive, Boards, Rooms; mobile header, with the note that the balance slot shows points in Free and the 30-day net in Stakes (Oct 9 decision, W5-C; replaced "balance hidden in Stakes") | `exports/components/navigation__{light,dark}__desktop.png` | review |
 
 Mascot poses (on the component list in wave-2.md) live on the Foundations page, light and dark.
+
+### Components fixes (W7-C, Oct 12, 2026)
+
+The owner's five kit fixes and the header link, on the light and dark sheets (OA-D1). The README's component
+conventions say the same.
+
+- **Navigation:** the desktop headers lost the "Questions" link (Today, Archive, Boards, Rooms; Submit and Queue
+  open from the avatar menu), and the sheet's notes say so.
+- **Secondary pill:** every pill on the sheets already had the surface fill. The notes that called secondary
+  actions "ink outlines" now say "surface pills with an ink border".
+- **Captions:** Inter 500 in `muted` (`dark-muted`): slider end labels, list-row meta, leaderboard captions, field
+  helper text and counters. Foundations' type table and `design-tokens.json` still say Inter 400 ink (W7-C handoff,
+  spec issues).
+- **Mode toggle:** the selected segment gets a 16px check in the label colour. The toggle examples are 212 wide.
+- **Rank slot:** 32px with `flexShrink: 0`; the "you" row shows rank 148.
+- **Sheets:** the bottom sheet closes with a "Not now" text button (Inter 600 16, underlined), as on Social. The
+  48px pill stays only on the claim-all sheet (Core flow).
+- Re-exported: actions, stake-selector, lists, forms-overlays and navigation, light and dark.
 
 ## Core flow
 
@@ -150,6 +168,14 @@ mode-toggle) take two 1200 slots because their mobile artboards run to about 1,6
 - **Global states:** blocked region and self-exclusion both swap the toggle for the static "Free" label. Self-exclusion
   keeps the question visible with both options disabled and no CTA; loading, error and empty keep the header and nav.
 
+### Core flow fixes (W7-C, Oct 12, 2026)
+
+- **No "Questions" header link** (owner decision; spec "Client app › Navigation"): removed from the desktop header
+  of all 74 tablet and desktop artboards, modals and sheets included. Every header now reads Today, Archive, Boards,
+  Rooms; Submit, Queue, Claims and Settings stay in the avatar menu. Header spacing is unchanged: gap 40 and links
+  gap 28, except the Stakes tablets with the 30-day net (gap 32, links gap 20, `flexShrink: 0`). All 74 were
+  re-exported. Mobile artboards had no header links and are unchanged.
+
 ## Social
 
 Paper page `Social`. Freeze: OA-D3. Surfaces `social` (Round detail, Archive, Verify, Profile, Leaderboards, the
@@ -173,7 +199,7 @@ scaffolding and aren't exported. Exports are at `exports/social/<screen>__<state
 | `social/profile/own/{mobile,tablet,desktop}` | Profiles, leaderboards and rooms (Profiles); Compliance (Responsible play: 30-day net) | `/u/:handle` (own) | You active (mobile); avatar 64, @jay, "Edit profile"; Free and Stakes stat boxes (rounds, win rate, stray streak with "Still running", best, play streak, net); Stakes net +48.20 USDC with a padlock and "Only you see this. Show it in Settings."; four recent results; "Questions by @jay" (used with split quality, in the queue with score, scheduled) | `exports/social/profile__own__{mobile,tablet,desktop}.png` | review |
 | `social/profile/other/{mobile,tablet,desktop}` | Profiles, leaderboards and rooms (Profiles) | `/u/:handle` | @woolgatherer: no edit; stats per mode; Stakes net "Private" ("Not shared"); recent results; questions with split quality | `exports/social/profile__other__{mobile,tablet,desktop}.png` | review |
 | `social/boards/strays/{mobile,tablet,desktop}` | Profiles, leaderboards and rooms (Leaderboards) | `/leaderboards` | Boards active; tabs (Strays today active; the tab row clips on mobile), Free/Stakes toggle, "Winners from the Oct 10 round, by stray streak."; seven rows (rank, avatar 40, handle, best caption, streak), accent pill on the top row only; your row pinned (48 @jay); "Only verified players appear on boards." | `exports/social/boards__strays__{mobile,tablet,desktop}.png` | review |
-| `social/boards/streaks/{mobile,tablet,desktop}` | Profiles, leaderboards and rooms (Leaderboards) | `/leaderboards` | Streaks active: current stray streaks, "Refunds and voided days don't break them.", accent pill on the top row only, your row pinned | `exports/social/boards__streaks__{mobile,tablet,desktop}.png` | review |
+| `social/boards/streaks/{mobile,tablet,desktop}` | Profiles, leaderboards and rooms (Leaderboards) | `/leaderboards` | Streaks active: best stray streaks, all time, with the current streak as each row's caption ("Current 17 · still running", "Current 0"); ties go to the current streak; "Best stray streaks, all time. Refunds and voided days don't break them."; the accent pill marks only the board's top live streak (row 2, not row 1, whose streak ended); your row pinned (Oct 12 decision, W7-C) | `exports/social/boards__streaks__{mobile,tablet,desktop}.png` | review |
 | `social/boards/weekly/{mobile,tablet,desktop}` | Profiles, leaderboards and rooms (Leaderboards) | `/leaderboards` | Weekly active: wins Oct 5–11 with net-result captions (ties by net), no accent, your row pinned (112 @jay) | `exports/social/boards__weekly__{mobile,tablet,desktop}.png` | review |
 | `social/boards/creators/{mobile,tablet,desktop}` | Profiles, leaderboards and rooms (Leaderboards); Question pipeline step 5 | `/leaderboards` | Creators active: average split quality (0.94 to 0.74) with "N questions ran", no accent, "You need 2 questions that ran to appear here." | `exports/social/boards__creators__{mobile,tablet,desktop}.png` | review |
 | `social/boards/empty/{mobile,tablet,desktop}` | Profiles, leaderboards and rooms (Leaderboards); Design_Language (Voice: Empty state) | `/leaderboards` | Weekly, Stakes: neutral sheep, "Nobody here yet.", "Stakes rounds count once they're final.", verified footer | `exports/social/boards__empty__{mobile,tablet,desktop}.png` | review |
@@ -207,7 +233,7 @@ header link (Settings is reached from the avatar menu). Exports are at
 | `settings/verification/unverified/{mobile,tablet,desktop}` | Identity and personhood (Personhood); Compliance (Age and terms) | `/settings` | "Not verified", what is stored, CTA "Verify with Coinbase", "18+ only · Responsible play" | `exports/settings/verification__unverified__{mobile,tablet,desktop}.png` | review |
 | `settings/verification/failed/{mobile,tablet,desktop}` | Identity and personhood (Personhood); Compliance (Geo-fencing) | `/settings` | error box "Coinbase didn't confirm your details.", CTA "Try again", 18+ footer, country-mismatch caption | `exports/settings/verification__failed__{mobile,tablet,desktop}.png` | review |
 | `settings/wallet/edit/{mobile,tablet,desktop}` | Client app (Settings: creator payout wallet); `me.ts` `prefs.creatorPayoutWallet` | sheet (mobile), modal (tablet up) over `/settings` | radio cards for the two linked wallets and "None" (treasury), "Applies to rounds locked after you save.", CTA "Save wallet", "Not now" | `exports/settings/wallet__edit__{mobile,tablet,desktop}.png` | review |
-| `settings/notifications/list/{mobile,tablet,desktop}` | Client app (Settings: notifications); `me.ts` `notificationPrefs` | `/settings/notifications` | Farcaster / Push / Email segments, nine event checkboxes (six on), break caption | `exports/settings/notifications__list__{mobile,tablet,desktop}.png` | review |
+| `settings/notifications/list/{mobile,tablet,desktop}` | Client app (Settings: notifications); `me.ts` `notificationPrefs` | `/settings/notifications` | Farcaster / Push / Email segments, nine event checkboxes (six on), break caption; `security_notice` is a locked, always-on row (disabled checked box, padlock, "Always on, on every channel. New sign-ins, linked accounts and merges.") (Oct 12 decision, W7-C) | `exports/settings/notifications__list__{mobile,tablet,desktop}.png` | review |
 | `settings/cap/edit/{mobile,tablet,desktop}` | Compliance (Responsible play: daily stake cap) | sheet (mobile), modal (tablet up) over `/settings` | current cap, "New cap" field 250 USDC, "Lowering it works right away. Raising it waits 24 hours.", CTA "Raise to 250 USDC", "Not now" | `exports/settings/cap__edit__{mobile,tablet,desktop}.png` | review |
 | `settings/cap/pending/{mobile,tablet,desktop}` | Compliance (Responsible play: 24-hour raise); `limits.pendingCap` | `/settings` | cap 100 USDC with a read-only box "Rising to 250 USDC in 23:41:12", when it was raised, "Cancel increase" | `exports/settings/cap__pending__{mobile,tablet,desktop}.png` | review |
 | `settings/exclusion/choose/{mobile,tablet,desktop}` | Compliance (Responsible play: self-exclusion) | `/settings/break` | 7 days, 30 days (selected), 6 months, Permanent with end dates; "You can't end a break early."; CTA "Start a 30-day break"; resources link | `exports/settings/exclusion__choose__{mobile,tablet,desktop}.png` | review |
@@ -224,8 +250,8 @@ header link (Settings is reached from the avatar menu). Exports are at
 
 - **Header and avatar menu:** tablet and desktop header links are Today, Archive, Boards and Rooms. Submit, Queue,
   Claims and Settings sit in the avatar menu (Decision log, Oct 9); pages reached from it show no active link, and
-  mobile has You active. The Core flow headers and the navigation sheet still show a "Questions" link (W5-C
-  handoff, spec issues).
+  mobile has You active. W7-C removed the "Questions" link from the Core flow headers and the navigation sheet
+  (Oct 12 decision), so every header now has the same four links.
 - **You menu:** on mobile the You tab opens a bottom sheet that stops above the nav bar, so the active You tab stays
   visible and closes it. From tablet up it is a 280-wide menu card under the avatar (focus ring on the avatar), with
   no scrim. Rows: your profile, Submit a question, Question queue, Claims (ready count), Settings.
@@ -237,8 +263,9 @@ header link (Settings is reached from the avatar menu). Exports are at
   box with "Report this"; the CLI command closes every Verify state.
 - **Profile:** stats per mode as two blocks, no toggle. The Stakes net is private by default: your own profile shows
   it with a padlock and "Only you see this. Show it in Settings."; another player's shows "Private".
-- **Boards:** tabs plus the Free/Stakes toggle. The live stray-streak accent pill goes on the top row only (Strays
-  today, Streaks); Weekly, Creators and room boards use no accent. Your row is pinned at the bottom in the row/you
+- **Boards:** tabs plus the Free/Stakes toggle. The live stray-streak accent pill marks one row per board: the top
+  row on Strays today, and on Streaks the board's top live streak, which need not be the top row (Oct 12 decision,
+  W7-C); Weekly, Creators and room boards use no accent. Your row is pinned at the bottom in the row/you
   style. A footer says only verified players appear.
 - **Submit and Queue:** live validation uses the field error state; the moderation outcome is a result screen
   (queued, review) or a box above the refilled form (rejected). The 7-day block disables the whole form. Queue votes
@@ -251,6 +278,17 @@ header link (Settings is reached from the avatar menu). Exports are at
   action have a 2px ink border; read-only notices a 1.5px line border.
 - **Sheets:** bottom sheet on mobile, 400-wide modal on a scrim from tablet up (Core flow pattern), dismissed with a
   "Not now" text button.
+
+### Social and settings fixes (W7-C, Oct 12, 2026)
+
+- **Streaks board** (Decision log, Oct 12): ranks the best stray streak, all time; the row caption gives the current
+  streak ("Current 17 · still running", "Current 0"); ties go to the current streak, then rounds played. The accent
+  pill marks only the board's top live streak (here row 2, @baa_humbug, 17; row 1's 21-day streak has ended). The
+  pill wraps the value slot, which holds the best streak, so it equals the live streak only when the live streak is
+  the player's best (W7-C handoff, spec issues).
+- **`security_notice`** (spec "Notifications": always on): a locked row, last in the list, with the disabled box
+  drawn checked, a padlock and the caption "Always on, on every channel. New sign-ins, linked accounts and merges."
+  The overview's "6 of 9 on" still counts it (W7-C handoff, open questions).
 
 ## Cards and notifications
 
@@ -327,8 +365,8 @@ named after `REFUND_REASONS[].name` in `packages/shared/src/reasons.ts`. No acce
   fills are % widths of a fixed track. Each notes band names that card's primitives. Fonts: Fredoka 600/700 and
   Inter 500/600/700 as TTF.
 - **Example values:** the Core flow question ("Would you rather fight one horse-sized duck or 100 duck-sized
-  horses?"), 62/38, @woolgatherer, "Oct 12", 1,204 Free and 212–214 Stakes players, URL "flocked.app" (a
-  placeholder: the spec names no domain).
+  horses?"), 62/38, @woolgatherer, "Oct 12", 1,204 Free and 212–214 Stakes players, URL "flocked.xyz" (the
+  domain since Oct 12; W7-C swapped it for the placeholder "flocked.app").
 
 ### Share sheet and share page
 
@@ -386,3 +424,15 @@ copy of Farcaster's or an OS's UI.
 - **Emails:** a 600 column on `bg`, wordmark, one surface panel (heading, body, next-live paragraph and link for
   outcomes, one accent CTA), footer captions ("Manage notifications"; security notices say they're always on).
   Accent only on the CTA and the UNFLOCKED heading. Subject, preheader and build notes are in each notes band.
+
+### Cards and notifications fixes (W7-C, Oct 12, 2026)
+
+The page stays frozen (OA-D4); these are the owner's Oct 12 changes only.
+
+- **Domain:** "flocked.app" is now **flocked.xyz** on every card's URL (63 card frames) and in the share-sheet links
+  ("flocked.xyz/s/7Hq2Xk"). The share pages, emails and notification sheets had no domain in their text, since their
+  head tags use relative paths.
+- **Handle:** the share-sheet previews (cloned from the reveal screen) show the sample handle "@woolgatherer ·
+  Flocked" instead of "@jay" (11 text nodes on the 7 share-sheet artboards). The app header behind those sheets
+  still shows the viewer's "J" avatar (W7-C handoff, open questions).
+- Re-exported: the 63 card frames and the 7 share-sheet artboards.

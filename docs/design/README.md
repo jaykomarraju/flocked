@@ -63,14 +63,22 @@ From the `Components` page. Code follows these unless a sheet says otherwise.
 
 - Hover: the fill changes to `line`. Border and label stay.
 - Pressed: scale 0.97 (`motion.press`). Paper doesn't render transforms, so sheets draw it as a box 3% smaller.
-- Selected (option card, toggle segment, preset, nav item): `ink` fill, `bg` label. The option card's radio also
-  gets a check, so the pick never relies on color alone.
+- Selected (option card, toggle segment, preset, nav item): `ink` fill, `bg` label. The option card's radio and the
+  mode toggle's selected segment also get a check, so the pick never relies on color alone (Oct 12 decision).
+- Secondary pill: `surface` fill (dark: `dark-surface`), 2px ink border, ink label. It is never transparent, so it
+  reads the same on `bg` and on a surface panel (Oct 12 decision).
+- Captions use the caption role: Inter 500, 13/18, `muted` (Oct 12 decision; the kit had Inter 400 ink).
+- Leaderboard rows: the rank slot is 32 wide with `flexShrink: 0`, so a 3-digit rank fits (Oct 12 decision; was
+  28).
+- Sheets and modals that are optional close with a "Not now" text button. The 48px pill stays only where closing is
+  the sheet's main action (claim all) (Oct 12 decision).
 - Disabled: `bg` fill, 2px dashed `muted` border, `muted` label, not focusable.
 - Focus: the foundation ring (2px ink outline, 3px offset), on focus-visible only.
 - Errors are ink, never a color: an error icon, a 600-weight message, and (on fields) a 3px border.
 - Controls get an ink border; read-only boxes (fixed stake, empty state, final-at chip) get a `line` border.
 - The accent appears only on: the primary CTA, the winning option card, the winning split bar and mini split, the
-  UNFLOCKED result line, the live stray-streak pill, and the smug sheep's glint.
+  UNFLOCKED result line, the live stray-streak pill (on a board, only the board's top live streak), and the smug
+  sheep's glint.
 - Scrim: the `scrim` token (`--color-scrim`, light `#141414` at 40%; `--color-dark-scrim`, dark `#000000` at 60%),
   flat, never a blur. In the JSON it's 8-digit hex (`#14141466`, `#00000099`).
 - Percentages follow the Decision log rounding: winner rounds down, loser rounds up, "<1%" and ">99%" at the ends.
@@ -81,7 +89,8 @@ From the `Components` page. Code follows these unless a sheet says otherwise.
 - Mobile: mobile header, content with 16px side padding and 24px gaps, five-tab nav bar. Long screens scroll, so
   their artboards are `fit-content`; overlays and short screens are 844 tall.
 - Tablet and desktop: desktop header (24px side padding on tablet, 64px on desktop) and the mobile content centred
-  in a 560 column. The question goes up to the `display` size (40px), and the countdown and counter share a row.
+  in a 560 column. The header links are Today, Archive, Boards and Rooms; Submit, Queue, Claims and Settings sit in
+  the avatar menu (W7-C removed the "Questions" link, Oct 12 decision). The question goes up to the `display` size (40px), and the countdown and counter share a row.
 - Sheets on mobile become centred 400-wide modals from tablet up (no handle, 2px ink border all round).
 - The 30-day Stakes net sits in the header's balance slot when Stakes is selected.
 - With the 30-day net in the slot, the tablet header only fits if the links don't shrink: header gap 32, links
