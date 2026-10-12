@@ -1,6 +1,6 @@
 // Spec "API" › Reveal gating: "Room round endpoints, WebSockets and bundles are for members only."
-// Every gated route of a (revealed) room round — the round, /verify, the bundle objects, /me, and the
-// WebSocket and round-card stubs — answers 401 without a session and 404 (exactly as for a round that
+// Every gated route of a (revealed) room round — the round, /verify, the bundle objects, /me, the
+// WebSocket and the round-card stub — answers 401 without a session and 404 (exactly as for a round that
 // doesn't exist) to a signed-in non-member, and serves members `private, no-store`. The edge cache
 // (src/read/cache.ts, off on `local`) is driven with a `staging` env and a fake Cache through
 // EDGE_CACHE_DEPS: it stores anonymous public reads only, never a room-round or signed-in response,
@@ -82,7 +82,10 @@ afterAll(() => {
 
 const local = () => at(BEACON_TIME_MS + 10_000);
 
-/** Every gated route of a round, with what a member gets (the two stubs answer 501 after the gate). */
+/**
+ * Every gated route of a round, with what a member gets (after the gate, the WebSocket answers a plain
+ * GET 400 and the card stub 501; test/ws/ upgrades members).
+ */
 const ROUTES = (id: string) =>
   [
     [`/rounds/${id}`, 200],
@@ -90,7 +93,7 @@ const ROUTES = (id: string) =>
     [`/rounds/${id}/bundles/free/manifest.json`, 200],
     [`/rounds/${id}/bundles/free/chunk-0000.json`, 200],
     [`/rounds/${id}/me`, 200],
-    [`/rounds/${id}/ws`, 501],
+    [`/rounds/${id}/ws`, 400],
     [`/rounds/${id}/card/og.png`, 501],
   ] as const;
 

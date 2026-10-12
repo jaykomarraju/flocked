@@ -118,13 +118,24 @@ export const WsRevealedMessageSchema = z
   });
 export type WsRevealedMessage = z.infer<typeof WsRevealedMessageSchema>;
 
-/** `refunded`: one mode was refunded (including after a guardian veto), with its reason code. */
-export const WsRefundedMessageSchema = z.object({
-  type: z.literal('refunded'),
-  roundId: UlidSchema,
-  mode: ModeSchema,
-  refundReason: RefundReasonCodeSchema,
-});
+/**
+ * `refunded`: one mode was refunded (including after a guardian veto), with its reason code.
+ * `provisional` is true only for a Stakes refund proposal not yet final; `finalAt` (epoch ms) is
+ * when it becomes final (the proposal's `claimsOpenAt`) or became final (Decision log, Oct 8).
+ */
+export const WsRefundedMessageSchema = z
+  .object({
+    type: z.literal('refunded'),
+    roundId: UlidSchema,
+    mode: ModeSchema,
+    refundReason: RefundReasonCodeSchema,
+    provisional: z.boolean(),
+    finalAt: EpochMsSchema,
+  })
+  .refine((m) => !m.provisional || m.mode === 'stakes', {
+    message: 'only a Stakes refund proposal is provisional',
+    path: ['provisional'],
+  });
 export type WsRefundedMessage = z.infer<typeof WsRefundedMessageSchema>;
 
 /** Every server-to-client message, discriminated on `type`. */

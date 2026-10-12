@@ -1,9 +1,9 @@
-// Route module `rounds`: round reads and verification (W6-D; the WebSocket upgrade is W7-A's).
+// Route module `rounds`: round reads and verification (W6-D) and the WebSocket upgrade (W7-A).
 // The reads live in src/read/; this file wires them to the pinned ENDPOINTS table.
 //
 // Reveal gating (spec "API"): no response carries per-option data for a mode before its
-// `revealed_at` (src/read/), and room rounds are for their members only on every route here, the
-// WebSocket stub and the round card (src/read/access.ts). Room-round responses are `private,
+// `revealed_at` (src/read/, src/ws/), and room rounds are for their members only on every route
+// here, the WebSocket and the round card (src/read/access.ts). Room-round responses are `private,
 // no-store` and never enter the edge cache; public reads are cached for 5 s (src/read/cache.ts).
 //
 // The verification bundle's objects are served at GET /rounds/:id/bundles/:mode/:file (in the
@@ -25,6 +25,7 @@ import { PRIVATE_CACHE_CONTROL, cachedRead, readResponse } from '../read/cache.j
 import { openDailyRound, readArchive, readRound, readToday } from '../read/rounds.js';
 import { readBundleObject, readVerify } from '../read/verify.js';
 import { applyDailyGrant, recordPriorTransactions } from '../rounds/grant.js';
+import { upgradeViewer } from '../ws/upgrade.js';
 import { stubEndpoints } from './stub.js';
 
 const app = new Hono<AppEnv>();
@@ -105,9 +106,13 @@ app.get(
   },
 );
 
-// The WebSocket (W7-A) and the round card (W10-A, module `cards`, mounted after this one) are still
-// stubs; their room rounds are gated here already.
+// The live WebSocket (W7-A, src/ws/) and the round card (W10-A, module `cards`, mounted after this
+// one, still a stub): their room rounds are gated here first (anonymous 401, non-member 404).
 app.use('/rounds/:id/ws', requireRoundAccess);
 app.use('/rounds/:id/card/*', requireRoundAccess);
+
+app.get('/rounds/:id/ws', async (c) =>
+  upgradeViewer(c.env, c.req.raw, await accessFor(c, c.req.param('id'))),
+);
 
 export const rounds = stubEndpoints(app, 'rounds');

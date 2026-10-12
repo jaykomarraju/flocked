@@ -10,20 +10,9 @@ import {
   type SettlementDO,
 } from '../src/do/index.js';
 import type { AnchorCommitItem, StakesEntryEvent } from '../src/do/types.js';
-import { isNotImplemented } from '../src/lib/errors.js';
 import { FIXTURE_IDS } from './helpers/index.js';
 
 const HASH = `0x${'12'.repeat(32)}` as const;
-
-async function expectNotImplemented(call: Promise<unknown>, what: string): Promise<void> {
-  const err = await call.then(
-    () => new Error('expected a rejection'),
-    (e: unknown) => e,
-  );
-  expect(err).toBeInstanceOf(Error);
-  expect((err as Error).message).toBe(`not_implemented: ${what}`);
-  expect(isNotImplemented(err)).toBe(true);
-}
 
 const stakesEvent: StakesEntryEvent = {
   roundId: FIXTURE_IDS.round,
@@ -79,17 +68,20 @@ describe('RoundDO (binding ROUND)', () => {
 });
 
 describe('RoundViewerDO (binding ROUND_VIEWER)', () => {
+  // Implemented in W7-A; its behaviour is in test/ws. Here: the pinned RPC shapes.
   it('pins subscribe and broadcast', async () => {
-    const s = env.ROUND_VIEWER.get(env.ROUND_VIEWER.idFromName(`${FIXTURE_IDS.round}:0`));
-    await expectNotImplemented(
-      s.subscribe({ roundId: FIXTURE_IDS.round, shard: 0, shardCount: 16, membersOnly: false }),
-      'RoundViewerDO.subscribe',
-    );
-    await expectNotImplemented(
-      s.broadcast({ type: 'revealing', roundId: FIXTURE_IDS.round, mode: 'free' }),
-      'RoundViewerDO.broadcast',
-    );
-    expect((await s.fetch('https://viewer/ws')).status).toBe(501);
+    const s = env.ROUND_VIEWER.get(env.ROUND_VIEWER.idFromName(`${FIXTURE_IDS.round}/0`));
+    const err = await s
+      .subscribe({ roundId: FIXTURE_IDS.round, shard: 0, shardCount: 16, membersOnly: false })
+      .then(
+        () => new Error('expected a rejection'),
+        (e: unknown) => e,
+      );
+    expect((err as Error).message).toMatch(/^not_found/);
+    expect(
+      await s.broadcast({ type: 'revealing', roundId: FIXTURE_IDS.round, mode: 'free' }),
+    ).toEqual({ delivered: 0 });
+    expect((await s.fetch('https://viewer/ws')).status).toBe(400);
   });
 });
 
