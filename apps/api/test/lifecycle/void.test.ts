@@ -191,10 +191,12 @@ describe('SET-1b (rule 4): a void before close', () => {
         .all()
         .then((x) => x.results);
     const first = await payouts();
-    expect(first).toEqual([
-      { user_id: a, wallet: null, kind: 'refund', amount: 25, claimed_at: expect.any(Number) },
-      { user_id: b, wallet: null, kind: 'refund', amount: 40, claimed_at: expect.any(Number) },
+    expect(first.map(({ claimed_at: _, ...p }) => p)).toEqual([
+      { user_id: a, wallet: null, kind: 'refund', amount: 25 },
+      { user_id: b, wallet: null, kind: 'refund', amount: 40 },
     ]);
+    // Free payouts are credited at once, so they are written claimed.
+    expect(first.every((p) => typeof p.claimed_at === 'number')).toBe(true);
     // Retries (a crash after the D1 writes, a re-delivered alarm) write nothing more.
     expect(await applyVoid(env, r.locked, t0 + 5_000)).toEqual([]);
     expect(await applyVoid(env, r.locked, t0 + 9_000)).toEqual([]);
