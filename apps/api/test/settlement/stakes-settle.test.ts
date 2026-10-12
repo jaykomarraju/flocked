@@ -3,11 +3,12 @@
 // amounts (NFR-4, part), idempotent proposing (NFR-6), finalize at claimsOpenAt with the payouts,
 // refundTooFew, the vetoes (SET-1b rule 5, and a refund proposal settling again), refundTimeout
 // (SET-1b rule 6), and a proposal a reorg removed being posted again.
-import { env } from 'cloudflare:test';
+import { env, runInDurableObject } from 'cloudflare:test';
 import { stakesPayoutTree, type StakesLeafKind } from '@flocked/settle';
 import { newUlid } from '@flocked/shared';
 import { bytesToHex, type Hex } from 'viem';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ENTRY_SET_ALERT_MS, type SettlementDO } from '../../src/do/settlement-do.js';
 import { applyStakes } from '../../src/settlement/apply/stakes.js';
 import { BEACON_TIME_MS, alertSpy } from './helpers.js';
 import { STATUS, chainEventOf, eventsOf } from './stakes-chain.js';
@@ -247,6 +248,18 @@ describe('D1 against the streamed entry set', () => {
     await entryRow(r.roundId, r.stake, stale).run();
     expect(await h.alarm()).toMatchObject({ phase: 'preparing', chunksTotal: 0 });
     expect(r.chain.calls).toEqual([]);
+    // Still waiting 10 minutes on: it alerts, once.
+    const alerts = alertSpy();
+    await runInDurableObject(h.stub, async (o: SettlementDO, state) => {
+      const job = await state.storage.get<{ entrySetWaitSince: number }>('job');
+      if (!job) throw new Error('no job');
+      job.entrySetWaitSince -= ENTRY_SET_ALERT_MS;
+      await state.storage.put('job', job);
+      Reflect.set(o, 'job', undefined);
+    });
+    await h.alarm();
+    await h.alarm();
+    expect(alerts.codes()).toEqual(['ALERT_SETTLEMENT_FAILED']);
     await env.DB.prepare('DELETE FROM entries WHERE id = ?1').bind(stale.id).run();
     await env.DB.batch(r.entries.slice(2).map((e) => entryRow(r.roundId, r.stake, e)));
     expect(await h.alarm()).toMatchObject({ phase: 'decrypting' });

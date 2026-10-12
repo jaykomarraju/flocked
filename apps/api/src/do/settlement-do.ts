@@ -99,6 +99,8 @@ export const HOLD_POLL_MS = 60_000;
 export const ATTEMPTS_BEFORE_ALERT = 5;
 /** How often a Stakes proposal is checked onchain until its round is final (a veto, claimsOpenAt). */
 export const FOLLOW_MS = 60_000;
+/** D1 still without the streamed entry set this long (wall time) alerts once. */
+export const ENTRY_SET_ALERT_MS = 10 * 60_000;
 /** A pending operator transaction (propose, finalize, a refund) is polled again after this long. */
 const TX_PENDING_MS = 3_000;
 /** FlockedEscrow REFUND_TIMEOUT: `refundTimeout` is open to anyone from closesAt + 72 h. */
@@ -134,11 +136,19 @@ interface Job {
   bundleHash: Hex | null;
   /** Fixed at start, so a restart can't change the bundle's bytes. */
   sizes: { decrypt: number; bundle: number };
-  alerted: { beaconLate?: boolean; stalled?: boolean; failing?: boolean; voidRate?: boolean };
+  alerted: {
+    beaconLate?: boolean;
+    stalled?: boolean;
+    failing?: boolean;
+    voidRate?: boolean;
+    entrySet?: boolean;
+  };
   /** Stakes: the entry set streamed from the chain (src/settlement/stakes/entry-set.ts). */
   entrySet?: EntrySetState;
   /** Stakes: `tooFew` once refundTooFew is the way the round ends (fewer than minEntrants). */
   stakesPath?: 'propose' | 'tooFew';
+  /** Stakes: since when (wall ms) D1 hasn't held the reconciled entry set. */
+  entrySetWaitSince?: number;
 }
 
 const JOB = 'job';
@@ -261,12 +271,32 @@ export class SettlementDO extends DurableObject<Env> implements SettlementDORpc 
           return;
       }
     } catch (err) {
-      if (err instanceof ProposalPendingError || err instanceof EntrySetPendingError) {
+      if (err instanceof EntrySetPendingError) return this.entrySetPending(job, err);
+      if (err instanceof ProposalPendingError) {
         log.info('settlement_waiting', { roundId: job.roundId, mode: job.mode, why: err.message });
         return this.retryIn(job, TX_PENDING_MS);
       }
       await this.failed(job, err);
     }
+  }
+
+  /**
+   * D1 doesn't hold the reconciled entry set yet (the indexer is behind): wait, and alert once when
+   * it still doesn't after ENTRY_SET_ALERT_MS.
+   */
+  private async entrySetPending(job: Job, err: EntrySetPendingError): Promise<void> {
+    log.info('settlement_waiting', { roundId: job.roundId, mode: job.mode, why: err.message });
+    job.entrySetWaitSince ??= Date.now();
+    if (Date.now() - job.entrySetWaitSince >= ENTRY_SET_ALERT_MS && !job.alerted.entrySet) {
+      job.alerted.entrySet = true;
+      raiseAlert(this.env, 'ALERT_SETTLEMENT_FAILED', {
+        roundId: job.roundId,
+        mode: job.mode,
+        step: 'entry_set_not_ingested',
+        error: err.message,
+      });
+    }
+    return this.retryIn(job, TX_PENDING_MS);
   }
 
   /** Stakes chain access: the env's providers and the operator, every send recorded. */
