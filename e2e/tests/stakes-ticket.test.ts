@@ -490,8 +490,10 @@ describe('the API has the ticket signer sign through its SIGNER binding', () => 
       body: { recipient: wallet, country: 'US' },
     });
     expect(attested.status, JSON.stringify(attested.body)).toBe(200);
+    // The age the checkbox names (W7-B: 18 | 21), as GET /me gives it for this player.
+    const { ageRequired } = MeResponseSchema.parse((await api('/me', { token })).body).tos;
     const tos = await api('/me/tos', {
-      body: { tosVersion: vars.TOS_VERSION, ageAttested: true },
+      body: { tosVersion: vars.TOS_VERSION, ageAttested: ageRequired },
       token,
     });
     expect(tos.status, JSON.stringify(tos.body)).toBe(200);

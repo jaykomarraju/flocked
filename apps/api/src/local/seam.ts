@@ -197,7 +197,7 @@ app.post('/rounds', validate('json', CreateRoundSchema), async (c) => {
   await c.env.DB.batch([
     c.env.DB.prepare(
       'INSERT INTO questions (id, author_user_id, prompt, options_json, category, status, created_at) ' +
-        "VALUES (?1, NULL, ?2, ?3, 'test', 'scheduled', ?4)",
+        "VALUES (?1, NULL, ?2, ?3, 'other', 'scheduled', ?4)",
     ).bind(questionId, body.prompt, JSON.stringify(body.options), t),
     c.env.DB.prepare(
       'INSERT INTO rounds (id, kind, room_id, question_id, opens_at, closes_at, beacon_round, status, locked_at, config_json) ' +
@@ -260,7 +260,7 @@ app.post('/rounds/scheduled', validate('json', ScheduledRoundSchema), async (c) 
   await c.env.DB.batch([
     c.env.DB.prepare(
       'INSERT INTO questions (id, author_user_id, prompt, options_json, category, status, created_at) ' +
-        "VALUES (?1, NULL, ?2, ?3, 'test', 'scheduled', ?4)",
+        "VALUES (?1, NULL, ?2, ?3, 'other', 'scheduled', ?4)",
     ).bind(
       questionId,
       body.prompt,
@@ -349,7 +349,8 @@ app.post('/cron', validate('json', CronSchema), async (c) => {
 
 /**
  * GET /__test/rounds/:id: the RoundDO state, what D1 holds for the round's Free mode (null without
- * one), the Free round key's anchor events the indexer mirrored, and the Stakes mode (W6-A).
+ * one), the Free round key's anchor events the indexer mirrored, the Stakes mode (W6-A), and the
+ * round's settlement holds (W7-D).
  */
 app.get('/rounds/:id', validate('param', RoundParamsSchema), async (c) => {
   const { id } = c.req.valid('param');
@@ -407,6 +408,19 @@ app.get('/rounds/:id', validate('param', RoundParamsSchema), async (c) => {
       dust: number;
       winners_json: string | null;
     }>();
+  const { results: holds } = await c.env.DB.prepare(
+    'SELECT mode, reason, tx_hash, created_at, released_at, released_by FROM settlement_holds ' +
+      'WHERE round_id = ?1 ORDER BY created_at, mode, reason',
+  )
+    .bind(id)
+    .all<{
+      mode: string;
+      reason: string;
+      tx_hash: string | null;
+      created_at: number;
+      released_at: number | null;
+      released_by: string | null;
+    }>();
   const { results: payouts } = await c.env.DB.prepare(
     "SELECT user_id, kind, amount FROM payouts WHERE round_id = ?1 AND mode = 'free' ORDER BY user_id",
   )
@@ -435,6 +449,15 @@ app.get('/rounds/:id', validate('param', RoundParamsSchema), async (c) => {
         settlement.winners_json === null ? null : (JSON.parse(settlement.winners_json) as unknown),
     },
     payouts: payouts.map((p) => ({ userId: p.user_id, kind: p.kind, amount: p.amount })),
+    // Settlement holds of either mode (W7-D: E2E-6's refund_vetoed, the timeout's foreign_entry).
+    holds: holds.map((h) => ({
+      mode: h.mode,
+      reason: h.reason,
+      txHash: h.tx_hash,
+      createdAt: h.created_at,
+      releasedAt: h.released_at,
+      releasedBy: h.released_by,
+    })),
     anchorEvents: anchorEvents.map((e) => ({
       event: e.event,
       txHash: e.tx_hash,

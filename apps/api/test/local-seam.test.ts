@@ -5,7 +5,7 @@
 // (e2e/tests/stack-smoke.test.ts) covers the full flow with a real drand network.
 import { exports } from 'cloudflare:workers';
 import { env } from 'cloudflare:test';
-import { ErrorEnvelopeSchema, newUlid } from '@flocked/shared';
+import { ErrorEnvelopeSchema, RoundDetailResponseSchema, newUlid } from '@flocked/shared';
 import { beaconTime, chainFromEnv, firstRoundAtOrAfter } from '@flocked/tlock';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { seamEnabled } from '../src/local/seam.js';
@@ -116,7 +116,46 @@ describe('with the key, in local', () => {
       free: { status: 'pending', commitmentRoot: null, lockTx: null, commitTx: null },
       entries: [],
       anchorEvents: [],
+      holds: [],
     });
+
+    // The public API serves it within its own schema (W7-D: the seam's question used to have the
+    // category 'test', outside CATEGORIES, so GET /rounds/:id failed RoundDetailResponseSchema).
+    const id = body.locked.roundId;
+    const pub = await exports.default.fetch(
+      new Request(`https://flocked.test/api/v1/rounds/${id}`),
+    );
+    expect(pub.status).toBe(200);
+    expect(RoundDetailResponseSchema.parse(await pub.json()).round.question.category).toBe('other');
+
+    // The round's settlement holds, open or released (W7-D: E2E-6 and the timeout spec read them).
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO settlement_holds (round_id, mode, reason, tx_hash, created_at) VALUES (?1, 'stakes', 'foreign_entry', ?2, 5)",
+      ).bind(id, `0x${'ab'.repeat(32)}`),
+      env.DB.prepare(
+        "INSERT INTO settlement_holds (round_id, mode, reason, tx_hash, created_at, released_at, released_by) VALUES (?1, 'stakes', 'refund_vetoed', NULL, 7, 9, 'test-seam')",
+      ).bind(id),
+    ]);
+    const held = await (await seam(`/rounds/${id}`)).json<{ holds: unknown[] }>();
+    expect(held.holds).toEqual([
+      {
+        mode: 'stakes',
+        reason: 'foreign_entry',
+        txHash: `0x${'ab'.repeat(32)}`,
+        createdAt: 5,
+        releasedAt: null,
+        releasedBy: null,
+      },
+      {
+        mode: 'stakes',
+        reason: 'refund_vetoed',
+        txHash: null,
+        createdAt: 7,
+        releasedAt: 9,
+        releasedBy: 'test-seam',
+      },
+    ]);
 
     const reveal = await seam(`/rounds/${body.locked.roundId}/reveal`, {
       signature: 'ab'.repeat(48),
