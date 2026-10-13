@@ -8,7 +8,9 @@
 //
 // The Free receipt is re-signed from the stored fields with the receipt key (EIP-712 signatures are
 // deterministic, so it is the receipt the entry got while the key is unchanged); without a key it is
-// null. Stakes payouts and proofs come from the bundle (src/read/proofs.ts), like GET /claims.
+// null. Stakes payouts and proofs come from the bundle (src/read/proofs.ts), like GET /claims, and
+// only for a proposal live onchain (W6-F1 R8, R9): once a reorg removes `OutcomeProposed` the mode is
+// back at `revealing` with `revealed_at` still set, and no proof is served until it is proposed again.
 import type {
   EntryResult,
   Mode,
@@ -21,7 +23,7 @@ import type { Hex } from 'viem';
 import { receiptSigner } from '../crypto/receipt.js';
 import type { Env } from '../env.js';
 import { log } from '../lib/log.js';
-import { freeInclusionProof, stakesPayoutIndex } from './proofs.js';
+import { freeInclusionProof, liveStakesPayoutIndex } from './proofs.js';
 
 interface Row {
   mode: Mode;
@@ -44,6 +46,9 @@ interface Row {
   outcome: string | null;
   winners_json: string | null;
   bundle_hash: Hex | null;
+  payout_root: Hex | null;
+  /** round_modes.bundle_hash: what the `OutcomeProposed` handler recorded from the chain. */
+  chain_bundle_hash: Hex | null;
 }
 
 interface PayoutRow {
@@ -111,10 +116,16 @@ async function stakesPayouts(
       },
     ];
   }
-  if (r.revealed_at === null || r.bundle_hash === null || r.outcome !== 'settled') return [];
+  if (r.outcome !== 'settled') return [];
   try {
-    const index = await stakesPayoutIndex(env, roundId, r.bundle_hash);
-    const p = index.byWallet.get(wallet);
+    const index = await liveStakesPayoutIndex(env, roundId, {
+      status: r.status,
+      revealedAt: r.revealed_at,
+      chainBundleHash: r.chain_bundle_hash,
+      bundleHash: r.bundle_hash,
+      payoutRoot: r.payout_root,
+    });
+    const p = index?.byWallet.get(wallet);
     if (!p) return [];
     const m = mark(p.kind);
     return [
@@ -152,7 +163,8 @@ export async function readRoundMe(
         `SELECT m.mode, m.status, m.revealed_at, m.claims_open_at, m.commitment_root,
                 e.id AS entry_id, e.stake, e.commitment, e.created_at, e.wallet, e.tx_hash,
                 e.block_number, e.log_index, e.receipt_seq, e.option_index, e.valid, e.void_reason,
-                s.outcome, s.winners_json, s.bundle_hash
+                s.outcome, s.winners_json, s.bundle_hash, s.payout_root,
+                m.bundle_hash AS chain_bundle_hash
          FROM entries e JOIN round_modes m ON m.round_id = e.round_id AND m.mode = e.mode
          LEFT JOIN settlements s ON s.round_id = e.round_id AND s.mode = e.mode
            AND s.superseded_at IS NULL AND m.revealed_at IS NOT NULL

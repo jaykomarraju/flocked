@@ -153,10 +153,13 @@ export async function questionFor(
   return insertQuestion({ id: row.question_id, authorId });
 }
 
-/** A locked config with the launch defaults for `modes`. */
+/**
+ * A locked config with the launch defaults for `modes`. `payoutAddress` is the Stakes payout wallet
+ * the lock froze (left out unless given, as in a config locked before O4).
+ */
 export function lockedConfig(
   modes: readonly Mode[],
-  o: { creator?: string; awardRecipient?: string | null } = {},
+  o: { creator?: string; awardRecipient?: string | null; payoutAddress?: string | null } = {},
 ): LockedConfig {
   return LockedConfigSchema.parse({
     beaconDelay: LOCKED_CONFIG_DEFAULTS.beaconDelay,
@@ -168,6 +171,7 @@ export function lockedConfig(
           stakes: {
             ...LOCKED_CONFIG_DEFAULTS.stakes,
             creator: o.creator ?? '0x000000000000000000000000000000000000dead',
+            ...(o.payoutAddress !== undefined ? { payoutAddress: o.payoutAddress } : {}),
           },
         }
       : {}),

@@ -2,9 +2,10 @@
 //   * notification hooks (W9-A): at `opensAt` (`question_live`), 3 h before close (`streak_at_risk`)
 //     and 60 min before close (`closing_soon`). A hook only resolves recipients and enqueues
 //     `notify` messages; the notify consumer sends them. No recipients are resolved yet.
-//   * broadcast (W7-A): the WebSocket fan-out through RoundViewerDO shards. A no-op until then.
+//   * broadcast (W7-A): the WebSocket fan-out through RoundViewerDO shards (src/ws/).
 import type { Mode, NotifyMessage, WsServerMessage } from '@flocked/shared';
 import type { Env } from '../env.js';
+import { publish } from '../ws/hub.js';
 
 export type RoundNotifyEvent = 'question_live' | 'streak_at_risk' | 'closing_soon';
 
@@ -48,7 +49,11 @@ export async function enqueueNotifications(
   return messages.length;
 }
 
-/** Broadcast to the round's viewers (W7-A: coalesced to at most one counts update per second). */
-export function broadcast(_env: Env, _roundId: string, _message: WsServerMessage): void {
-  // W7-A
+/**
+ * Broadcast to the round's viewers through its RoundViewerDO shards (W7-A, src/ws/hub.ts): `counts`
+ * coalesced to at most one per second (the last one always sent), every message in order. Returns
+ * at once; the hub holds the fan-out and logs a shard it can't reach.
+ */
+export function broadcast(env: Env, roundId: string, message: WsServerMessage): void {
+  publish(env, roundId, message);
 }

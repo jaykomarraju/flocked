@@ -4,5 +4,5 @@
     "types": ["node"],
     "allowJs": true
   },
-  "include": ["tests", "vitest.config.ts"]
+  "include": ["tests", "fixtures", "ui", "vitest.config.ts", "playwright.config.ts"]
 }

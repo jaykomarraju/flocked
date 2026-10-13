@@ -1,10 +1,12 @@
 // Spec "API" › Reveal gating: "Room round endpoints, WebSockets and bundles are for members only."
-// Every gated route of a (revealed) room round — the round, /verify, the bundle objects, /me, and the
-// WebSocket and round-card stubs — answers 401 without a session and 404 (exactly as for a round that
+// Every gated route of a (revealed) room round — the round, /verify, the bundle objects, /me, the
+// WebSocket and the round-card stub — answers 401 without a session and 404 (exactly as for a round that
 // doesn't exist) to a signed-in non-member, and serves members `private, no-store`. The edge cache
 // (src/read/cache.ts, off on `local`) is driven with a `staging` env and a fake Cache through
 // EDGE_CACHE_DEPS: it stores anonymous public reads only, never a room-round or signed-in response,
-// and never answers for a room round. GET /claims?wallet= leaves room rounds out.
+// and never answers for a room round. GET /claims?wallet= leaves room rounds out of `claims`, and
+// lists the wallet's own room-round payouts in `roomClaims` with only the chain round ID, kind,
+// account, amount, proof and claim-open time (O5).
 import { env } from 'cloudflare:test';
 import {
   ClaimsResponseSchema,
@@ -80,7 +82,10 @@ afterAll(() => {
 
 const local = () => at(BEACON_TIME_MS + 10_000);
 
-/** Every gated route of a round, with what a member gets (the two stubs answer 501 after the gate). */
+/**
+ * Every gated route of a round, with what a member gets (after the gate, the WebSocket answers a plain
+ * GET 400 and the card stub 501; test/ws/ upgrades members).
+ */
 const ROUTES = (id: string) =>
   [
     [`/rounds/${id}`, 200],
@@ -88,7 +93,7 @@ const ROUTES = (id: string) =>
     [`/rounds/${id}/bundles/free/manifest.json`, 200],
     [`/rounds/${id}/bundles/free/chunk-0000.json`, 200],
     [`/rounds/${id}/me`, 200],
-    [`/rounds/${id}/ws`, 501],
+    [`/rounds/${id}/ws`, 400],
     [`/rounds/${id}/card/og.png`, 501],
   ] as const;
 
@@ -277,7 +282,7 @@ describe('the edge cache stores anonymous public reads only', () => {
 
 // GET /claims?wallet= ---------------------------------------------------------------------------
 
-describe('GET /claims?wallet= leaves room rounds out', () => {
+describe('GET /claims?wallet= leaves room rounds out of `claims`', () => {
   it('a wallet’s revealed win in a room round is listed for its signed-in owner only; its daily win is public', async () => {
     const wallet = randomWallet() as Hex;
     // The same wallet wins (option 0, the minority) in a daily round and in a room round.
@@ -290,18 +295,37 @@ describe('GET /claims?wallet= leaves room rounds out', () => {
     const holder = room.entries[0]?.userId as string;
     await join(holder);
 
-    for (const h of [{}, outsider, entrant]) {
-      const byWallet = ClaimsResponseSchema.parse(
-        (await get(local(), `/claims?wallet=${wallet}`, h)).json,
-      );
-      expect(byWallet.claims.map((c) => c.roundId)).toEqual([daily.roundId]);
-      expect(byWallet.claims[0]).toMatchObject({ kind: 'win', account: wallet, userId: null });
-    }
     // The room round's claim is its owner's, signed in (and its proof comes with it).
     const mine = ClaimsResponseSchema.parse(
       (await get(local(), '/claims', await signIn(holder))).json,
     );
     expect(mine.claims.map((c) => c.roundId)).toEqual([room.roundId]);
     expect(mine.claims[0]?.proof?.length).toBeGreaterThan(0);
+    expect(mine.roomClaims).toBeUndefined();
+    const owned = mine.claims[0];
+    if (!owned) throw new Error('no room claim');
+
+    for (const h of [{}, outsider, entrant]) {
+      const answer = await get(local(), `/claims?wallet=${wallet}`, h);
+      const byWallet = ClaimsResponseSchema.parse(answer.json);
+      expect(byWallet.claims.map((c) => c.roundId)).toEqual([daily.roundId]);
+      expect(byWallet.claims[0]).toMatchObject({ kind: 'win', account: wallet, userId: null });
+      // O5: the wallet's own room-round payout, with only what claiming needs (exact keys).
+      expect((answer.json as { roomClaims: unknown }).roomClaims).toEqual([
+        {
+          chainRoundId: owned.chainRoundId,
+          kind: 'win',
+          account: wallet,
+          amount: owned.amount,
+          proof: owned.proof,
+          claimsOpenAt: owned.claimsOpenAt,
+        },
+      ]);
+      // Nothing names the room round, its room, its question or another member.
+      const text = new TextDecoder().decode(answer.bytes);
+      for (const secret of [room.roundId, ROOM, ...room.entries.slice(1).map((e) => e.wallet)]) {
+        expect(text).not.toContain(secret);
+      }
+    }
   });
 });

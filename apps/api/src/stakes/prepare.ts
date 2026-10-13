@@ -2,7 +2,9 @@
 // "Compliance and responsible play"; "Modes: Free and Stakes" flags). A ticket is issued only if
 // every check passes, in this order (the first failure answers, with its own error code):
 //   1. the kill switch `mode.stakes.enabled` is on (it stops tickets immediately; the signer checks
-//      it again before signing);
+//      it again before signing, and its refusal answers `stakes_disabled` too);
+//   then a room round is invisible outside its room: a non-member gets the unknown round's 404
+//   before anything else about the round answers (spec "API" › Reveal gating; W6-F1 R10);
 //   2. the round's Stakes mode exists, was created onchain and is open: `round_modes.status` is
 //      `pending` and the RoundDO is open with no void requested (W4-Z carry-over: `round_modes`
 //      alone misses a pending void);
@@ -11,15 +13,17 @@
 //      not suspended. Any linked wallet holding both attestations satisfies the country check, not
 //      only the entering one (owner decision, Oct 12, 2026);
 //   4. the entering wallet is a verified wallet linked to the user;
-//   5. room rounds: the user is a member whose account is at least 24 hours older than closesAt;
+//   5. room rounds: the (member's) account is at least 24 hours older than closesAt;
 //   6. the person has no Stakes entry in the round yet;
 //   7. the round's stake fits in what is left of the daily cap for the round's game day, counting
-//      indexed stakes and live tickets (src/stakes/cap.ts).
+//      indexed stakes, live tickets and unused ones the indexer has not processed past (O2;
+//      src/stakes/cap.ts).
 // Then issuance, serialised per person by one conditional insert: the row goes in only if the user
-// holds no live ticket on that game day (and the person none in this round), so two concurrent
-// requests issue one ticket. The committed row is what the signer checks before it signs; if the
-// signer fails, the row is deleted again (no signature exists outside the signer, so nothing can use
-// it) and the request answers 503.
+// holds no live ticket on that game day, and the person no live or used ticket in this round (W6-F1
+// R13: a used one means an entry, maybe not indexed yet), so two concurrent requests issue one
+// ticket. The committed row is what the signer checks before it signs; if the signer fails, the row
+// is deleted again (no signature exists outside the signer, so nothing can use it; the delete is
+// retried) and the request answers 503, or `stakes_disabled` when the signer saw the kill switch off.
 //
 // No person tag or person ID reaches a log (NFR-8).
 import {
@@ -40,10 +44,12 @@ import { log } from '../lib/log.js';
 import type { Env } from '../env.js';
 import { readStakesConfig } from '../personhood/config-store.js';
 import { stakesEligibility } from '../personhood/eligibility.js';
+import { isRoomMember } from '../read/access.js';
 import {
   TICKET_REISSUE_GRACE_SEC,
   TICKET_TTL_SEC,
   effectiveDailyCap,
+  indexedThroughSec,
   stakedOnGameDay,
 } from './cap.js';
 import { personTag } from './person-tag.js';
@@ -153,18 +159,16 @@ async function requireLinkedWallet(db: D1Database, userId: string, wallet: Addre
   if (!linked) throw new HttpError('identity_required', 'Link this wallet to your account first');
 }
 
-/** Check 5: room rounds are for members whose account is 24 hours older than closesAt. */
-async function requireRoomMember(
-  db: D1Database,
-  round: RoundRow,
-  userId: string,
-  createdAt: number,
-) {
-  const member = await db
-    .prepare('SELECT 1 AS ok FROM room_members WHERE room_id = ?1 AND user_id = ?2')
-    .bind(round.room_id, userId)
-    .first();
-  if (!member) throw new HttpError('not_member', "You aren't a member of this room");
+/** Reveal gating: a room round answers a non-member as if it didn't exist. */
+async function requireVisible(db: D1Database, round: RoundRow, userId: string): Promise<void> {
+  if (round.kind !== 'room') return;
+  if (round.room_id === null || !(await isRoomMember(db, round.room_id, userId))) {
+    throw new HttpError('not_found', 'No such round');
+  }
+}
+
+/** Check 5: room rounds (members, checked first) need an account 24 hours older than closesAt. */
+function requireRoomAccountAge(round: RoundRow, createdAt: number) {
   if (createdAt > round.closes_at - ROOM_ACCOUNT_MIN_AGE_MS) {
     throw new HttpError(
       'ineligible',
@@ -195,7 +199,9 @@ async function requireCapRoom(
   gameDay: string,
   stake: bigint,
   t: number,
+  escrow: { chainId: number; address: Address },
 ) {
+  const throughSec = await indexedThroughSec(db, escrow.chainId, escrow.address);
   const [limits, staked] = await Promise.all([
     db
       .prepare(
@@ -207,7 +213,7 @@ async function requireCapRoom(
         pending_cap: number | null;
         pending_cap_effective_at: number | null;
       }>(),
-    stakedOnGameDay(db, userId, gameDay, round.id, Math.floor(t / 1000)),
+    stakedOnGameDay(db, userId, gameDay, round.id, Math.floor(t / 1000), throughSec),
   ]);
   if (staked + stake > effectiveDailyCap(limits, t)) {
     throw new HttpError('stake_cap_reached', "This stake would go over today's cap");
@@ -215,10 +221,11 @@ async function requireCapRoom(
 }
 
 /**
- * Records the ticket unless the user already holds a live one on `gameDay` (or the person one in
- * this round): one statement, so concurrent requests serialise on it. True when inserted.
+ * Records the ticket unless the user already holds a live one on `gameDay`, or the person a live or
+ * used one in this round: one statement, so concurrent requests serialise on it. True when inserted.
+ * Exported for tests.
  */
-async function insertTicket(
+export async function insertTicket(
   db: D1Database,
   row: {
     ticketHash: Hex;
@@ -236,8 +243,8 @@ async function insertTicket(
     .prepare(
       'INSERT INTO stakes_tickets (ticket_hash, round_id, person_tag, user_id, wallet, expiry, issued_at, game_day) ' +
         'SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8 WHERE NOT EXISTS (SELECT 1 FROM stakes_tickets ' +
-        'WHERE used_tx IS NULL AND expiry + ?10 > ?9 ' +
-        'AND ((user_id = ?4 AND game_day = ?8) OR (round_id = ?2 AND person_tag = ?3)))',
+        'WHERE (used_tx IS NULL AND expiry + ?10 > ?9 AND user_id = ?4 AND game_day = ?8) ' +
+        'OR (round_id = ?2 AND person_tag = ?3 AND (used_tx IS NOT NULL OR expiry + ?10 > ?9)))',
     )
     .bind(
       row.ticketHash,
@@ -255,6 +262,35 @@ async function insertTicket(
   return res.meta.changes === 1;
 }
 
+/** The signer's refusal when it reads the kill switch off (apps/signer `ticket_refused: <reason>`). */
+const SIGNER_DISABLED = 'ticket_refused: stakes_disabled';
+
+/** Attempts at deleting a ticket row the signer didn't sign. */
+export const DROP_TICKET_ATTEMPTS = 3;
+
+/**
+ * Deletes an unsigned ticket row, retried: a row left behind would block the user's next ticket
+ * until it expires (+ 30 s) and hold its stake against the cap. A row that can't be deleted is
+ * logged and left to expire; the request still answers its refusal.
+ */
+async function dropTicket(db: D1Database, roundId: string, ticketHash: Hex): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await db.prepare('DELETE FROM stakes_tickets WHERE ticket_hash = ?1').bind(ticketHash).run();
+      return;
+    } catch (err) {
+      if (attempt >= DROP_TICKET_ATTEMPTS) {
+        log.error('ticket_drop_failed', {
+          roundId,
+          attempts: attempt,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return;
+      }
+    }
+  }
+}
+
 /** Runs every check, records the ticket, has the signer sign it, and returns what `enter` needs. */
 export async function prepareStakesTicket(
   env: Env,
@@ -270,6 +306,7 @@ export async function prepareStakesTicket(
   const [round, config] = await Promise.all([loadRound(db, roundId), readStakesConfig(db)]);
   if (!config.stakesEnabled) throw new HttpError('stakes_disabled', 'Stakes is paused');
   if (!round) throw new HttpError('not_found', 'No such round');
+  await requireVisible(db, round, user.id);
   const stake = lockedStake(round);
   if (stake === null || round.beacon_round === null) {
     throw new HttpError('mode_unavailable', "Stakes isn't open in this round");
@@ -286,14 +323,10 @@ export async function prepareStakesTicket(
     .first<{ person_id: string | null; created_at: number }>();
   if (!person?.person_id) throw ineligible(['not_verified']);
   await requireLinkedWallet(db, user.id, wallet);
-  if (round.kind === 'room') await requireRoomMember(db, round, user.id, person.created_at);
+  if (round.kind === 'room') requireRoomAccountAge(round, person.created_at);
 
   const tag = await personTag(env, person.person_id, round.id);
   await requireNoEntry(db, round.id, user.id, tag);
-  const gameDay = gameDayOf(Math.floor(round.closes_at / 1000));
-  await requireCapRoom(db, user.id, round, gameDay, stake, t);
-
-  const signer = ticketSigner(env);
   let chainId: number;
   let escrow: Address;
   try {
@@ -302,6 +335,10 @@ export async function prepareStakesTicket(
   } catch {
     throw unavailable('LOCAL_DEPLOYMENT');
   }
+  const gameDay = gameDayOf(Math.floor(round.closes_at / 1000));
+  await requireCapRoom(db, user.id, round, gameDay, stake, t, { chainId, address: escrow });
+
+  const signer = ticketSigner(env);
   const expiry = nowSec + TICKET_TTL_SEC;
   const ticketHash = ticketDigest(
     { chainId, verifyingContract: escrow },
@@ -323,6 +360,8 @@ export async function prepareStakesTicket(
     nowSec,
   );
   if (!inserted) {
+    // A used ticket for this round (an entry the indexer may not have seen yet) is an entry.
+    await requireNoEntry(db, round.id, user.id, tag);
     throw new HttpError(
       'ticket_live',
       'You already have a live ticket today; try again once it has expired',
@@ -341,11 +380,11 @@ export async function prepareStakesTicket(
   } catch (err) {
     // Nobody but this request could hold a signature for the row, so dropping it is safe, and it
     // lets the user retry at once rather than after the ticket would have expired.
-    await db.prepare('DELETE FROM stakes_tickets WHERE ticket_hash = ?1').bind(ticketHash).run();
-    log.error('ticket_sign_failed', {
-      roundId: round.id,
-      error: err instanceof Error ? err.message : String(err),
-    });
+    await dropTicket(db, round.id, ticketHash);
+    const error = err instanceof Error ? err.message : String(err);
+    log.error('ticket_sign_failed', { roundId: round.id, error });
+    // The kill switch went off between check 1 and the signer's own check.
+    if (error.includes(SIGNER_DISABLED)) throw new HttpError('stakes_disabled', 'Stakes is paused');
     throw new HttpError('unavailable', 'Stakes tickets are unavailable right now');
   }
   log.info('stakes_ticket_issued', { roundId: round.id, gameDay });

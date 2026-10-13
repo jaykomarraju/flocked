@@ -106,7 +106,7 @@ describe('per-user write limit', () => {
       t.env,
       'POST',
       '/me/tos',
-      { tosVersion: '2026-10-01', ageAttested: true },
+      { tosVersion: '2026-10-01', ageAttested: 18 },
       s.headers,
     );
     expect(res.status).toBe(429);

@@ -239,6 +239,8 @@ const SPEC_COLUMNS: Record<string, readonly string[]> = {
     'pending_cap',
     'pending_cap_effective_at',
     'created_at',
+    // 0015 (W7-B): the deleted account, so re-verification carries its tickets (W7-B spec issue).
+    'user_id',
   ],
 };
 
@@ -661,6 +663,179 @@ describe('0013 (W6-D)', () => {
     const details = plan.results.map((r) => r.detail).join('\n');
     expect(details).toContain('entries_stakes_wallet_idx');
     expect(details).not.toMatch(/SCAN e\b/);
+  });
+});
+
+// W3-Z carry-over: 0002 rebuilt `users` to make `handle` nullable. Replay 0001's `users` and then
+// 0002 on a renamed copy, with rows in it, and compare: every column's type, NOT NULL and default,
+// every CHECK and index, and the rows themselves must survive; only `handle` loses NOT NULL.
+describe('0002 (W3-A) against 0001: users', () => {
+  const rename = (sql: string) =>
+    sql.replace(/\busers_(\w+)/g, 'mig_users_$1').replace(/\busers\b/g, 'mig_users');
+  const queriesOf = (name: string) => {
+    const m = env.TEST_MIGRATIONS.find((x) => x.name === name);
+    if (!m) throw new Error(`no migration ${name}`);
+    return m.queries;
+  };
+  const columns = async () =>
+    (
+      await env.DB.prepare(
+        'SELECT name, type, "notnull" AS nn, dflt_value, pk FROM pragma_table_info(\'mig_users\') ORDER BY cid',
+      ).all<{ name: string; type: string; nn: number; dflt_value: string | null; pk: number }>()
+    ).results;
+  const checks = async () => {
+    const row = await env.DB.prepare(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'mig_users'",
+    ).first<{ sql: string }>();
+    // Each CHECK clause, whitespace-normalised (the table name differs only by the rebuild).
+    return [...(row?.sql ?? '').matchAll(/CHECK\s*\(((?:[^()]|\([^()]*\))*)\)/g)]
+      .map((m) => (m[1] ?? '').replace(/\s+/g, ' ').trim())
+      .sort();
+  };
+  const indexes = async () =>
+    (
+      await env.DB.prepare(
+        "SELECT name, sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'mig_users' AND sql IS NOT NULL ORDER BY name",
+      ).all<{ name: string; sql: string }>()
+    ).results.map((r) => ({ name: r.name, sql: r.sql.replace(/\s+/g, ' ') }));
+  const rows = async () =>
+    (await env.DB.prepare('SELECT * FROM mig_users ORDER BY id').all()).results;
+
+  it('keeps every column, CHECK, default, index and row; only handle becomes nullable', async () => {
+    const v1 = queriesOf('0001_init.sql').filter((q) => /CREATE TABLE users\b|ON users \(/.test(q));
+    expect(v1.length).toBeGreaterThanOrEqual(2);
+    for (const q of v1) await env.DB.prepare(rename(q)).run();
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO mig_users (id, handle, ref_code, created_at) VALUES ('U1', 'ewe', 'R1', 1)",
+      ),
+      env.DB.prepare(
+        'INSERT INTO mig_users (id, handle, display_name, avatar_url, role, status, merged_into, prefs_json, ' +
+          'age_attested_at, tos_version, tos_accepted_at, kyc_status, person_id, person_verified_at, ref_code, ' +
+          "coinbase_country, coinbase_region, created_at) VALUES ('U2', 'ram', 'Ram', 'https://x.test/a.png', " +
+          "'admin', 'merged', 'U1', '{\"show_stakes_net\":true}', 5, 'v1', 6, 'verified', '0xp', 7, 'R2', 'US', 'NJ', 2)",
+      ),
+    ]);
+    const before = {
+      columns: await columns(),
+      checks: await checks(),
+      indexes: await indexes(),
+      rows: await rows(),
+    };
+
+    for (const q of queriesOf('0002_auth.sql')) await env.DB.prepare(rename(q)).run();
+
+    const after = {
+      columns: await columns(),
+      checks: await checks(),
+      indexes: await indexes(),
+      rows: await rows(),
+    };
+    expect(after.rows).toEqual(before.rows);
+    expect(after.checks).toEqual(before.checks);
+    expect(after.indexes).toEqual(before.indexes);
+    expect(after.columns).toEqual(
+      before.columns.map((c) => (c.name === 'handle' ? { ...c, nn: 0 } : c)),
+    );
+    expect(before.columns.find((c) => c.name === 'handle')?.nn).toBe(1);
+    // The CHECKs still bite on the rebuilt table.
+    await expect(
+      env.DB.prepare(
+        "INSERT INTO mig_users (id, ref_code, created_at, status) VALUES ('U3', 'R3', 3, 'merged')",
+      ).run(),
+    ).rejects.toThrow(/CHECK constraint failed/);
+    await expect(
+      env.DB.prepare(
+        "INSERT INTO mig_users (id, ref_code, created_at, role) VALUES ('U4', 'R4', 4, 'owner')",
+      ).run(),
+    ).rejects.toThrow(/CHECK constraint failed/);
+    await env.DB.prepare('DROP TABLE mig_users').run();
+  });
+});
+
+describe('0015 (W7-B)', () => {
+  it('person_tombstones.user_id; one pending merge per (kept, losing) pair; share cards by user', async () => {
+    const insert = (id: string, status: string) =>
+      env.DB.prepare(
+        "INSERT INTO merges (id, kept_user_id, losing_user_id, identity_id, status, expires_at, created_at) VALUES (?1, 'K', 'L', 'i', ?2, 9, 1)",
+      )
+        .bind(id, status)
+        .run();
+    await insert('M1', 'pending');
+    await expect(insert('M2', 'pending')).rejects.toThrow(/UNIQUE constraint failed/);
+    await insert('M3', 'expired');
+    await insert('M4', 'refused');
+    await env.DB.prepare(
+      "INSERT INTO person_tombstones (person_id, created_at, user_id) VALUES ('0xp15', 1, 'U15')",
+    ).run();
+    const plan = await env.DB.prepare(
+      "EXPLAIN QUERY PLAN SELECT round_id FROM share_cards WHERE user_id = 'U'",
+    ).all<{ detail: string }>();
+    expect(plan.results.map((r) => r.detail).join('\n')).toContain('share_cards_user_idx');
+  });
+});
+
+describe('0016 (W6-F1 O1)', () => {
+  const insert =
+    'INSERT INTO settlement_holds (round_id, mode, reason, tx_hash, created_at, released_at, released_by) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)';
+  const rows = () =>
+    env.DB.prepare(
+      "SELECT round_id, mode, reason, tx_hash, created_at, released_at, released_by FROM settlement_holds WHERE round_id LIKE 'r-0016%' ORDER BY round_id, mode, reason",
+    )
+      .all()
+      .then((r) => r.results);
+
+  it('settlement_holds takes refund_vetoed (no tx_hash), with the same columns, key and checks', async () => {
+    const { results } = await env.DB.prepare('SELECT name FROM d1_migrations').all<{
+      name: string;
+    }>();
+    expect(results.map((r) => r.name)).toContain('0016_refund_vetoed_hold.sql');
+    await env.DB.prepare(insert)
+      .bind('r-0016-a', 'stakes', 'refund_vetoed', null, 1, null, null)
+      .run();
+    expect(
+      await rejects(insert, 'r-0016-b', 'stakes', 'refund_vetoed', '0xabc', 1, null, null),
+    ).toContain('CHECK constraint failed: settlement_holds_tx');
+    expect(
+      await rejects(insert, 'r-0016-a', 'stakes', 'refund_vetoed', null, 2, null, null),
+    ).toContain('UNIQUE');
+    expect(
+      await rejects(insert, 'r-0016-b', 'stakes', 'refund_vetoed', null, 1, 5, null),
+    ).toContain('CHECK constraint failed: settlement_holds_release');
+    expect(await rejects(insert, 'r-0016-b', 'stakes', 'other', null, 1, null, null)).toContain(
+      'CHECK constraint failed',
+    );
+    expect((await columnsOf('settlement_holds')).map((c) => [c.name, c.pk])).toEqual([
+      ['round_id', 1],
+      ['mode', 2],
+      ['reason', 3],
+      ['tx_hash', 0],
+      ['created_at', 0],
+      ['released_at', 0],
+      ['released_by', 0],
+    ]);
+    expect((await indexesOf('settlement_holds')).map((i) => [i.origin, i.columns])).toEqual([
+      ['pk', ['round_id', 'mode', 'reason']],
+    ]);
+    const strict = await env.DB.prepare(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'settlement_holds'",
+    ).first<{ sql: string }>();
+    expect(strict?.sql).toMatch(/\)\s*STRICT$/);
+  });
+
+  it('the rebuild keeps every row as it was', async () => {
+    await env.DB.batch([
+      env.DB.prepare(insert).bind('r-0016-c', 'stakes', 'foreign_entry', '0xfe', 10, 20, 'admin-1'),
+      env.DB.prepare(insert).bind('r-0016-c', 'free', 'void_rate', null, 11, null, null),
+      env.DB.prepare(insert).bind('r-0016-d', 'stakes', 'refund_vetoed', null, 12, 30, 'admin-2'),
+    ]);
+    const before = await rows();
+    // 0016's statements once more, on the rebuilt table: the same columns, so the rows carry over.
+    const m = env.TEST_MIGRATIONS.find((x) => x.name === '0016_refund_vetoed_hold.sql');
+    if (!m) throw new Error('0016 is not a migration');
+    await env.DB.batch(m.queries.map((q) => env.DB.prepare(q)));
+    expect(await rows()).toEqual(before);
+    expect(before).toHaveLength(4);
   });
 });
 

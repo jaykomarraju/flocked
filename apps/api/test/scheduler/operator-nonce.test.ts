@@ -13,6 +13,7 @@ import {
   type EscrowRoundConfig,
 } from '../../src/chain/operator.js';
 import { log } from '../../src/lib/log.js';
+import type { FakeChain } from '../anchor-do/fake-chain.js';
 import { drand } from '../anchor-do/helpers.js';
 import { chainHarness, setClock, stalePendingNonce } from './helpers.js';
 
@@ -166,5 +167,68 @@ describe('W6-A: one owner of the operator nonce', () => {
     ]);
     expect(await nonceOf(`createRound:${z}`)).toBe(1);
     expect(await nonceOf(`createRound:${x}`)).toBe(2);
+  });
+});
+
+/** A reorg drops the block that mined `hash`, and no node holds the transaction any more. */
+function reorgOut(fake: FakeChain, hash: Hex): void {
+  const tx = fake.sent.find((s) => s.hash === hash);
+  if (!tx) throw new Error(`never sent ${hash}`);
+  fake.receipts.delete(tx.hash);
+  fake.known.delete(tx.hash);
+  const n = fake.nonces.get(tx.from) ?? 0;
+  if (n > tx.nonce) fake.nonces.set(tx.from, tx.nonce);
+}
+
+describe('W6-F1 R1: a nonce a reorg freed is used again', () => {
+  it('a mined send a reorg dropped frees its nonce: the next send takes it, so nothing waits behind a gap', async () => {
+    const t = Date.UTC(2027, 7, 4, 12, 0, 0);
+    const { fake, deps } = await chainHarness(t);
+    setClock(t);
+    const [x, y] = [newUlid(), newUlid()];
+    expect((await createRound(env, deps.operator, { roundId: x, cfg: cfg(t) })).status).toBe(
+      'mined',
+    );
+    expect(await nonceOf(`createRound:${x}`)).toBe(0);
+
+    reorgOut(fake, fake.sent[0]!.hash);
+    // The chain's pending count is 0 again; x's row is finished at 0 and holds nothing.
+    const r = await createRound(env, deps.operator, { roundId: y, cfg: cfg(t) });
+    expect(await nonceOf(`createRound:${y}`)).toBe(0);
+    expect(r.status).toBe('mined');
+    expect(fake.sent.map((s) => s.nonce)).toEqual([0, 0]);
+  });
+
+  it('every nonce a reorg freed below a pending send is filled first, lowest first', async () => {
+    const t = Date.UTC(2027, 7, 5, 12, 0, 0);
+    const { fake, deps } = await chainHarness(t);
+    setClock(t);
+    fake.automine = false;
+    const [a, b, c, d, e] = [newUlid(), newUlid(), newUlid(), newUlid(), newUlid()];
+    const send = (id: string) => createRound(env, deps.operator, { roundId: id, cfg: cfg(t) });
+    await send(a);
+    await send(b);
+    fake.mine();
+    expect((await send(a)).status).toBe('mined');
+    expect((await send(b)).status).toBe('mined');
+    expect((await send(c)).status).toBe('pending');
+    expect(await Promise.all([a, b, c].map((id) => nonceOf(`createRound:${id}`)))).toEqual([
+      0, 1, 2,
+    ]);
+
+    // a's and b's block leaves the chain; c stays pooled at 2, behind the gap.
+    reorgOut(fake, fake.sent[1]!.hash);
+    reorgOut(fake, fake.sent[0]!.hash);
+    expect((await send(d)).status).toBe('pending');
+    expect((await send(e)).status).toBe('pending');
+    expect(await nonceOf(`createRound:${d}`)).toBe(0);
+    expect(await nonceOf(`createRound:${e}`)).toBe(1);
+
+    fake.mine();
+    expect((await Promise.all([c, d, e].map(send))).map((r) => r.status)).toEqual([
+      'mined',
+      'mined',
+      'mined',
+    ]);
   });
 });

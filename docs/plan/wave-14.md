@@ -67,3 +67,9 @@
 ## Carry-over from W6-Z (Oct 12, 2026)
 
 - **W14-C (runbooks):** the guardian-veto runbook covers a vetoed refund proposal: the coordinator opens a settlement hold, the fix is deployed, and the guardian releases the `refund_vetoed` hold (owner decision, Oct 12); `refundTimeout` at closesAt + 72 h is the backstop.
+
+## Carry-over from W7-Z (Oct 12, 2026)
+
+- **W14-D:**
+  - e2e run time: `pnpm e2e` takes about 23 minutes locally (W7-D), since each Stakes round waits for its beacon and the safe head. If CI time matters, run the warp specs' rounds concurrently;
+  - real WebSocket hibernation (eviction and wake) under load: the Workers test runtime doesn't exercise it (W7-A). Check it in the staging load test.

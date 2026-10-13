@@ -177,7 +177,7 @@ const SECURITY_PUSH = {
   ),
   merge_pending: push(
     'Account merge pending',
-    'A request to merge another account into yours is waiting. Review it in Settings.',
+    'A request to merge two of your Flocked accounts is waiting. Confirm it in Settings by signing in to both, or ignore it.',
   ),
   merge_completed: push(
     'Accounts merged',
@@ -286,9 +286,9 @@ export const NOTIFICATION_COPY: NotificationCopyTable = {
       },
       merge_pending: {
         subject: 'Account merge pending',
-        preheader: 'A request to merge another account into yours is waiting.',
+        preheader: 'A request to merge two of your accounts is waiting.',
         heading: 'Account merge pending',
-        body: 'A request to merge another account into your Flocked account is waiting. It expires in 7 days if nobody acts on it.',
+        body: "Someone asked to merge another Flocked account with yours. Nothing changes unless it's confirmed by signing in to both accounts. It expires in 7 days if nobody acts on it.",
         cta: 'Review it in Settings',
       },
       merge_completed: {

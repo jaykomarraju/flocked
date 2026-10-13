@@ -66,13 +66,18 @@ const urls = {
   farcaster: `http://127.0.0.1:${PORTS.farcaster}`,
   coinbase: `http://127.0.0.1:${PORTS.coinbase}`,
   eas: `http://127.0.0.1:${PORTS.eas}`,
+  turnstile: `http://127.0.0.1:${PORTS.turnstile}`,
 };
 
-/** The service mocks: the Farcaster Quick Auth (W3-A), Coinbase OAuth and API, and EAS (W5-B). */
+/**
+ * The service mocks: the Farcaster Quick Auth (W3-A), Coinbase OAuth and API, and EAS (W5-B), and
+ * Turnstile's siteverify (W7-D).
+ */
 const MOCKS = [
   ['farcaster', 'MOCK_FARCASTER_PORT', PORTS.farcaster],
   ['coinbase', 'MOCK_COINBASE_PORT', PORTS.coinbase],
   ['eas', 'MOCK_EAS_PORT', PORTS.eas],
+  ['turnstile', 'MOCK_TURNSTILE_PORT', PORTS.turnstile],
 ];
 
 /** Runs a command to completion, output to `.run/logs/<name>.log`; rejects with the log's tail. */
@@ -410,6 +415,8 @@ async function main() {
     OPERATOR_KEY: keys.operator.key,
     BASE_RPC_URL: urls.anvil,
     TURNSTILE_SECRET_KEY: TURNSTILE_TEST_SECRET,
+    // No stack test calls Cloudflare: siteverify goes to the mock (W7-D).
+    TURNSTILE_SITEVERIFY_URL: `${urls.turnstile}/turnstile/v0/siteverify`,
     FARCASTER_AUTH_ORIGIN: urls.farcaster,
     FLOCKED_TEST_SEAM_KEY: seamKey,
     // Settlement fetches beacons from the local drand network (W5-A).
@@ -490,6 +497,7 @@ async function main() {
   state.farcasterUrl = urls.farcaster;
   state.coinbaseUrl = urls.coinbase;
   state.easUrl = urls.eas;
+  state.turnstileUrl = urls.turnstile;
   state.devVars = rel(DEV_VARS_FILE);
   state.logs = rel(LOG_DIR);
   save();

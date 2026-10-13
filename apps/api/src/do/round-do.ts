@@ -2,8 +2,9 @@
 // the Free commit protocol (enterFree), getState and the alarm chain with close and the commitment
 // root. W4-D: the two-phase void (requestVoid, then voidRound from the alarm; src/lifecycle/void.ts),
 // the Stakes counters (ingestStakesEntry; W6-A: un-counting a reorged entry, and starting Stakes
-// settlement at close) and the receiving side of onModeResult. Still a stub: the WebSocket hub in fetch (W7-A; `broadcast` in
-// src/rounds/hooks.ts is its seam).
+// settlement at close) and the receiving side of onModeResult. W7-A: the messages handed to
+// `broadcast` (src/rounds/hooks.ts), which fans them out through the RoundViewerDO shards; this
+// object holds no sockets, so `fetch` stays a 501.
 //
 // Commit protocol (enterFree), first failure wins:
 //   1. checks: initialized, open (opensAt ≤ now < closesAt), a Free mode, stake in the locked
@@ -70,6 +71,7 @@ import {
 } from '../rounds/entry.js';
 import { applyDailyGrant } from '../rounds/grant.js';
 import { broadcast, enqueueNotifications, type HookRound } from '../rounds/hooks.js';
+import { refundedMessage } from '../ws/messages.js';
 import {
   roundEvents,
   rule8Key,
@@ -470,12 +472,7 @@ export class RoundDO extends DurableObject<Env> implements RoundDORpc {
           : {}),
       });
     } else {
-      broadcast(this.env, l.roundId, {
-        type: 'refunded',
-        roundId: l.roundId,
-        mode,
-        refundReason: result.reason,
-      });
+      broadcast(this.env, l.roundId, refundedMessage(l.roundId, mode, result, now(this.env)));
     }
   }
 
@@ -924,6 +921,8 @@ export class RoundDO extends DurableObject<Env> implements RoundDORpc {
         roundId: l.roundId,
         mode,
         refundReason: VOID_REFUND_REASON,
+        provisional: false,
+        finalAt: t,
       });
     }
     broadcast(this.env, l.roundId, {
@@ -980,6 +979,10 @@ export class RoundDO extends DurableObject<Env> implements RoundDORpc {
             mode,
             idempotencyKey: settleKey(l.roundId, mode),
           });
+          // Settlement starts for every mode still without a result (spec: `revealing`).
+          if (m.modeStatus[mode] === 'pending') {
+            broadcast(this.env, l.roundId, { type: 'revealing', roundId: l.roundId, mode });
+          }
         }
         log.info('settle_enqueued', {
           roundId: l.roundId,

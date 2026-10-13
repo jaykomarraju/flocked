@@ -7,6 +7,7 @@ import { roundKey } from '@flocked/shared';
 import { bytesToHex, keccak256, toHex, type Hex } from 'viem';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { LockedRound } from '../../src/do/types.js';
+import { foreignEntryHandler } from '../../src/indexer/entered.js';
 import { handlers } from '../../src/indexer/handlers.js';
 import { recordSentTx } from '../../src/indexer/sent.js';
 import type { ChainEvent } from '../../src/indexer/types.js';
@@ -505,5 +506,81 @@ describe('Locked / Committed → round_modes lock_tx / commit_tx', () => {
     });
     expect(await anchorConfirmationHandler(evt, env, ctx)).toBeUndefined();
     expect((await modeRow(r.locked.roundId, 'free'))?.lock_tx).toBeNull();
+  });
+});
+
+describe('W6-F1 R11: a removed entry takes its refund payout with it', () => {
+  it('an Entered removal after a void deletes that entry’s refund row only; a foreign entry never had one', async () => {
+    const fake = fakeChainAt(T0);
+    const r = await stakesRound(fake);
+    setClock(T0);
+    await r.stub.init(r.locked);
+    const entered = async (tag: string, ticketed: boolean) => {
+      const player = keccak256(toHex(`wallet-${tag}`)).slice(0, 42) as Hex;
+      const personTag = keccak256(toHex(`person-${tag}`));
+      const ticketHash = keccak256(toHex(`ticket-${tag}`));
+      const user = ticketed ? await createUser(Number(tag.length)) : null;
+      if (user) {
+        await env.DB.prepare(
+          'INSERT INTO stakes_tickets (ticket_hash, round_id, person_tag, user_id, wallet, expiry, issued_at) VALUES (?1, ?2, ?3, ?4, ?5, 0, 0)',
+        )
+          .bind(ticketHash, r.locked.roundId, personTag, user, player)
+          .run();
+      }
+      const evt = chainEvent('escrow', 'Entered', {
+        roundId: r.chainRoundId,
+        player,
+        personTag,
+        ticketHash,
+        ciphertext: '0x0102',
+      });
+      const captured = captureAlerts();
+      await commitStatements(await foreignEntryHandler(evt, env));
+      await commitStatements(await stakesIngestHandler(evt, env, ctx));
+      captured.restore();
+      return { evt, user, player };
+    };
+    const a = await entered('a', true);
+    const b = await entered('bb', true);
+    const f = await entered('ccc', false);
+    const refunds = () =>
+      env.DB.prepare(
+        "SELECT user_id, wallet FROM payouts WHERE round_id = ?1 AND mode = 'stakes' AND kind = 'refund' ORDER BY wallet",
+      )
+        .bind(r.locked.roundId)
+        .all<{ user_id: string; wallet: string }>()
+        .then((x) => x.results);
+
+    // A guardian void refunds every ticketed entry (the foreign one has no account, so no row).
+    const captured = captureAlerts();
+    await commitStatements(
+      await stakesVoidHandler(
+        chainEvent('escrow', 'RoundRefunded', { roundId: r.chainRoundId, reason: '4' }),
+        env,
+        ctx,
+      ),
+    );
+    captured.restore();
+    const both = [a, b]
+      .map((x) => ({ user_id: x.user as string, wallet: x.player }))
+      .sort((p, q) => p.wallet.localeCompare(q.wallet));
+    expect(await refunds()).toEqual(both);
+
+    // a's Entered leaves the chain (and is not re-mined): its entry and its refund go.
+    await commitStatements(
+      await stakesIngestHandler({ ...a.evt, removed: true, revision: 2 }, env, ctx),
+    );
+    expect(await refunds()).toEqual([{ user_id: b.user as string, wallet: b.player }]);
+    // The foreign entry's removal deletes its entry; there was never a payout to delete.
+    await commitStatements(
+      await foreignEntryHandler({ ...f.evt, removed: true, revision: 2 }, env),
+    );
+    expect(await refunds()).toEqual([{ user_id: b.user as string, wallet: b.player }]);
+    const left = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM entries WHERE round_id = ?1 AND mode = 'stakes'",
+    )
+      .bind(r.locked.roundId)
+      .first<{ n: number }>();
+    expect(left?.n).toBe(1);
   });
 });

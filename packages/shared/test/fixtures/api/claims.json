@@ -33,6 +33,27 @@
             "userId": null
           }
         ]
+      },
+      {
+        "claims": [],
+        "roomClaims": [
+          {
+            "chainRoundId": "21",
+            "kind": "win",
+            "account": "0x1111111111111111111111111111111111111111",
+            "amount": "9612000",
+            "proof": ["0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"],
+            "claimsOpenAt": 1791514980000
+          },
+          {
+            "chainRoundId": "22",
+            "kind": "refund",
+            "account": "0x1111111111111111111111111111111111111111",
+            "amount": "5000000",
+            "proof": null,
+            "claimsOpenAt": null
+          }
+        ]
       }
     ]
   },
@@ -59,6 +80,22 @@
               "proof": [],
               "claimsOpenAt": null,
               "userId": null
+            }
+          ]
+        }
+      },
+      {
+        "why": "a room claim amount as a number",
+        "value": {
+          "claims": [],
+          "roomClaims": [
+            {
+              "chainRoundId": "21",
+              "kind": "win",
+              "account": "0x1111111111111111111111111111111111111111",
+              "amount": 9612000,
+              "proof": [],
+              "claimsOpenAt": null
             }
           ]
         }

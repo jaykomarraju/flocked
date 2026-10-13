@@ -106,3 +106,11 @@
   - `PERSON_TAG_KEY` (API secret): rotate only between rounds, since a mid-round rotation gives a person a second tag in that round;
   - `TICKET_SIGNER_KEY` lives in `apps/signer` only (`wrangler secret put TICKET_SIGNER_KEY --env <env>`); the API's service binding `SIGNER` names `flocked-signer-staging` / `flocked-signer`;
   - `BASE_RPC_URL_FALLBACK` is the Stakes reconciliation re-read: set it in staging and production, from a second provider (OA-08).
+
+## Carry-over from W7-Z (Oct 12, 2026)
+
+- **W13-A:** route the new alerts: W7-F1 R16's `OutcomeProposed.payoutRoot` mismatch, and W8-A's house backlog below 14 and game day with no daily round (decision E4).
+- **W13-B:**
+  - a refund state restored after the SettlementDO is `done` has no driver (W7-Z review);
+  - a reorg that drops a mined operator transaction (`propose`, `finalize`, …): its purpose keeps answering from its `mined` row and is never sent again (W6-F1 open issue). W6-F1 R1 and W7-F1 R14 only free the nonce; today the removal's alert is the only signal.
+- **W13-C:** WebSocket upgrade abuse limits (W7-A): there is no per-IP limit on upgrades and no cap on sockets per shard yet. Cloudflare allows about 32k sockets per object; 50k viewers over 16 shards is about 3.1k each. Claimed foreign entries are already listed above (W6-Z).

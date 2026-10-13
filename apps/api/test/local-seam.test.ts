@@ -5,7 +5,7 @@
 // (e2e/tests/stack-smoke.test.ts) covers the full flow with a real drand network.
 import { exports } from 'cloudflare:workers';
 import { env } from 'cloudflare:test';
-import { ErrorEnvelopeSchema, newUlid } from '@flocked/shared';
+import { ErrorEnvelopeSchema, RoundDetailResponseSchema, newUlid } from '@flocked/shared';
 import { beaconTime, chainFromEnv, firstRoundAtOrAfter } from '@flocked/tlock';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { seamEnabled } from '../src/local/seam.js';
@@ -66,6 +66,16 @@ describe('guard', () => {
   it('answers 404 for unknown seam paths', async () => {
     await expectNotFound(await seam('/nope'));
   });
+
+  // W3-Z carry-over: a closed or unknown seam path reads exactly like the app's unknown path.
+  it("answers the app's own 404 body, closed or open", async () => {
+    const app = await exports.default.fetch(new Request('https://flocked.test/api/v1/nope'));
+    expect(app.status).toBe(404);
+    const body = await app.json();
+    expect(body).toEqual({ error: { code: 'not_found', message: 'Not found' } });
+    expect(await (await seam('/nope')).json()).toEqual(body);
+    expect(await (await seam('/clock', { nowMs: T }, null)).json()).toEqual(body);
+  });
 });
 
 describe('with the key, in local', () => {
@@ -106,7 +116,46 @@ describe('with the key, in local', () => {
       free: { status: 'pending', commitmentRoot: null, lockTx: null, commitTx: null },
       entries: [],
       anchorEvents: [],
+      holds: [],
     });
+
+    // The public API serves it within its own schema (W7-D: the seam's question used to have the
+    // category 'test', outside CATEGORIES, so GET /rounds/:id failed RoundDetailResponseSchema).
+    const id = body.locked.roundId;
+    const pub = await exports.default.fetch(
+      new Request(`https://flocked.test/api/v1/rounds/${id}`),
+    );
+    expect(pub.status).toBe(200);
+    expect(RoundDetailResponseSchema.parse(await pub.json()).round.question.category).toBe('other');
+
+    // The round's settlement holds, open or released (W7-D: E2E-6 and the timeout spec read them).
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO settlement_holds (round_id, mode, reason, tx_hash, created_at) VALUES (?1, 'stakes', 'foreign_entry', ?2, 5)",
+      ).bind(id, `0x${'ab'.repeat(32)}`),
+      env.DB.prepare(
+        "INSERT INTO settlement_holds (round_id, mode, reason, tx_hash, created_at, released_at, released_by) VALUES (?1, 'stakes', 'refund_vetoed', NULL, 7, 9, 'test-seam')",
+      ).bind(id),
+    ]);
+    const held = await (await seam(`/rounds/${id}`)).json<{ holds: unknown[] }>();
+    expect(held.holds).toEqual([
+      {
+        mode: 'stakes',
+        reason: 'foreign_entry',
+        txHash: `0x${'ab'.repeat(32)}`,
+        createdAt: 5,
+        releasedAt: null,
+        releasedBy: null,
+      },
+      {
+        mode: 'stakes',
+        reason: 'refund_vetoed',
+        txHash: null,
+        createdAt: 7,
+        releasedAt: 9,
+        releasedBy: 'test-seam',
+      },
+    ]);
 
     const reveal = await seam(`/rounds/${body.locked.roundId}/reveal`, {
       signature: 'ab'.repeat(48),
@@ -146,5 +195,77 @@ describe('with the key, in local', () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ cron: '0 * * * *', jobs: ['create_rounds_ahead'] });
     expect((await seam('/cron', { cron: '5 5 5 5 5' })).status).toBe(400);
+  });
+});
+
+describe('W6-F1 O1: POST /holds/release (the guardian’s admin action, locally)', () => {
+  const hold = (roundId: string) =>
+    env.DB.prepare(
+      "SELECT released_at, released_by FROM settlement_holds WHERE round_id = ?1 AND mode = 'stakes' AND reason = 'refund_vetoed'",
+    )
+      .bind(roundId)
+      .first<{ released_at: number | null; released_by: string | null }>();
+  const audits = (roundId: string) =>
+    env.DB.prepare(
+      'SELECT actor, actor_user_id, action, target, data_json, created_at FROM audit_log WHERE target = ?1',
+    )
+      .bind(roundId)
+      .all<Record<string, unknown>>()
+      .then((r) => r.results);
+
+  it('answers 404 without the key and leaves the hold open', async () => {
+    const roundId = newUlid();
+    await env.DB.prepare(
+      "INSERT INTO settlement_holds (round_id, mode, reason, tx_hash, created_at) VALUES (?1, 'stakes', 'refund_vetoed', NULL, 1)",
+    )
+      .bind(roundId)
+      .run();
+    const body = { roundId, mode: 'stakes', reason: 'refund_vetoed' };
+    await expectNotFound(await seam('/holds/release', body, null));
+    Object.assign(env, { ENVIRONMENT: 'staging' });
+    await expectNotFound(await seam('/holds/release', body));
+    expect(await hold(roundId)).toEqual({ released_at: null, released_by: null });
+    expect(await audits(roundId)).toEqual([]);
+  });
+
+  it('with the key, releases an open hold and writes its audit_log row; 404 when none is open', async () => {
+    const roundId = newUlid();
+    await env.DB.prepare(
+      "INSERT INTO settlement_holds (round_id, mode, reason, tx_hash, created_at) VALUES (?1, 'stakes', 'refund_vetoed', NULL, 1)",
+    )
+      .bind(roundId)
+      .run();
+    await seam('/clock', { nowMs: T });
+    const body = { roundId, mode: 'stakes', reason: 'refund_vetoed' };
+    const res = await seam('/holds/release', body);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      roundId,
+      mode: 'stakes',
+      reason: 'refund_vetoed',
+      releasedAt: T,
+      releasedBy: 'test-seam',
+    });
+    expect(await hold(roundId)).toEqual({ released_at: T, released_by: 'test-seam' });
+    expect(await audits(roundId)).toEqual([
+      {
+        actor: 'admin',
+        actor_user_id: null,
+        action: 'settlement_hold_released',
+        target: roundId,
+        data_json: JSON.stringify({
+          mode: 'stakes',
+          reason: 'refund_vetoed',
+          releasedBy: 'test-seam',
+        }),
+        created_at: T,
+      },
+    ]);
+
+    // Released already, or never held: nothing to release, and no second audit row.
+    await expectNotFound(await seam('/holds/release', body));
+    await expectNotFound(await seam('/holds/release', { ...body, reason: 'void_rate' }));
+    expect(await audits(roundId)).toHaveLength(1);
+    expect((await seam('/holds/release', { ...body, reason: 'other' })).status).toBe(400);
   });
 });

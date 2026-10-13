@@ -85,6 +85,19 @@ export interface Env {
   EMAIL_FROM?: string;
   /** Farcaster Quick Auth origin override (e2e mock); honoured only when ENVIRONMENT is 'local'. */
   FARCASTER_AUTH_ORIGIN?: string;
+  /**
+   * Turnstile siteverify URL override (e2e/mocks/turnstile; W7-D); honoured only when ENVIRONMENT is
+   * 'local'. Staging and production always call Cloudflare's (src/lib/turnstile.ts).
+   */
+  TURNSTILE_SITEVERIFY_URL?: string;
+
+  // Identity and real-time vars (W7-A, W7-B).
+  /** Viewer shards per round, an integer 1–256; 16 when unset (src/ws/shards.ts). */
+  WS_VIEWER_SHARDS?: string;
+  /**
+   * Farcaster hub HTTP origin for wallet offers (src/identity/offers.ts); unset, nothing is offered.
+   */
+  FARCASTER_HUB_URL?: string;
 
   // Settlement and chain vars (W5-A, W4-F1).
   /**

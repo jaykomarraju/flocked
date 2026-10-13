@@ -1,0 +1,62 @@
+# Playwright over the local stack (W7-D; e2e/playwright.config.ts): the API-level lifecycle specs in
+# e2e/tests/*.spec.ts. The `api` project runs every spec's rounds (a Free and Stakes daily round with
+# no manual step, identical Stakes ciphertexts, the drand outage's rule-8 refund, and the Stakes
+# rounds that later need a warp: claims, a vetoed refund proposal, the refund timeout); `api-warp`
+# then moves anvil's clock past the challenge window and the 72 h timeout, which can't be undone.
+# No browser is needed until the `ui` project has specs (W8-C). Like the Stack workflow, it runs on
+# integration branches and main only: the stack takes a minute to start and a round several to settle.
+name: E2E
+
+on:
+  push:
+    branches: [main, 'w*-integration']
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  api:
+    # ubuntu-latest moves to Ubuntu 26 from Oct 19, 2026; pin ubuntu-24.04 if the stack breaks there.
+    runs-on: ubuntu-latest
+    # The specs take about 20 minutes on the owner's Mac (W7-D); rounds are kept to a minute open.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.7.1
+      - run: pnpm install --frozen-lockfile
+      - run: forge soldeer install
+        working-directory: contracts
+      - run: pnpm stack:up
+      - run: pnpm e2e
+        env:
+          CI: 'true'
+      - name: Stack status and drand logs
+        if: failure()
+        run: |
+          pnpm stack:status || true
+          docker compose -f e2e/stack/docker-compose.yml logs --tail 100
+      - name: Upload the Playwright report and stack logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-report
+          path: |
+            playwright-report
+            test-results
+            e2e/stack/.run/logs
+          if-no-files-found: ignore
+      - name: Stop the stack
+        if: always()
+        run: pnpm stack:down

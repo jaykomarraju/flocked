@@ -2,13 +2,11 @@
 // `users.prefs_json` keys are snake_case: show_card_amounts, show_stakes_net (both default off,
 // spec "Share cards" and "Profiles"), creator_payout_wallet.
 import {
-  STAKES_INELIGIBILITY_REASONS,
   type Identity,
   type LimitsState,
   type Merge,
   type MeResponse,
   type NotificationPref,
-  type StakesIneligibilityReason,
   type TosState,
   type UserPrefs,
 } from '@flocked/shared';
@@ -125,26 +123,6 @@ export function tosView(
   };
 }
 
-/**
- * Why Stakes is unavailable, in STAKES_INELIGIBILITY_REASONS order. Coinbase verification lands
- * in W5-B and the geo, kill-switch and cap checks in W5-B/W6-B, so until then every account is
- * at least `not_verified`.
- */
-function stakesReasons(
-  user: MeUserRow,
-  tos: TosState,
-  limits: LimitsState,
-  personVerified: boolean,
-): StakesIneligibilityReason[] {
-  const reasons = new Set<StakesIneligibilityReason>();
-  if (!personVerified) reasons.add('not_verified');
-  if (user.age_attested_at === null) reasons.add('age_unattested');
-  if (tos.acceptedVersion !== tos.currentVersion) reasons.add('tos_not_accepted');
-  if (limits.excluded) reasons.add('self_excluded');
-  if (user.status === 'suspended') reasons.add('suspended');
-  return STAKES_INELIGIBILITY_REASONS.filter((r) => reasons.has(r));
-}
-
 /** Loads the user row the /me routes work from; 401 if it vanished under the session. */
 export async function loadMeUser(db: D1Database, userId: string): Promise<MeUserRow> {
   const user = await db
@@ -159,11 +137,15 @@ export async function loadMeUser(db: D1Database, userId: string): Promise<MeUser
   return user;
 }
 
-/** `GET /me`; `ageRequired` as for `tosView`. */
+/**
+ * `GET /me`. `ageRequired` as for `tosView`; `stakes` is the caller's Stakes eligibility, which
+ * src/personhood/eligibility.ts decides (the one place; W5-Z carry-over).
+ */
 export async function buildMe(
   env: Env,
   userId: string,
   ageRequired: AgeRequirement,
+  stakes: MeResponse['stakes'],
 ): Promise<MeResponse> {
   const db = env.DB;
   const t = now(env);
@@ -209,7 +191,6 @@ export async function buildMe(
   const limitsState = limitsView((limits?.results[0] as LimitsRow | undefined) ?? null, t);
   const tos = tosView(env, user, ageRequired);
   const personVerified = user.person_id !== null && user.kyc_status === 'verified';
-  const reasons = stakesReasons(user, tos, limitsState, personVerified);
 
   return {
     user: {
@@ -264,6 +245,6 @@ export async function buildMe(
       verifiedAt: personVerified ? user.person_verified_at : null,
       country: personVerified ? user.coinbase_country : null,
     },
-    stakes: { eligible: reasons.length === 0, reasons },
+    stakes,
   };
 }

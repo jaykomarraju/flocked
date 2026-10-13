@@ -192,6 +192,12 @@ export const StakesLockedConfigSchema = z.strictObject({
   minEntrants: intIn(S.minEntrants),
   /** The resolved creator address: the author's payout wallet, or the treasury. */
   creator: LowercaseAddress,
+  /**
+   * The author's payout wallet, frozen at lock (not derived at read time): `creator` when it is the
+   * wallet the author named in Settings, else null (house questions, the treasury). Absent in a
+   * config locked before it was added; reads then publish null.
+   */
+  payoutAddress: LowercaseAddress.nullable().optional(),
 });
 
 /**

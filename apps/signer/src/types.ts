@@ -29,7 +29,8 @@ export type RefusalReason =
   | 'hash_mismatch'
   | 'no_row'
   | 'row_mismatch'
-  | 'expired';
+  | 'expired'
+  | 'expiry_too_far';
 
 export const REFUSED = 'ticket_refused';
 

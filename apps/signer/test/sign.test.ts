@@ -6,6 +6,7 @@ import { env } from 'cloudflare:test';
 import { exports } from 'cloudflare:workers';
 import { recoverAddress, type Hex } from 'viem';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { EXPIRY_SLACK_SEC, TICKET_LIFETIME_SEC } from '../src/sign.js';
 import type { SignTicketRequest } from '../src/types.js';
 import {
   record,
@@ -88,6 +89,22 @@ describe('signTicket', () => {
     const t = ticketFor(round, {}, -1);
     await record(round.roundId, t);
     expect(await refusal(t)).toContain('expired');
+  });
+
+  it('refuses an expiry more than the ticket lifetime plus the slack ahead (W6-F1 R12)', async () => {
+    expect(TICKET_LIFETIME_SEC).toBe(300);
+    const round = await stakesRound();
+    // A day ahead: a recorded row with a far expiry is never signed.
+    const far = ticketFor(round, {}, 86_400);
+    await record(round.roundId, far);
+    expect(await refusal(far)).toContain('ticket_refused: expiry_too_far');
+    // Just past the bound, refused; at the lifetime itself (as apps/api issues), signed.
+    const over = ticketFor(round, {}, TICKET_LIFETIME_SEC + EXPIRY_SLACK_SEC + 5);
+    await record(round.roundId, over);
+    expect(await refusal(over)).toContain('expiry_too_far');
+    const ok = ticketFor(round, {}, TICKET_LIFETIME_SEC);
+    await record(round.roundId, ok);
+    await expect(signer.signTicket(ok)).resolves.toHaveProperty('signature');
   });
 
   it('refuses while the kill switch is off or unset', async () => {

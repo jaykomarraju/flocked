@@ -2,7 +2,7 @@
 
 **Goal.** Players can enter Stakes and claim from the browser through a sponsored smart-wallet user operation. Every settled player gets a share card. The independent watcher verifies Stakes rounds.
 
-**Base.** Tag `wave-9`. **Hold point:** OA-D4 (cards) before W10-A; OA-D2 already frozen. **Migrations reserved:** W10-A `0022`, W10-D `0023`; the watcher has its own D1 (`apps/watcher/migrations/0001`).
+**Base.** Tag `wave-9`. **Hold point:** OA-D4 (cards) before W10-A; OA-D2 already frozen. **Migrations reserved:** W10-A `0023`, W10-D `0024` (shifted by W7-Z, Oct 12: W7-F1 took `0020`); the watcher has its own D1 (`apps/watcher/migrations/0001`).
 
 ## Pinned interfaces
 
@@ -20,7 +20,7 @@
   - deletion → re-render without handle or avatar;
   - `share_landing` analytics and `ref` attribution.
 - **Read first.** `plan.md` §2, §4. `docs/sessions/W9-Z.md`. This section. `docs/design/screens.md` (cards rows), the card exports, those Paper artboards. Spec: "Share cards and distribution" (only "Card content", "Generation", "Share surfaces").
-- **Owns.** `apps/api/src/cards/**`, `apps/api/src/routes/cards.ts`, migration `0022`, `apps/api/test/cards/**`, `apps/api/assets/fonts/**`.
+- **Owns.** `apps/api/src/cards/**`, `apps/api/src/routes/cards.ts`, migration `0023`, `apps/api/test/cards/**`, `apps/api/assets/fonts/**`.
 - **Required tests.** PIPE-1 (cards half: no card or split before the reveal). AC-7 (cards exist for every settled player). Pixel comparison of rendered cards against the exports. Legibility at 25% (render, downscale, and compare the result-line region against a threshold; document the method).
 
 ## W10-B: Watcher I (Stakes)
@@ -61,15 +61,15 @@
 
   Then Stakes UI e2e: verify personhood (mock Coinbase), enter Stakes (E2E-1 Stakes UI), claim after the challenge window in the UI (E2E-4 UI), a settlement veto turning into refunds in the UI (E2E-5), and the paymaster accept/reject/cap rules (E2E-11).
 - **Read first.** `plan.md` §2, §3.4. Handoffs W10-A, B, C. Spec: "Smart contract" (only "Gas and UX").
-- **Owns.** Registry files; `apps/api/src/paymaster/**`; `apps/api/src/routes/paymaster.ts`; migration `0023`; `e2e/mocks/bundler/**`; `e2e/ui/{stakes-round,stakes-veto}.spec.ts`; `e2e/tests/paymaster.spec.ts`; `packages/shared/src/watcher.ts`.
+- **Owns.** Registry files; `apps/api/src/paymaster/**`; `apps/api/src/routes/paymaster.ts`; migration `0024`; `e2e/mocks/bundler/**`; `e2e/ui/{stakes-round,stakes-veto}.spec.ts`; `e2e/tests/paymaster.spec.ts`; `packages/shared/src/watcher.ts`.
 - **Required tests.** E2E-1 (Stakes UI), E2E-4 (UI), E2E-5, E2E-11, AC-5 (UI parts).
 - **Emits.** W10-Z prompt.
 
 ## W10-Z checklist
 
 - AC-7 (cards), AC-8, PIPE-5 (Stakes), E2E-5, E2E-11 proven.
-- Confirm OA-D3 is frozen before W11-C.
-- Migrations for wave 11: W11-A `0024`, W11-B `watcher/0002`, W11-D `0025`.
+- Confirm OA-D3 is frozen before W11-C, and OA-D5 (Admin) before W11-A (moved up from W12 on Oct 12).
+- Migrations for wave 11: W11-A `0025`, W11-B `watcher/0002`, W11-D `0026`.
 
 ## Carry-over from W2-Z (Oct 8, 2026)
 
@@ -83,3 +83,10 @@
   - long questions and amounts: step the question and result lines down 4 px until they fit (floors 32 px and 56 px; owner decision, Oct 12). `og`/`embed` fit about 75 question characters on 2 lines; prompts go to 120;
   - the accent may mark the streak pill and the smug sheep's glint, as well as the winning bar and UNFLOCKED (Design_Language "Share cards", Oct 12); the wordmark URL is `flocked.xyz`.
 - **W10-C:** `AddressSchema` is lowercase-only, so the client lowercases `?wallet=` before `GET /claims?wallet=`. Since W6-F1, `?wallet=` also lists the wallet's own room-round payouts (amount and proof only).
+
+## Carry-over from W7-Z (Oct 12, 2026)
+
+- **All:** migrations shift by one, because W7-F1 took `0020`: W10-A `0023`, W10-D `0024`.
+- **W10-A:** deleted accounts (W7-B): `DELETE /me` enqueues a card re-render. Build its consumer (cards without handle or avatar) and purge the edge cache for the cards it replaces.
+- **W10-C:** during the challenge window `/claims` already lists the live proposal's payouts with proof and `claimsOpenAt`, though the escrow refuses a claim until final. Show them as "claimable at" that time (decision D3).
+- **W10-D:** the Coinbase Smart Wallet stand-in for the paymaster specs goes in `e2e/fixtures/wallet.ts`, which notes where (W7-D needed none: the API-level specs enter from EOAs).

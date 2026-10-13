@@ -251,3 +251,40 @@ export async function ticketsOf(userId: string): Promise<TicketRow[]> {
     .all<TicketRow>();
   return results;
 }
+
+let indexedBlock = 0;
+
+/**
+ * Moves the indexer's escrow position to a new block (`blocksAfter` blocks past one mirrored escrow
+ * event stamped `sec`, default 0), as src/indexer/core.ts stores it. `pending`: that event is
+ * mirrored but not yet handed to its handlers. Block numbers rise with every call.
+ */
+export async function indexedAt(
+  sec: number,
+  opts: { blocksAfter?: number; pending?: boolean } = {},
+): Promise<void> {
+  indexedBlock += 1_000;
+  const block = indexedBlock;
+  const position = block + (opts.blocksAfter ?? 0);
+  const chainId = Number(env.CHAIN_ID);
+  const escrow = deploymentOf(env).escrow.toLowerCase();
+  const hash = (n: number) => `0x${n.toString(16).padStart(64, '0')}`;
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO chain_events (chain_id, contract, block_number, block_hash, block_timestamp, tx_hash,
+         log_index, event, args_json, removed, revision, dispatched_revision, created_at, updated_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, 'RoundCreated', '{}', 0, 0, ?7, 0, 0)`,
+    ).bind(chainId, escrow, block, hash(block), sec, hash(block + 1), opts.pending ? null : 0),
+    env.DB.prepare(
+      `INSERT INTO indexer_state (chain_id, contract, last_block_number, last_block_hash, updated_at)
+       VALUES (?1, ?2, ?3, ?4, 0)
+       ON CONFLICT (chain_id, contract) DO UPDATE SET last_block_number = excluded.last_block_number,
+         last_block_hash = excluded.last_block_hash`,
+    ).bind(chainId, escrow, position, hash(position)),
+  ]);
+}
+
+/** Hands every mirrored chain event to its handlers (marks them dispatched). */
+export async function dispatchAll(): Promise<void> {
+  await env.DB.prepare('UPDATE chain_events SET dispatched_revision = revision').run();
+}

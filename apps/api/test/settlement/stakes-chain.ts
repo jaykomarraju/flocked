@@ -131,6 +131,8 @@ export class FakeEscrowChain {
   };
   /** RPC method → calls, per provider. */
   readonly requests = new Map<string, number>();
+  /** Providers without historical state (no archive node): a call at a block below the head fails. */
+  readonly noArchive = new Set<'primary' | 'fallback'>();
   /** Mine every accepted transaction at once; otherwise they wait in `pool` for `mine()`. */
   automine = true;
   /** Accepted, not yet mined (raw transactions by `from:nonce`). */
@@ -522,6 +524,9 @@ export class FakeEscrowChain {
       }
       case 'eth_call': {
         const [{ data }, tag] = params as [{ data: Hex }, string];
+        if (this.noArchive.has(provider) && this.blockTag(tag) < this.head) {
+          throw new Error('missing trie node (historical state not available)');
+        }
         const call = decodeFunctionData({ abi: flockedEscrowAbi, data });
         if (call.functionName !== 'getRound')
           throw new Error(`fake eth_call: ${call.functionName}`);

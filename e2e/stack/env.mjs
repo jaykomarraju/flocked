@@ -43,6 +43,7 @@ export const PORTS = Object.freeze({
   farcaster: port('STACK_FARCASTER_PORT', 8789),
   coinbase: port('STACK_COINBASE_PORT', 8790),
   eas: port('STACK_EAS_PORT', 8791),
+  turnstile: port('STACK_TURNSTILE_PORT', 8792),
   inspector: port('STACK_INSPECTOR_PORT', 19229),
 });
 
@@ -55,7 +56,10 @@ export const DRAND = Object.freeze({
   nodes: 3,
   threshold: 2,
 });
-/** Turnstile's documented always-pass test secret; its siteverify accepts any token. */
+/**
+ * Turnstile's documented always-pass test secret; the stack's siteverify mock (e2e/mocks/turnstile)
+ * accepts any token with it, as Cloudflare's does.
+ */
 export const TURNSTILE_TEST_SECRET = '1x0000000000000000000000000000000AA';
 export const TOS_VERSION = '2026-10-01';
 
