@@ -29,6 +29,8 @@ Rules:
 - Headlines and questions: Fredoka (600–700), large and chunky. The daily question is the hero at 32–40px on mobile.
 - Body and UI: Inter (400–600).
 - Numbers (percentages, stakes, timers): Inter with tabular figures.
+- Captions: Inter 500 at 13/18, in --muted.
+- Hashes and JSON in Admin and Verify: the `mono` font token, the system monospace stack (ui-monospace, SFMono-Regular, Menlo, monospace).
 - Labels on the accent fill are Fredoka 700 at 20px or larger (light --accent-ink on --accent is 3.28:1, large text only).
 - Numerals on the accent fill may use Inter 600 with tabular figures at 24px or larger (WCAG large text, 3:1). Smaller text on the accent follows the label rule above.
 - Use sentence case everywhere. ALL CAPS only for result lines: "UNFLOCKED", "GOT FLOCKED".
@@ -38,6 +40,8 @@ Rules:
 - Option buttons are big rounded cards with a 2px ink border. When selected, the card fills with ink and the text turns --bg.
 - Use a 4/8px spacing scale. Design mobile-first at a 380px minimum width, single column.
 - Use one primary action per screen.
+- There is no switch component. Boolean flags use the two-option segment.
+- Destructive confirms keep the accent CTA with a verb label ("Void round"), plus a two-step or typed confirmation. There is no danger colour.
 
 ## Mascot
 - One smug, unbothered sheep: simple flat shapes, thick rounded outlines in --ink, a white wool body, half-closed eyes, a slight smirk.
