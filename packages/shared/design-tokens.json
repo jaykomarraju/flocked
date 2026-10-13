@@ -49,7 +49,7 @@
     "body": { "font": "body", "size": 16, "lineHeight": 24, "weight": 400, "tracking": 0 },
     "bodyStrong": { "font": "body", "size": 16, "lineHeight": 24, "weight": 600, "tracking": 0 },
     "label": { "font": "body", "size": 14, "lineHeight": 20, "weight": 500, "tracking": 0 },
-    "caption": { "font": "body", "size": 13, "lineHeight": 18, "weight": 400, "tracking": 0.01 },
+    "caption": { "font": "body", "size": 13, "lineHeight": 18, "weight": 500, "tracking": 0.01 },
     "numberXL": {
       "font": "numeric",
       "size": 32,
