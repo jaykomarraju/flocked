@@ -13,7 +13,7 @@ CI:
 
 - `w7-integration` @ `1541362` (W7-D's head with the W7-Z prompt): CI run 38328906692 (check, contracts, properties, static-analysis), Stack run 38328906604 (eight steps) and E2E run 38328906592 (19 tests) passed.
 - `w7-integration` @ `a40567d` (W7-Z's test fix, spec, plan and copy): CI run 38342267490 (check, contracts, properties, static-analysis), Stack run 38342267454 (eight steps) and E2E run 38342267577 passed..
-- `main` @ `7af610f`: CI run 38344201841, Stack run 38344201864 and E2E run 38344201862 (on the merge; its tree equals `a40567d`'s). Locally on `main`: `pnpm install --frozen-lockfile && pnpm check` (node:test 20, abi 13, settle 66, tlock 176, shared 468, signer 19, api 950, forge 202), `pnpm format:check` and `git diff audit-candidate-1 HEAD -- contracts/src` (empty) passed..
+- `main` @ `7af610f` (the merge; its tree equals `a40567d`'s): CI, Stack and E2E runs 38344201841, 38344201864 and 38344201862 were cancelled by the next push. `main` @ `c8527d1` (the merge plus this summary and the wave-8 prompts, docs only): CI run 38344708451 (check, contracts, properties, static-analysis), Stack run 38344708465 (eight steps) and E2E run 38344708459 (19 tests) passed. Locally on `main`: `pnpm install --frozen-lockfile && pnpm check` (node:test 20, abi 13, settle 66, tlock 176, shared 468, signer 19, api 950, forge 202), `pnpm format:check` and `git diff audit-candidate-1 HEAD -- contracts/src` (empty) passed..
 
 Local checks on `w7-integration` (Node 22.23.1; the stack on `STACK_API_PORT=8797 STACK_INSPECTOR_PORT=19239`, because another project's `workerd` held 9229):
 
