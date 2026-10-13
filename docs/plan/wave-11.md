@@ -2,7 +2,7 @@
 
 **Goal.** Admins can run the game through the API. The watcher covers Free rounds, pages guardians, and is backed by a dead-man's switch. Players can browse rounds, verify their own entry in the browser, see profiles and boards, and share.
 
-**Base.** Tag `wave-10`. **Hold point:** OA-D3 before W11-C. **Migrations reserved:** W11-A `0024`, W11-B `watcher/0002`, W11-D `0025`.
+**Base.** Tag `wave-10`. **Hold points:** OA-D5 (Admin) before W11-A (moved up from W12 by W7-Z, Oct 12); OA-D3 before W11-C. **Migrations reserved:** W11-A `0025`, W11-B `watcher/0002`, W11-D `0026` (shifted by W7-Z, Oct 12: W7-F1 took `0020`).
 
 ## W11-A: Admin API
 
@@ -19,7 +19,7 @@
 
   Also draft ≥ 30 house-question candidates in a seed file for the owner to approve (OA-24).
 - **Read first.** `plan.md` §2, §4. `docs/sessions/W10-Z.md`. Spec: "Admin console", "Question pipeline" (steps 4–5, "House questions"), "Modes: Free and Stakes" (flags paragraph).
-- **Owns.** `apps/api/src/admin/**`, `apps/api/src/routes/admin.ts`, `apps/api/src/flags/**`, migration `0024`, `apps/api/test/admin/**`, `apps/api/seed/house-questions.json`.
+- **Owns.** `apps/api/src/admin/**`, `apps/api/src/routes/admin.ts`, `apps/api/src/flags/**`, migration `0025`, `apps/api/test/admin/**`, `apps/api/seed/house-questions.json`.
 - **Required tests.** Authz (non-admin and missing Access JWT rejected). No void after close via any admin path. Audit rows for every action. A flag change affects only rounds locked after it, except the Stakes kill switch (immediate).
 
 ## W11-B: Watcher II (Free, paging, dead-man)
@@ -51,8 +51,7 @@
 
 - AC-3, AC-6, AC-7, E2E-3, PIPE-5 (all) proven.
 - Ask the owner to approve house questions (OA-24) and start OA-04 to OA-19 if not yet underway; staging needs them by wave 14.
-- Confirm OA-D5 is frozen before W12-C.
-- Migrations for wave 12: W12-D `0026`.
+- Migrations for wave 12: W12-D `0027`.
 
 ## Carry-over from W4-Z (Oct 11, 2026)
 
@@ -68,3 +67,16 @@
 ## Carry-over from W6-Z (Oct 12, 2026)
 
 - **W11-A:** releasing a settlement hold, including `refund_vetoed`, which the coordinator opens after a guardian veto of a refund proposal; only the guardian releases a hold (Decision log, Oct 11) (owner decision, Oct 12; W6-F1 O1), with an `audit_log` row. The alert for that veto is `ALERT_DO_ERROR` step `refund_proposal_vetoed`.
+
+## Carry-over from W7-Z (Oct 12, 2026)
+
+- **All:** migrations shift by one, because W7-F1 took `0020`: W11-A `0025`, W11-D `0026`. OA-D5 (Admin) must be frozen before W11 starts (moved up from W12, Oct 12): W11-A builds the admin API from it.
+- **W11-A** (it may edit the Free entry and `/prepare` eligibility checks for E2 and E5):
+  - pause (decision E2) blocks new Stakes entries only (the escrow's pause): `/stakes/prepare` refuses tickets while the escrow is paused;
+  - config (decision E5): a new key `geo.deny` (country and region codes) blocks entries in both modes and wins over `geo.stakes.allow` (values from OA-21); `mode.free.enabled` becomes Free's kill switch (Free entries refuse when it's off);
+  - admin search (decision E7): exact match on user ID, wallet address, email and Farcaster FID; a case-insensitive prefix match on handle;
+  - the schema gaps W7-C found in `packages/shared/src/api/admin.ts` (holds, live round, reasons, schedule, queue, users, config, analytics): see `docs/sessions/W7-C.md` "Notes for D and Z" › "Schema gaps for W11-A";
+  - hold release history (decision C2): a second `refund_vetoed` veto reopens the released row with a new `created_at`, so history is read from `audit_log` (there is no hold ID); `released_by` is the recording admin, and the guardian's reference goes in the audit row's data.
+- **W11-D:**
+  - bearer tokens on WebSockets for the mini app (W7-A open issue): browsers can't set `Authorization` on a WebSocket, so a mini-app viewer of a room round gets 401 at the upgrade. Issue a short-lived token from an authenticated HTTP call, passed as `Sec-WebSocket-Protocol` or a query parameter. W11-D may edit `src/ws/upgrade.ts`;
+  - the Farcaster hub (`FARCASTER_HUB_URL`, decision F6) is decided with OA-11 by W11. Unset, no Farcaster-verified wallet is offered. Neynar's hub needs an API key (a secret); staging (W14) needs a hub.

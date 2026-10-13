@@ -2,7 +2,7 @@
 
 **Goal.** The question pipeline (submit, moderation, vote, queue, creator credit), stats and boards, and rooms exist on the backend. The web app shell is built from the frozen foundations, with sign-in working in the browser and inside the mini app.
 
-**Base.** Tag `wave-7`. **Hold point:** OA-D1 (foundations frozen) before W8-C. **Migrations reserved:** W8-A `0017`, W8-B `0018`, W8-D `0019`.
+**Base.** Tag `wave-7`. **Hold point:** OA-D1 (foundations frozen) before W8-C. **Migrations reserved:** W8-A `0017`, W8-B `0018`, W8-D `0019`; W7-F1 `0020` (added by W7-Z, Oct 12: R18's `indexer_state` column).
 
 ## Pinned interfaces
 
@@ -45,7 +45,7 @@
 ## W8-D: Rooms
 
 - **Role / size:** integrate, M.
-- **Objective.** Merge A, B and C. Build rooms:
+- **Objective.** Merge A, B, C and W7-F1 (the wave-7 review fixes, `wave-7.md` "W7-F1"; owner decision, Oct 12, 2026). Build rooms:
   - `POST /rooms`, `POST /rooms/join`, `GET /rooms/:id`, `POST /rooms/:id/questions` (moderated via W8-A);
   - room rounds created by the scheduler (mirror or custom), one RoundDO per room round;
   - room points (500 on join, +100 per room round under 1,000) via `src/points`;
@@ -54,7 +54,7 @@
   - member picks after the reveal;
   - excluded from global stats and referrals;
   - the Stakes-rooms flag (off), with tickets restricted when it's on.
-- **Read first.** `plan.md` §2, §3.4. Handoffs W8-A, B, C. Spec: "Profiles, leaderboards and rooms" (only "Rooms"), "API" (room rows).
+- **Read first.** `plan.md` §2, §3.4. Handoffs W8-A, B, C and W7-F1. Spec: "Profiles, leaderboards and rooms" (only "Rooms"), "API" (room rows).
 - **Owns.** Registry files; `apps/api/src/rooms/**`; `apps/api/src/routes/rooms.ts`; migration `0019`; `apps/api/test/rooms/**`; `e2e/tests/rooms.spec.ts`.
 - **Required tests.** Non-member entry and view rejected. Room minimum refund. Room rounds never touch global stats. A room round settles on the local stack.
 - **Emits.** W8-Z prompt.
@@ -62,8 +62,10 @@
 ## W8-Z checklist
 
 - Moderation and boards tests named; UI screenshot suite green in CI.
-- Confirm OA-D2 is frozen before W9-C.
-- Migrations for wave 9: W9-A `0020`, W9-B none, W9-D `0021`.
+- W7-F1's items (R1–R18) each have a passing test, and W7-F1 is merged.
+- Raise the OA-D3 review (Social, Settings) with the owner. Apply its Paper fixes and the W7-Z design items (the Streaks pill wraps the row's current streak, decision E3; the share sheets' viewer avatar "J" becomes "W", F5) through a design subagent, re-exporting what changes, before W11.
+- OA-D2 is already frozen (Oct 12), so W9-C needs no check.
+- Migrations for wave 9: W9-A `0021`, W9-B none, W9-D `0022`.
 
 ## Carry-over from W2-Z (Oct 8, 2026)
 
@@ -85,3 +87,30 @@
 - **W8-B:** the Streaks board ranks the best stray streak (all time), showing the current streak; ties go to the current streak, then rounds played (spec "Profiles, leaderboards and rooms", Oct 12).
 - **W8-D:** room `qualifies` flags. The settlement counts every valid room entry today (`apps/api/src/settlement/reduce.ts`; `countQualifyingOnly` exists in `@flocked/settle`).
 - **OA-09:** the Coinbase OAuth app must exist by now (redirect URI `${APP_ORIGIN}/api/v1/me/personhood/callback`, scopes `wallet:user:read` and `identity:user:address:read`).
+
+## Carry-over from W7-Z (Oct 12, 2026)
+
+- **All:** read `docs/sessions/W7-Z.md` for the spec sections changed on Oct 12. **W7-F1** (review fixes and three owner decisions) runs alongside W8-A/B/C from the tag `wave-7`; its files are listed in `wave-7.md` "W7-F1". Don't edit them, except where an item below says so.
+- **W8-A:**
+  - creator at lock (decision C5): whoever resolves the creator sets `creator` and `payoutAddress` together at lock, with the author-wallet checks (verified, linked, attestations). W8-A may edit `src/scheduler/lock.ts` for this and for E4's day with no round;
+  - the pipeline rules (decision E4): Approve moves `submitted → queued`; Assign schedules; a rejection notifies the author with its reason (`question_rejected`: W8-A enqueues, W9-A writes the copy); the house backlog alerts when it drops below 14; if nothing can be locked (no scheduled question and an empty house backlog), that game day has no daily round and the admin is alerted;
+  - a CHECK on `questions.category`, or a schema parse where it is read. D1 values are served unchecked: the seam's `'test'` category broke `GET /rounds/:id` for clients while the API answered 200 (W7-D open issue);
+  - question and vote writes refuse suspended accounts with `account_suspended` (decision B7).
+- **W8-B:**
+  - a game day with no daily round (E4) is neutral for streaks;
+  - boards, streaks and profiles exclude deleted and merged accounts (W7-B open issue);
+  - `GET /me/referrals` replaces W7-B's stub in `routes/me.ts`. W7-F1 edits other handlers in that file, so touch only the referrals handler.
+- **W8-C:**
+  - the e2e harness (W7-Z review; W8-C owns the `ui` project, and may edit `e2e/playwright.config.ts`, `.github/workflows/e2e.yml` and `e2e/fixtures/{clock,http}.ts` for these):
+    - the `ui` project gets `grepInvert: /@warp/` and a `ui-warp` phase, and every warp phase runs after every non-warp phase that shares the stack, or `pnpm e2e:ui` gets its own fresh stack (medium, latent);
+    - Playwright's `globalTimeout` stays under the job's 45 minutes (`e2e.yml`), so the report is written;
+    - drop the trailing `clock.release()` after warps, or floor the pin at wall time;
+    - a GET retry opt-out (`idempotent: false`) for the Coinbase OAuth callback in `fixtures/http.ts`;
+  - Paper (decisions E1, F5): the Foundations type-table row for captions (Inter 500, muted), and the nav-bar inactive label note renamed "nav label" (13/18 Inter 400 ink stays);
+  - a `mono` font token (decision E8: ui-monospace, SFMono-Regular, Menlo, monospace) in `packages/shared/design-tokens.json`, and its schema if needed;
+  - only if W8-C touches the WebSocket (otherwise W9-C does it): the first message is always `state`, possibly followed by catch-up events; send "ping" to keep a socket alive (answered "pong"); reconnect with jitter (W7-A).
+- **W8-D:**
+  - merge W7-F1 as a fourth branch (see the W8-D objective);
+  - account deletion and rooms (decision B5): rooms the deleted user owns pass to the oldest remaining member (by join time), and a room with no other member closes. W8-D may edit `src/identity/delete.ts` for this after merging W7-F1;
+  - room writes refuse suspended accounts with `account_suspended` (decision B7);
+  - `src/indexer/handlers/stakes.ts` is W7-F1's this wave: the Stakes `onModeFinal` call at `RoundFinalized` goes in after the merge.

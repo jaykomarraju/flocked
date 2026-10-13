@@ -2,7 +2,7 @@
 
 **Goal.** Every screen in the spec's Client app table exists and matches the frozen design, and the admin console works. Analytics events flow to Workers Analytics Engine, with a dashboard. Every remaining e2e scenario passes.
 
-**Base.** Tag `wave-11`. **Hold points:** OA-D3 and OA-D5 frozen; OA-21 ToS/privacy/responsible-play text available for W12-B (if not, W12-B uses clearly marked placeholder text, and the item stays open in PR-11). **Migrations reserved:** W12-D `0026`.
+**Base.** Tag `wave-11`. **Hold points:** OA-D3 and OA-D5 frozen; OA-21 ToS/privacy/responsible-play text available for W12-B (if not, W12-B uses clearly marked placeholder text, and the item stays open in PR-11). **Migrations reserved:** W12-D `0027` (shifted by W7-Z, Oct 12: W7-F1 took `0020`).
 
 ## W12-A: Web submit, queue, rooms
 
@@ -44,7 +44,7 @@
 - **Role / size:** integrate, M.
 - **Objective.** Merge A, B and C. Analytics: server events (`signup`, `entry_submitted`, `share_landing`, `share_conversion`, `question_submitted`, `question_voted`, `personhood_verified`, `claim_completed`, `notification_sent`) and client beacon events (`page_view`, `reveal_viewed`, `share_clicked`, `notification_opened`) to Analytics Engine, with no plaintext picks. The admin analytics tab shows the spec's dashboard metrics via the AE SQL API, plus the Free extra-accounts flag query (Anti-abuse). Remaining e2e: E2E-7 / AC-9 (question → moderation → vote → approve → schedule → settle → creator award/fee), E2E-9 (UI), E2E-12, E2E-13.
 - **Read first.** `plan.md` §2, §3.4. Handoffs W12-A, B, C. Spec: "Analytics", "Anti-abuse" (Free-mode extra accounts bullet).
-- **Owns.** Registry files; `apps/api/src/analytics/**`; `apps/web/src/analytics/**`; `apps/web/src/features/admin/analytics/**`; migration `0026` if needed; `e2e/ui/{question-flow,exclusion,delete-account,question-block}.spec.ts`.
+- **Owns.** Registry files; `apps/api/src/analytics/**`; `apps/web/src/analytics/**`; `apps/web/src/features/admin/analytics/**`; migration `0027` if needed; `e2e/ui/{question-flow,exclusion,delete-account,question-block}.spec.ts`.
 - **Required tests.** E2E-7, E2E-9, E2E-12, E2E-13, AC-9. Analytics payloads never include option data (test).
 - **Emits.** W12-Z prompt.
 
@@ -56,3 +56,11 @@
 ## Carry-over from W4-Z (Oct 11, 2026)
 
 - **W12-C:** admin-console UI for the void (with its audit row), the guardian's settlement-hold release, and non-default closes (W11-A builds the API).
+
+## Carry-over from W7-Z (Oct 12, 2026)
+
+- **W12-B:**
+  - the delete sheet lists the account's unclaimed Stakes payouts, with "Claim all" (W7-B);
+  - the limits UI shows the maximum daily cap, 1,000 USDC unless legal lowers it (`limits.stakes.maxDailyCap`, decision B4; W7-F1 R3);
+  - a suspended account (decision B7) is read-only, except lowering its cap, self-excluding and editing notification prefs. Raising the cap and lifting an exclusion refuse `account_suspended`.
+- **W12-D:** the dashboard metric definitions (decision E6): split quality is the smaller side's share of valid entries (per mode); verification rate is the verified share of users with at least one entry; D-n retention is the share of a game day's first-time entrants who enter again on game day n (n = 1, 7, 30); beacon → reveal latency per mode (median and max).

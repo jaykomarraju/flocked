@@ -2,7 +2,7 @@
 
 **Goal.** A player can play a Free round in the browser: pick, seal, wait, watch the reveal. Notifications go out through every channel with dedupe. `@flocked/verify` reproduces any settlement from public data.
 
-**Base.** Tag `wave-8`. **Hold point:** OA-D2 (core round flow frozen) before W9-C. **Migrations reserved:** W9-A `0020`, W9-D `0021`.
+**Base.** Tag `wave-8`. **Hold point:** OA-D2 (core round flow frozen) before W9-C: frozen Oct 12, 2026. **Migrations reserved:** W9-A `0021`, W9-D `0022` (shifted by W7-Z, Oct 12: W7-F1 took `0020`).
 
 ## Pinned interfaces
 
@@ -23,7 +23,7 @@
 
   Wire RoundDO's alarms for `question_live` (only to users with no entry in the round that just closed), `closing_soon` and `streak_at_risk`. Also the daily official cast at `opensAt` (Farcaster signer; mocked locally).
 - **Read first.** `plan.md` §2, §4. `docs/sessions/W8-Z.md`. This section. Spec: "Notifications", "Share cards and distribution" (only "Distribution hooks", the daily cast bullet).
-- **Owns.** `apps/api/src/notify/**`, `apps/api/src/routes/push.ts`, the alarm-handler bodies for notifications in `apps/api/src/rounds/notifications.ts`, migration `0020`, `apps/api/test/notify/**`, `e2e/mocks/{farcaster-notify,push,email}/**`, `scripts/gen-vapid.mjs`.
+- **Owns.** `apps/api/src/notify/**`, `apps/api/src/routes/push.ts`, the alarm-handler bodies for notifications in `apps/api/src/rounds/notifications.ts`, migration `0021`, `apps/api/test/notify/**`, `e2e/mocks/{farcaster-notify,push,email}/**`, `scripts/gen-vapid.mjs`.
 - **Required tests.** Dedupe per key. The combined `outcome` message at the user's first mode outcome. `refunded` only for later events. The exclusion filter. Rate-limit batching.
 
 ## W9-B: `@flocked/verify` + CLI
@@ -61,7 +61,7 @@
 
 - TL-1, E2E-1 (Free UI), E2E-2, E2E-8, PIPE-6 proven.
 - Confirm OA-D4 is frozen before W10-A.
-- Migrations for wave 10: W10-A `0022`, W10-B (watcher's own D1) `watcher/0001`, W10-D `0023`.
+- Migrations for wave 10: W10-A `0023`, W10-B (watcher's own D1) `watcher/0001`, W10-D `0024`.
 
 ## Carry-over from W2-Z (Oct 8, 2026)
 
@@ -93,3 +93,15 @@
   - the `outcome` payload gains `refundReason: RefundReasonCodeSchema.nullable()` (owner decision, Oct 12; `packages/shared/src/queues.ts`); the consumer derives the player's side's share from the tally (`formatShare`), not from the payload;
   - the copy is `packages/shared/src/copy/notifications.ts` (frozen with OA-D4): "Got flocked again." after a loss on the previous game day; the outcome email shows no card image for now; Free refunds keep "stake back" (rules 1–4) and "Points returned" (7–8);
   - the domain in emails and links is `flocked.xyz` (owner decision, Oct 12).
+
+## Carry-over from W7-Z (Oct 12, 2026)
+
+- **All:** migrations shift by one, because W7-F1 took `0020`: W9-A `0021`, W9-D `0022` (and wave 10 from `0023`).
+- **W9-A:**
+  - a new `security_notice` kind `identity_unlinked` ("Sign-in method removed"; decision B6). Add its copy to `packages/shared/src/copy/notifications.ts` (approved in principle by the owner, Oct 12): push "Sign-in method removed" / "A sign-in method was removed from your account. If that wasn't you, check Settings."; email body "A sign-in method was removed from your Flocked account. If that was you, there's nothing to do. If it wasn't, review your sign-in methods in Settings.";
+  - `question_rejected` copy, with the rejection's reason (W8-A enqueues it; decision E4);
+  - `POST /push/subscribe` stays open to suspended accounts: it is a notification setting, which decision B7 keeps editable (W7-B's open issue predates it). Every other write W9-A adds refuses `account_suspended`.
+- **W9-C:**
+  - RoundDO down (decision E7): keep the last state with a "Reconnecting" banner and poll `GET /rounds/:id` until the socket is back; an entry POST that answers 503 `unavailable` is retried;
+  - the WebSocket client (W7-A): the first message is always `state`, possibly followed by catch-up events; send "ping" to keep a socket alive (answered "pong"); reconnect with jitter. `refunded.provisional` marks a Stakes refund proposal ("Final at" `finalAt`);
+  - a refunded mode's `state` has `result: null` and its tally is on `GET /rounds/:id` only; the reveal animation is for settled modes (decision A2).

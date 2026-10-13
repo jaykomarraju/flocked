@@ -58,12 +58,39 @@
 - **Risks.** CI time. Keep rounds short with config, and run e2e only on integration branches and `main`.
 - **Emits.** W7-Z prompt.
 
+## W7-F1: Wave-7 review fixes (added by W7-Z, Oct 12, 2026; alongside W8-A/B/C, merged by W8-D)
+
+- **Why.** Wave 7 was green, but W7-Z's four adversarial reviews found 2 medium and about 12 low defects no test caught, and three owner decisions (B3b, B4, C4; Oct 12) need code. Wave 8's A, B and C don't edit these files, so the owner chose the Oct 11 option (plan.md 2.6): W7-Z merged wave 7, and W7-F1 runs alongside W8-A/B/C from the tag `wave-7`. W8-D merges it as a fourth branch.
+- **Role / size:** fix, M. Branch `w7-f1-review-fixes` from the tag `wave-7`, worktree `../flocked-w7-f1`. Migration `0020` (R18's `indexer_state` column; wave 9's numbers shift by one). No change to `contracts/src` (the audit candidate).
+- **Owns.** `apps/api/src/ws/**`, `src/do/round-viewer-do.ts`, `src/identity/**`, `src/limits/**`, `src/personhood/verify.ts`, `src/stakes/{cap,prepare}.ts`, `src/indexer/{core,holds,handlers/stakes}.ts`, `src/chain/operator.ts`, `src/settlement/apply/stakes.ts`, `src/read/{proofs,claims,me}.ts` (only the comments and reads R15 touches), `src/routes/{me,limits,auth}.ts` (only the handlers for R3, R12 and the optional `/auth/farcaster` call), `src/rounds/entry.ts` (the optional item only), `packages/shared/src/{config,api/me}.ts` (only R3's maximum cap), migration `0020`, and their tests. Not `src/settlement/hooks.ts`, `src/questions/**`, `src/stats/**`, `src/boards/**`, `src/referrals/**`, `src/rooms/**`, `src/routes/{questions,boards,users,rooms}.ts`, `src/scheduler/lock.ts` (wave 8's), or `e2e/**`.
+- **Fixes** (each with a test that fails without it):
+  - R1 (medium): a viewer that connects more than 30 s after beacon time while D1 still says `pending` (a late beacon or slow relays) never gets `revealing`, and a reconnect can go backwards. The catch-up buffer keeps 30 s, in memory only, and a hibernated shard loses it. The snapshot shows `revealing` once the round is closed and past beacon time (or the buffer is persisted). `src/ws/snapshot.ts`, `src/do/round-viewer-do.ts`.
+  - R2 (medium; owner decision B3b, Oct 12): the merge cap rule. The merged cap is the lower of the two caps in force, and only a pending raise from the side whose cap is in force survives (equal caps: the lower raise, with its own timer; a tie: the later timer). Re-verification after deletion uses the same rule between the account and the tombstone (spec "Identity and personhood" › Account deletion). `identity/merge.ts` `mergedCapState`, `personhood/verify.ts` `inheritPending`. `merge.test.ts` "keeps a waiting raise…" asserts the old behaviour and changes.
+  - R3 (owner decision B4, Oct 12): a maximum daily stake cap of 1,000 USDC per game day, in the `config` key `limits.stakes.maxDailyCap` (base units, like `DEFAULT_DAILY_STAKE_CAP`), so legal (OA-21) can lower it. `PUT /me/limits` refuses a cap above it, and `/me`'s limits carry it for W12-B. B4's exclusion rules (timed → permanent restarts the 6-month clock, permanent again in the cooling-off cancels the lift, calendar months) are W7-B's behaviour already.
+  - R4: the catch-up can replay a `revealed` older than a later `refunded` for the same mode. Walk the buffer newest first, and skip a mode's older events once a newer one is reflected.
+  - R5: the hub's fan-out chain gets `.catch(log)` and a per-shard RPC timeout, so one failed or hung shard call can't stall the round's later messages (`src/ws/hub.ts`).
+  - R6 (decision A3): the Stakes `revealed` is handed to the RoundDO after the indexer's D1 commit, not before it (`indexer/handlers/stakes.ts`, near line 301).
+  - R7: `identity/delete.ts` acts on a stale `person_id` and stale merged-account reads. Build the tombstone `INSERT … SELECT` from `users`, and guard the merged set in the batch.
+  - R8: `identity/sql.ts` `hasLiveTicketSql` ignores indexer lag. Reuse `indexedThroughSec` (`stakes/cap.ts`).
+  - R9: the merge batch guards both accounts with `person_id IS ?`, and the personhood bind requires `status = 'active'` in its SQL, so a bind racing `DELETE /me` or a suspension changes nothing (`personhood/verify.ts`; R12 refuses suspended accounts at the routes).
+  - R10: chained merges bypass the 30-day limit. Also refuse when the losing account received a merge in the last 30 days.
+  - R11: `/prepare`'s ticket insert re-checks `users.status = 'active'` (`stakes/prepare.ts`).
+  - R12 (decision B7): `POST /me/personhood` and its callback refuse suspended accounts (`account_suspended`).
+  - R13: a veto re-included in the same poll keeps a stale `superseded_at`, so a second drop restores nothing. Restore by the `seq` in the `proposal_vetoed` audit row, or re-stamp it.
+  - R14: W6-F1 R1's `newNonce` trusts a lagging pending count after a mined row. Treat a finished row at a nonce at or above the count as held, unless its receipt is gone (`chain/operator.ts`).
+  - R15: `round_modes.bundle_hash` is written by the proposer (`settlement/apply/stakes.ts`), not from the chain. Write it only in the `OutcomeProposed` handler, or correct the comments in `read/{proofs,claims,me}.ts` and the handler.
+  - R16: `OutcomeProposed.payoutRoot` is never compared. Store it, compare it with the record's root, and alert on a mismatch (W6-F1 open issue).
+  - R17: `src/indexer/holds.ts` types: `HoldReason` covers all three reasons (`foreign_entry`, `void_rate`, `refund_vetoed`), and `txHash` is nullable.
+  - R18 (owner decision C4, Oct 12): W6-F1 O2's "processed past its expiry" uses the block timestamp of the indexer's position, stored in a new `indexer_state` column `last_block_timestamp` (Unix seconds, the name the spec's Data model uses; migration `0020`, `indexer/core.ts`, `stakes/cap.ts` `indexedThroughSec`).
+- **Optional, if the budget allows:** a Stakes proposal reorged out tells connected viewers (a fresh `state`; there is no "open again" message); call `refreshFarcasterOffers` from `/auth/farcaster` (`routes/auth.ts`); the RoundDO's own `not_member` answer becomes `not_found` (`src/rounds/entry.ts`).
+- **Required tests.** One per item above, each mutation-checked. `pnpm check`, `pnpm format:check` and the stack tests in CI order stay green.
+
 ## W7-Z checklist
 
 - DO-5, ID-1, PIPE-1 (WS), E2E-1/2/4 (API), E2E-6, E2E-10, E2E-14, AC-1 (local) proven.
 - W6-F1's items (R1–R13, O1–O5) each have a passing test, and W6-F1 is merged.
-- Ask the owner to review Admin in Paper (OA-D5 before W12). Confirm OA-D1 is frozen before W8-C starts; if it isn't, W8-C waits and W8 runs with A, B and D only.
-- Migrations for wave 8: W8-A `0017`, W8-B `0018`, W8-D `0019`.
+- Ask the owner to review Admin in Paper (OA-D5 before W11; moved up from W12 on Oct 12). Confirm OA-D1 is frozen before W8-C starts; if it isn't, W8-C waits and W8 runs with A, B and D only.
+- Migrations for wave 8: W8-A `0017`, W8-B `0018`, W8-D `0019`; W7-F1 `0020`.
 
 ## Carry-over from W2-Z (Oct 8, 2026)
 
