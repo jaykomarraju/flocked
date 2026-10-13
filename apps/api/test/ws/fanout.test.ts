@@ -82,7 +82,7 @@ describe('16 shards, 256 sockets', () => {
     });
     await r.stub.onModeResult('free', { outcome: 'refunded', reason: 7, provisional: false });
     const sent = await hubIdle(r.stub, id);
-    expect(sent).toEqual([
+    expect(sent).toMatchObject([
       { type: 'counts', delivered: SOCKETS, failedShards: 0 },
       { type: 'refunded', delivered: SOCKETS, failedShards: 0 },
       { type: 'refunded', delivered: SOCKETS, failedShards: 0 },
@@ -134,7 +134,7 @@ describe('16 shards, 256 sockets', () => {
     );
     await r.stub.ingestStakesEntry(enteredEvent(id));
     const sent = await hubIdle(r.stub, id);
-    expect(sent).toEqual([
+    expect(sent).toMatchObject([
       { type: 'counts', delivered: SOCKETS - leaving.length, failedShards: 0 },
     ]);
     for (const v of viewers.slice(leaving.length)) {

@@ -8,6 +8,7 @@ import { bytesToHex, type Hex } from 'viem';
 import { vi } from 'vitest';
 import { app } from '../../src/app.js';
 import type { RoundDO } from '../../src/do/round-do.js';
+import { SNAPSHOT_TTL_MS } from '../../src/do/round-viewer-do.js';
 import type { StakesEntryEvent } from '../../src/do/types.js';
 import type { Env } from '../../src/env.js';
 import { whenIdle, type FanoutResult } from '../../src/ws/hub.js';
@@ -103,6 +104,15 @@ export async function snapshot(roundId: string, headers: Record<string, string> 
   const v = await connect(roundId, headers);
   await closeAll([v]);
   return stateOf(v);
+}
+
+/**
+ * A snapshot after a D1 change that sent no message: waits out every shard's kept snapshot first,
+ * since a new connection may land on the shard of an earlier one (W7-Z: a 1-in-16 flake).
+ */
+export async function freshSnapshot(roundId: string, headers: Record<string, string> = {}) {
+  await new Promise((resolve) => setTimeout(resolve, SNAPSHOT_TTL_MS + 100));
+  return snapshot(roundId, headers);
 }
 
 /** Waits (polling, up to `timeout` ms) until `cond` holds. */

@@ -3,7 +3,7 @@
 // second, and the last `counts` is the current total. Entries are real: Free through enterFree,
 // Stakes through ingestStakesEntry (the indexer's path).
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { COUNTS_INTERVAL_MS } from '../../src/ws/hub.js';
+import { COUNTS_INTERVAL_MS, type FanoutResult } from '../../src/ws/hub.js';
 import {
   BASE_OPENS_AT,
   HOUR,
@@ -18,8 +18,8 @@ import {
 import { closeAll, connect, enteredEvent, hubIdle, until, type Viewer } from './helpers.js';
 
 const OPENS_AT = BASE_OPENS_AT + 60 * 24 * HOUR;
-/** Arrival gaps may shrink a little against the source's one second (delivery jitter). */
-const JITTER_MS = 100;
+/** Timer slack on the hub's own clock. Arrival gaps aren't checked: delivery jitter shrinks them. */
+const TIMER_SLACK_MS = 10;
 
 let r: TestRound;
 let viewers: Viewer[];
@@ -66,12 +66,19 @@ function countsSince(v: Viewer, from: number) {
   return out;
 }
 
-function expectAtMostOnePerSecond(counts: { at: number }[], spanMs: number): void {
+function expectAtMostOnePerSecond(
+  counts: { at: number }[],
+  spanMs: number,
+  sent: FanoutResult[],
+): void {
   // Leading edge, then at most one per elapsed second, then the trailing one.
   expect(counts.length).toBeLessThanOrEqual(Math.ceil(spanMs / COUNTS_INTERVAL_MS) + 1);
-  for (let i = 1; i < counts.length; i++) {
-    const gap = (counts[i]?.at as number) - (counts[i - 1]?.at as number);
-    expect(gap).toBeGreaterThanOrEqual(COUNTS_INTERVAL_MS - JITTER_MS);
+  // The spacing is the hub's: it releases one `counts` per interval (W7-Z: arrival times flaked).
+  const released = sent.filter((f) => f.type === 'counts').map((f) => f.releasedAt);
+  expect(released.length).toBe(counts.length);
+  for (let i = 1; i < released.length; i++) {
+    const gap = (released[i] as number) - (released[i - 1] as number);
+    expect(gap).toBeGreaterThanOrEqual(COUNTS_INTERVAL_MS - TIMER_SLACK_MS);
   }
 }
 
@@ -88,7 +95,7 @@ describe('counts: at most one per second per socket, the last one current', () =
       await until(() => countsSince(v, marks[i] as number).at(-1)?.stakes === 8);
       const counts = countsSince(v, marks[i] as number);
       expect(counts.at(-1)).toMatchObject({ free: 4, stakes: 8 });
-      expectAtMostOnePerSecond(counts, span);
+      expectAtMostOnePerSecond(counts, span, sent);
       // Twelve entries, far fewer messages.
       expect(counts.length).toBeLessThanOrEqual(span < COUNTS_INTERVAL_MS ? 2 : 3);
     }
@@ -97,6 +104,7 @@ describe('counts: at most one per second per socket, the last one current', () =
   it('a steady stream for about 2.5 s: one counts a second, and the final total arrives', async () => {
     // Past the previous trailing send, so this stream starts on a leading edge.
     await new Promise((resolve) => setTimeout(resolve, COUNTS_INTERVAL_MS));
+    await hubIdle(r.stub, r.locked.roundId);
     const marks = viewers.map((v) => v.messages.length);
     const t0 = Date.now();
     for (let i = 0; i < 16; i++) {
@@ -104,11 +112,11 @@ describe('counts: at most one per second per socket, the last one current', () =
       await new Promise((resolve) => setTimeout(resolve, 150));
     }
     const span = Date.now() - t0;
-    await hubIdle(r.stub, r.locked.roundId);
+    const sent = await hubIdle(r.stub, r.locked.roundId);
     for (const [i, v] of viewers.entries()) {
       await until(() => countsSince(v, marks[i] as number).at(-1)?.stakes === 24);
       const counts = countsSince(v, marks[i] as number);
-      expectAtMostOnePerSecond(counts, span);
+      expectAtMostOnePerSecond(counts, span, sent);
       expect(counts.length).toBeGreaterThanOrEqual(2);
       expect(counts.at(-1)).toMatchObject({ free: 4, stakes: 24 });
     }

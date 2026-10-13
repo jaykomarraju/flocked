@@ -21,7 +21,7 @@ import {
   useTestSigner,
   type TestRound,
 } from '../round-do/helpers.js';
-import { closeAll, connect, hubIdle, snapshot, stateOf, until } from './helpers.js';
+import { closeAll, connect, freshSnapshot, hubIdle, snapshot, stateOf, until } from './helpers.js';
 
 const OPENS_AT = BASE_OPENS_AT + 50 * 24 * HOUR;
 const TALLY = [
@@ -130,7 +130,7 @@ describe('DO-5: a reconnect gets a fresh state', () => {
          VALUES (?1, 'free', 0, 'settled', 1, ?2, '{"winner":0}')`,
       ).bind(id, JSON.stringify(TALLY)),
     ]);
-    const windowed = await snapshot(id);
+    const windowed = await freshSnapshot(id);
     expect(free(windowed)).toMatchObject({ status: 'revealing', revealedAt: null, result: null });
 
     // The reveal: `revealed_at`, then the RoundDO's result (as applyFree orders them).

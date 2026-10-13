@@ -21,7 +21,16 @@ import {
 } from '../gating/helpers.js';
 import { BEACON } from '../settlement/helpers.js';
 import { setGameClock, stakesEnv } from '../settlement/stakes-helpers.js';
-import { closeAll, connect, hubIdle, snapshot, stateOf, until, type Viewer } from './helpers.js';
+import {
+  closeAll,
+  connect,
+  freshSnapshot,
+  hubIdle,
+  snapshot,
+  stateOf,
+  until,
+  type Viewer,
+} from './helpers.js';
 
 const original = { QUEUE_SETTLE: env.QUEUE_SETTLE, QUEUE_NOTIFY: env.QUEUE_NOTIFY };
 
@@ -46,7 +55,7 @@ describe('PIPE-1 (WebSocket): nothing per option before the mode’s revealed_at
     const early = await connect(r.roundId);
     const w = await freeToWindow(r.roundId);
 
-    const windowed = await snapshot(r.roundId);
+    const windowed = await freshSnapshot(r.roundId);
     expect(windowed.modes.free).toMatchObject({
       status: 'revealing',
       revealedAt: null,
@@ -56,7 +65,7 @@ describe('PIPE-1 (WebSocket): nothing per option before the mode’s revealed_at
     expect(leaks(early)).toEqual([]);
 
     await w.reveal();
-    const after = await snapshot(r.roundId);
+    const after = await freshSnapshot(r.roundId);
     expect(after.modes.free).toMatchObject({
       status: 'settled',
       entrantCount: 3,

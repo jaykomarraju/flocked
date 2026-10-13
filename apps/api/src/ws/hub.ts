@@ -26,10 +26,16 @@ export interface FanoutResult {
   delivered: number;
   /** Shards that still failed after the retry (events) or the one try (counts). */
   failedShards: number;
+  /** Wall time (ms) the hub released the message to the chain: `counts` are spaced by this. */
+  releasedAt: number;
 }
 
 /** Sends one message to every shard; never rejects. */
-async function fanOut(env: Env, roundId: string, message: WsServerMessage): Promise<FanoutResult> {
+async function fanOut(
+  env: Env,
+  roundId: string,
+  message: WsServerMessage,
+): Promise<Omit<FanoutResult, 'releasedAt'>> {
   const n = viewerShardCount(env);
   const send = (shard: number) => viewerStub(env, roundId, shard).broadcast(message);
   let pending = Array.from({ length: n }, (_, i) => i);
@@ -115,9 +121,10 @@ class RoundHub {
   }
 
   private enqueue(message: WsServerMessage): void {
+    const releasedAt = Date.now();
     this.tail = this.tail.then(async () => {
       const r = await fanOut(this.env, this.roundId, message);
-      this.results.push(r);
+      this.results.push({ ...r, releasedAt });
       this.lastActive = Date.now();
     });
   }
