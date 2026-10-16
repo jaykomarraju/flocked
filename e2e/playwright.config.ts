@@ -41,7 +41,13 @@ const ui = {
   use: {
     ...devices['Desktop Chrome'],
     baseURL: uiBaseUrl,
+    // The exports are 2x renders by Paper (Electron, so Chromium) on a Display P3 Mac. An emulated
+    // deviceScaleFactor alone thins 1.5px borders to 1px, so the device scale is forced at launch too,
+    // and the colour profile matches the exports' (W8-C measured both).
     deviceScaleFactor: 2,
+    launchOptions: {
+      args: ['--force-device-scale-factor=2', '--force-color-profile=display-p3-d65'],
+    },
     colorScheme: 'light' as const,
     locale: 'en-US',
     timezoneId: 'America/New_York',

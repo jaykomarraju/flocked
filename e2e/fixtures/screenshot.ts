@@ -54,12 +54,18 @@ export async function expectArtboard(
   artboard: string,
   opts: { path?: string } = {},
 ): Promise<void> {
-  await page.setViewportSize(artboardSize(artboard));
+  // An artboard can be a fractional height (fit-content, e.g. 995.5): the viewport rounds up and the
+  // screenshot clips to the artboard, so it is exactly the export's size.
+  const size = artboardSize(artboard);
+  await page.setViewportSize({ width: Math.ceil(size.width), height: Math.ceil(size.height) });
   await page.goto(opts.path ?? `/__sheets/${artboard}`);
   await page.locator('[data-sheet-ready="true"]').waitFor();
   // (A string: e2e's tsconfig has no DOM lib.)
   await page.waitForFunction('document.fonts.status === "loaded"');
   await expect(page).toHaveScreenshot(exportPath(artboard), {
+    // fullPage with a clip keeps a fractional height exact (995.5 → 1991 device rows).
+    fullPage: true,
+    clip: { x: 0, y: 0, ...size },
     animations: 'disabled',
     caret: 'hide',
     scale: 'device',

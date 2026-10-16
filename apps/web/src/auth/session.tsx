@@ -37,8 +37,13 @@ export interface Auth {
   client: ApiClient;
   /** SIWE with an injected wallet or the smart wallet (in the mini app: the client's wallet). */
   signInWithWallet: () => Promise<void>;
-  /** Farcaster Quick Auth inside the mini app. */
-  signInWithFarcaster: () => Promise<void>;
+  /**
+   * Farcaster: Quick Auth inside the mini app; in a browser, the relay flow, which hands the
+   * approval URL (and a cancel) to `onApprove` so the sign-in sheet can open it and wait.
+   */
+  signInWithFarcaster: (opts?: {
+    onApprove?: (url: string, cancel: () => void) => void;
+  }) => Promise<void>;
   /** Sends a sign-in code to a linked, verified email (answers the same for any address). */
   startEmail: (email: string) => Promise<void>;
   verifyEmail: (email: string, code: string) => Promise<void>;
@@ -147,18 +152,23 @@ export function AuthProvider({
     await adopt(session);
   }, [wagmiConfig, client, transport, adopt]);
 
-  const signInWithFarcaster = useCallback(async () => {
-    if (!miniApp) throw new Error('Farcaster sign-in runs inside the mini app');
-    const [quickAuth, turnstile] = await Promise.all([miniApp.quickAuthToken(), turnstileToken()]);
-    const session = await client.call(api.farcaster, {
-      body: {
-        token: quickAuth,
-        transport: 'bearer',
-        ...(turnstile ? { turnstileToken: turnstile } : {}),
-      },
-    });
-    await adopt(session);
-  }, [miniApp, client, adopt]);
+  const signInWithFarcaster = useCallback(
+    async (opts: { onApprove?: (url: string, cancel: () => void) => void } = {}) => {
+      const quickAuth = async () => {
+        if (miniApp) return miniApp.quickAuthToken();
+        const { startBrowserFarcaster } = await import('./farcaster-browser');
+        const request = await startBrowserFarcaster({});
+        opts.onApprove?.(request.url, request.cancel);
+        return request.token;
+      };
+      const [token, turnstile] = await Promise.all([quickAuth(), turnstileToken()]);
+      const session = await client.call(api.farcaster, {
+        body: { token, transport, ...(turnstile ? { turnstileToken: turnstile } : {}) },
+      });
+      await adopt(session);
+    },
+    [miniApp, client, transport, adopt],
+  );
 
   const startEmail = useCallback(
     async (email: string) => {

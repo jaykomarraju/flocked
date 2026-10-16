@@ -1,10 +1,16 @@
-# Playwright over the local stack (W7-D; e2e/playwright.config.ts): the API-level lifecycle specs in
-# e2e/tests/*.spec.ts. The `api` project runs every spec's rounds (a Free and Stakes daily round with
-# no manual step, identical Stakes ciphertexts, the drand outage's rule-8 refund, and the Stakes
-# rounds that later need a warp: claims, a vetoed refund proposal, the refund timeout); `api-warp`
-# then moves anvil's clock past the challenge window and the 72 h timeout, which can't be undone.
-# No browser is needed until the `ui` project has specs (W8-C). Like the Stack workflow, it runs on
-# integration branches and main only: the stack takes a minute to start and a round several to settle.
+# Playwright over the local stack, two suites, each on a fresh stack of its own (the two-phase rule:
+# e2e/playwright.config.ts, e2e/stack/README.md "Playwright specs").
+# - `api` (W7-D): the API-level lifecycle specs in e2e/tests/*.spec.ts. Project `api` runs every spec's
+#   rounds (a Free and Stakes daily round with no manual step, identical Stakes ciphertexts, the drand
+#   outage's rule-8 refund, and the Stakes rounds that later need a warp: claims, a vetoed refund
+#   proposal, the refund timeout); `api-warp` then moves anvil's clock past the challenge window and
+#   the 72 h timeout, which can't be undone.
+# - `ui` (W8-C): the web app's browser specs in e2e/ui/*.spec.ts: screenshots against the Paper
+#   exports, axe, and sign-in end to end. The app is built before the stack starts, so the API Worker
+#   serves it at APP_ORIGIN.
+# Like the Stack workflow, it runs on integration branches and main only: the stack takes a minute to
+# start and a round several to settle. Playwright's globalTimeout (40 min) ends a stuck run before the
+# job's 45, so the report is still uploaded.
 name: E2E
 
 on:
@@ -43,15 +49,59 @@ jobs:
         env:
           CI: 'true'
       - name: Stack status and drand logs
-        if: failure()
+        if: failure() || cancelled()
         run: |
           pnpm stack:status || true
           docker compose -f e2e/stack/docker-compose.yml logs --tail 100
       - name: Upload the Playwright report and stack logs
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@v7
         with:
           name: e2e-report
+          path: |
+            playwright-report
+            test-results
+            e2e/stack/.run/logs
+          if-no-files-found: ignore
+      - name: Stop the stack
+        if: always()
+        run: pnpm stack:down
+
+  ui:
+    # ubuntu-latest moves to Ubuntu 26 from Oct 19, 2026; pin ubuntu-24.04 if the stack breaks there.
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.7.1
+      - run: pnpm install --frozen-lockfile
+      - run: forge soldeer install
+        working-directory: contracts
+      - name: Install Chromium for Playwright
+        run: pnpm --filter @flocked/e2e exec playwright install --with-deps chromium
+      # The app first, so the stack's API Worker serves it (and its design sheets) at APP_ORIGIN.
+      - run: pnpm --filter @flocked/web build:e2e
+      - run: pnpm stack:up
+      - run: pnpm --filter @flocked/e2e e2e:ui
+        env:
+          CI: 'true'
+      - name: Stack status and drand logs
+        if: failure() || cancelled()
+        run: |
+          pnpm stack:status || true
+          docker compose -f e2e/stack/docker-compose.yml logs --tail 100
+      - name: Upload the Playwright report and stack logs
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-ui-report
           path: |
             playwright-report
             test-results

@@ -11,12 +11,17 @@ body {
   padding: 0;
 }
 
+/* Text renders as in the Paper file: grayscale antialiasing, no synthesized bold or italic, and long
+   words (user-written questions) wrap anywhere rather than overflow. */
 body {
   background: var(--color-bg);
   color: var(--color-ink);
   font-family: var(--font-body);
   -webkit-text-size-adjust: 100%;
-  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-synthesis: none;
+  overflow-wrap: anywhere;
 }
 
 h1,

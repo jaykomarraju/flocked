@@ -26,7 +26,7 @@ describe('theme from design-tokens.json', () => {
 
   it('emits a class per type role with its size, line height, weight and tracking', () => {
     expect(css).toContain(
-      '.type-caption { font-family: var(--font-body); font-size: var(--text-caption); line-height: 18px; font-weight: 500; letter-spacing: 0.01em; }',
+      '.type-caption { font-family: var(--font-body); font-size: var(--text-caption); line-height: 18px; font-weight: 500; letter-spacing: 0.01em; font-variation-settings: "opsz" 26; }',
     );
     expect(css).toContain('--text-number-xl: 32px;');
     expect(css).toMatch(/\.type-number-xl \{[^}]*font-feature-settings: "tnum";/);
@@ -38,6 +38,13 @@ describe('theme from design-tokens.json', () => {
     );
     expect(css).toContain('font-family: "Inter"');
     expect(css).toContain('--font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;');
+  });
+
+  it("pins Inter's optical size below the body size to the doubled size, as Paper's 2x exports", () => {
+    expect(css).toMatch(/\.type-label \{[^}]*"opsz" 28;/);
+    expect(css).toMatch(/\.type-number-small \{[^}]*"opsz" 28;/);
+    expect(css).not.toMatch(/\.type-body \{[^}]*opsz/);
+    expect(css).not.toMatch(/\.type-option \{[^}]*opsz/);
   });
 
   it('maps the spacing scale to Paper names (--spacing-<px/4>)', () => {

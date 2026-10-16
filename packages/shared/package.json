@@ -6,6 +6,7 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
+    "./mascot/react": "./src/mascot/react.tsx",
     "./design-tokens.json": "./design-tokens.json"
   },
   "scripts": {
@@ -18,8 +19,20 @@
     "viem": "2.57.3",
     "zod": "4.6.5"
   },
+  "peerDependencies": {
+    "react": ">=19"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@flocked/tlock": "workspace:*",
-    "fast-check": "4.10.2"
+    "@testing-library/react": "16.3.3",
+    "@types/react": "19.3.0",
+    "fast-check": "4.10.2",
+    "jsdom": "30.1.3",
+    "react": "19.3.1"
   }
 }

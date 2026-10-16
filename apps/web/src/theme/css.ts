@@ -45,10 +45,24 @@ function fontFaces(tokens: DesignTokens, files: Record<'display' | 'body', FontF
     .join('\n');
 }
 
+/**
+ * Inter's optical size for a role, or null to leave it on auto. The frozen designs are Paper's 2x
+ * exports, and Paper renders Inter's small roles (below the 16px body size: caption 13, label and
+ * numberSmall 14) at the optical size of their doubled pixel size, opsz 26 and 28; auto would pick 14.
+ * Pinning it keeps the app looking like the exports (W8-C measured it: without it the component
+ * sheets differ from their exports by 4-7% of pixels, with it by under 0.5%).
+ */
+export function interOpticalSize(tokens: DesignTokens, role: Role): number | null {
+  if (role.font === 'display') return null;
+  return role.size < tokens.type.body!.size ? role.size * 2 : null;
+}
+
 /** `.type-<role>`: one class per type role (font, size, line height, weight, tracking in em). */
 function typeClasses(tokens: DesignTokens): string {
   return Object.entries(tokens.type)
     .map(([name, role]) => {
+      const opsz = interOpticalSize(tokens, role);
+      const variation = opsz === null ? '' : ` font-variation-settings: "opsz" ${opsz};`;
       const numeric =
         role.font === 'numeric'
           ? ` font-feature-settings: ${tokens.font.numeric.features.map((f) => `"${f}"`).join(', ')};`
@@ -56,7 +70,7 @@ function typeClasses(tokens: DesignTokens): string {
       return (
         `.type-${kebab(name)} { font-family: var(--font-${role.font}); ` +
         `font-size: var(--text-${kebab(name)}); line-height: ${role.lineHeight}px; ` +
-        `font-weight: ${role.weight}; letter-spacing: ${role.tracking}em;${numeric} }`
+        `font-weight: ${role.weight}; letter-spacing: ${role.tracking}em;${numeric}${variation} }`
       );
     })
     .join('\n');
