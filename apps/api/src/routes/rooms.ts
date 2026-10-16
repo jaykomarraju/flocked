@@ -71,7 +71,7 @@ rooms.get(
   validate('param', IdParamsSchema),
   async (c) => {
     const { id } = c.req.valid('param');
-    const body = await readRoomDetail(c.env, id, getUser(c).id, now(c.env));
+    const body = await readRoomDetail(c.env, id, getUser(c), now(c.env));
     return c.json(body, 200);
   },
 );
@@ -81,6 +81,7 @@ rooms.post(
   privateNoStore,
   requireUser,
   refuseSuspendedUser,
+  limitUser('writes'),
   validate('param', IdParamsSchema),
   validate('json', SetRoomQuestionRequestSchema),
   async (c) => {

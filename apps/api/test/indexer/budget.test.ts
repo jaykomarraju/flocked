@@ -10,7 +10,7 @@
 // reorg 21; dispatch at most 227 (about 9 per entry, counting one RoundDO call each); a whole poll
 // 374 calls, or 642 counting every batched statement as a query.
 import { env } from 'cloudflare:test';
-import { roundKey } from '@flocked/shared';
+import { newUlid, roundKey } from '@flocked/shared';
 import type { Hex } from 'viem';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Env } from '../../src/env.js';
@@ -170,6 +170,8 @@ interface Cost {
   doCalls: number;
 }
 const measured: Record<string, Cost> = {};
+/** One dispatch call with a Stakes final whose stats hook meets a 7-day backlog (W8-F1 L5). */
+let stakesFinal: Cost | undefined;
 const calls = (c: Cost) => c.rpc + c.d1Calls + c.doCalls;
 const statements = (c: Cost) => c.rpc + c.d1Statements + c.doCalls;
 
@@ -298,13 +300,99 @@ describe('the per-poll budget (Workers: 1,000 subrequests per invocation)', () =
     }
   });
 
+  it('a dispatch call: a Stakes final whose stats hook meets a 7-day backlog (W8-F1 L5)', async () => {
+    // Seven Stakes days closing in 2001, before every other round here. Day 1 was held (a settled
+    // proposal awaiting RoundFinalized, 3 entrants); days 2–7 settled meanwhile, 5,000 entrants each.
+    // RoundFinalized for day 1 runs the stats hook, which may now apply all seven days in order.
+    const ENTRANTS = 5_000;
+    const STAKE = 1_000_000;
+    const db = env.DB;
+    for (let d = 1; d <= 7; d++) {
+      const roundId = newUlid();
+      const closesAt = 1_000_000_000_000 + d * 86_400_000;
+      const held = d === 1;
+      const bundleHash = hash32(`backlog-bundle-${d}`);
+      await db.batch([
+        db
+          .prepare(
+            `INSERT INTO rounds (id, kind, room_id, question_id, opens_at, closes_at, beacon_round, status, locked_at, config_json)
+             VALUES (?1, 'daily', NULL, ?2, ?3, ?4, 1, 'closed', 1, '{}')`,
+          )
+          .bind(roundId, newUlid(), closesAt - 86_400_000, closesAt),
+        db
+          .prepare(
+            `INSERT INTO round_modes (round_id, mode, status, chain_round_id, bundle_hash, revealed_at,
+               claims_open_at, final_at)
+             VALUES (?1, 'stakes', ?2, ?3, ?4, ?5, ?6, ?7)`,
+          )
+          .bind(
+            roundId,
+            held ? 'settle_proposed' : 'settled',
+            String(9_000 + d),
+            bundleHash,
+            closesAt + 60_000,
+            closesAt + 7_200_000,
+            held ? null : closesAt + 7_200_000,
+          ),
+        db
+          .prepare(
+            `INSERT INTO settlements (round_id, mode, proposal_seq, outcome, formula_version, tally_json,
+               winners_json, payout_root, bundle_hash)
+             VALUES (?1, 'stakes', 0, 'settled', 1, ?2, ?3, ?4, ?5)`,
+          )
+          .bind(
+            roundId,
+            JSON.stringify([
+              { headcount: 1, total: String(STAKE) },
+              { headcount: 2, total: String(2 * STAKE) },
+            ]),
+            JSON.stringify({
+              winner: 0,
+              refundReason: null,
+              winPayout: '2850000',
+              rebatePayout: '10000',
+            }),
+            hash32(`backlog-root-${d}`),
+            bundleHash,
+          ),
+        db
+          .prepare(
+            `WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < ?2)
+             INSERT INTO entries (id, round_id, mode, user_id, foreign_entry, wallet, person_tag, stake,
+               commitment, tx_hash, block_number, log_index, option_index, valid, created_at)
+             SELECT printf('E%d-%06d', ?3, i), ?1, 'stakes', printf('U%06d', i), 0, printf('0x%040x', i),
+               printf('0x%064x', ?3 * 1000000 + i), ?4, printf('0x%064x', ?3 * 1000000 + i),
+               printf('0x%064x', ?3 * 1000000 + i), i, 0, CASE WHEN i = 1 THEN 0 ELSE 1 END, 1, 1
+             FROM n`,
+          )
+          .bind(roundId, held ? 3 : ENTRANTS, d, STAKE),
+      ]);
+    }
+    chain.mine([escrowEvent(dep.escrow, 'RoundFinalized', { roundId: 9_001n, status: 4 })]);
+    await indexAll();
+    const final = await measureDispatch();
+    expect(final.r).toMatchObject({ dispatched: 1, failed: null });
+    // The hook applied the held day, so the stats moved (how far is the budget's business).
+    const days = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM stats_days WHERE mode = 'stakes' AND done_at IS NOT NULL",
+    ).first<{ n: number }>();
+    expect(days?.n).toBeGreaterThanOrEqual(1);
+    const { rpc, d1Calls, d1Statements, doCalls } = final;
+    stakesFinal = { rpc, d1Calls, d1Statements, doCalls };
+  });
+
   it('a whole poll stays inside POLL_BUDGET', () => {
     const all = Object.entries(measured);
     const worst = (prefix: string, f: (c: Cost) => number) =>
       Math.max(...all.filter(([k]) => k.startsWith(prefix)).map(([, c]) => f(c)));
     expect(all).toHaveLength(6);
-    const total = worst('index', calls) + worst('dispatch', calls) + DO_OVERHEAD;
-    const strict = worst('index', statements) + worst('dispatch', statements) + DO_OVERHEAD;
+    // A Stakes final among the dispatched entries adds its stats hook's work (W8-F1 L5), counted on
+    // top of a full dispatch of the costliest kinds.
+    expect(stakesFinal).toBeDefined();
+    const final = stakesFinal as Cost;
+    const total = worst('index', calls) + worst('dispatch', calls) + calls(final) + DO_OVERHEAD;
+    const strict =
+      worst('index', statements) + worst('dispatch', statements) + statements(final) + DO_OVERHEAD;
     expect(total).toBeLessThanOrEqual(POLL_BUDGET);
     expect(strict).toBeLessThanOrEqual(POLL_BUDGET_STATEMENTS);
   });

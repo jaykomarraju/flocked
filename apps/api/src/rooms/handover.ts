@@ -1,12 +1,14 @@
-// Rooms of a deleted owner (spec "Identity and personhood" › Account deletion: "Rooms the user owns
-// pass to the oldest remaining member by join time. A room with no other member is closed."; decision
-// B5, Oct 12, 2026). Statements for the DELETE /me batch (src/identity/delete.ts), SQL only and with
+// Rooms of a deleted owner (spec "Identity and personhood" › Account deletion: rooms the user owns pass
+// to the oldest remaining active member by join time, else the oldest remaining member whose account
+// isn't deleted; a room with neither is closed, with its unlocked rounds; decision B5, Oct 12, 2026,
+// refined Oct 16, 2026). Statements for the DELETE /me batch (src/identity/delete.ts), SQL only and with
 // no read before them, so a join that commits before the batch is a remaining member and one after it
 // finds the room handed over or closed (src/rooms/join.ts inserts only into an open room).
 //
 // For each open room the user owns:
 //   * another member remains (a `room_members` row of another user whose account isn't deleted): the
-//     oldest by `joined_at` (then user ID) becomes the owner: `rooms.owner_user_id`, their role
+//     oldest active one by `joined_at` (then user ID), else the oldest of the others (suspended or
+//     merged), becomes the owner: `rooms.owner_user_id`, their role
 //     `owner`, and the deleted user's role `member`;
 //   * else the room closes (`closed_at`), and its room rounds that are still unlocked and scheduled
 //     close without a round (status `closed`, as a custom room round without a question does at its
@@ -20,7 +22,7 @@
 const successor = (roomSql: string) =>
   '(SELECT s.user_id FROM room_members s JOIN users su ON su.id = s.user_id ' +
   `WHERE s.room_id = ${roomSql} AND s.user_id <> ?1 AND su.status <> 'deleted' ` +
-  'ORDER BY s.joined_at, s.user_id LIMIT 1)';
+  "ORDER BY su.status <> 'active', s.joined_at, s.user_id LIMIT 1)";
 
 /** SQL: the open rooms the user still owns. */
 const OWNED = 'SELECT o.id FROM rooms o WHERE o.owner_user_id = ?1 AND o.closed_at IS NULL';

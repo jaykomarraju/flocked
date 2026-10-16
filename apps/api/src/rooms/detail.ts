@@ -2,7 +2,7 @@
 // leaderboards and rooms" › Rooms). Members only: the route answers 401 without a session, and this
 // answers 404 for an unknown or closed room and for a non-member alike (src/rooms/rows.ts).
 //
-// A member's visit while a room round is open credits the room-round grant (+100 room points below
+// An active member's visit while a room round is open credits the room-round grant (+100 room points below
 // 1,000; a skip is final for that round): `applyRoomGrant` (src/rounds/grant.ts), before the
 // balances are read, so the response shows it.
 //
@@ -63,13 +63,17 @@ async function members(db: D1Database, roomId: string): Promise<MemberRow[]> {
 export async function readRoomDetail(
   env: Env,
   roomId: string,
-  userId: string,
+  user: { id: string; status: string },
   t: number,
 ): Promise<RoomDetailResponse> {
   const db = env.DB;
+  const userId = user.id;
   const room = await memberRoom(db, roomId, userId);
   const open = await openRoundId(db, roomId, t);
-  if (open) await applyRoomGrant(db, { userId, roomId, roundId: open, now: t });
+  // Only an active account is paid the visit grant, as the daily grant (W8-F1 M3).
+  if (open && user.status === 'active') {
+    await applyRoomGrant(db, { userId, roomId, roundId: open, now: t });
+  }
 
   const currentId = open ?? (await latestOpenedId(db, roomId, t));
   const rows = await members(db, roomId);

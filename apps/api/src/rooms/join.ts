@@ -2,11 +2,14 @@
 // by default; 500 room points on joining).
 //
 // Answers: an unknown or closed room → 404 `not_found`; already a member → 200 with the room and no
-// second grant; a full room (`ROOM_MAX_MEMBERS` members) → 409 `room_full`.
+// second grant; a full room (`ROOM_MAX_MEMBERS` members whose account isn't deleted) → 409
+// `room_full`; a joiner whose account is no longer active (suspended, merged or deleted since the
+// session was read) → 403 `account_suspended` (W8-F1 L3).
 //
-// One D1 batch: the membership, inserted only while the room is open and below the cap (the count is
-// read inside the insert, so concurrent joins never exceed it, and a racing account deletion that
-// closes the room wins or loses as a whole); then the join grant (500, reason `room_grant`, ref =
+// One D1 batch: the membership, inserted only while the room is open, below the cap and the joiner's
+// account active (all read inside the insert, so concurrent joins never exceed the cap, a racing
+// account deletion that closes the room wins or loses as a whole, and a merge or deletion of the
+// joiner committing first leaves no member behind); then the join grant (500, reason `room_grant`, ref =
 // scope = the room ID), whose balance row and ledger row are written only when the membership row
 // exists. The ledger insert does nothing on the ledger's unique key, and the balance moves only by
 // the row this request inserted, so a member is credited once however often they join (spec "Data
@@ -27,7 +30,9 @@ const INSERT_MEMBER =
   'INSERT INTO room_members (room_id, user_id, role, joined_at) ' +
   "SELECT ?1, ?2, 'member', ?3 " +
   'WHERE EXISTS (SELECT 1 FROM rooms WHERE id = ?1 AND closed_at IS NULL) ' +
-  'AND (SELECT COUNT(*) FROM room_members WHERE room_id = ?1) < ?4 ' +
+  "AND EXISTS (SELECT 1 FROM users WHERE id = ?2 AND status = 'active') " +
+  'AND (SELECT COUNT(*) FROM room_members c JOIN users cu ON cu.id = c.user_id ' +
+  "WHERE c.room_id = ?1 AND cu.status <> 'deleted') < ?4 " +
   'ON CONFLICT DO NOTHING';
 
 const IS_MEMBER = 'EXISTS (SELECT 1 FROM room_members WHERE room_id = ?2 AND user_id = ?1)';
@@ -85,8 +90,16 @@ export async function joinRoom(
     log.info('room_joined', { roomId: room.id, granted: (ledger?.meta.changes ?? 0) === 1 });
     return served(db, room.id);
   }
-  // Nothing inserted: a concurrent join of ours, the room closed meanwhile, or it is full.
+  // Nothing inserted: a concurrent join of ours, the room closed meanwhile, our account no longer
+  // active, or the room is full.
   if (await isMember(db, room.id, userId)) return served(db, room.id);
+  const joiner = await db
+    .prepare('SELECT status FROM users WHERE id = ?1')
+    .bind(userId)
+    .first<{ status: string }>();
+  if (joiner?.status !== 'active') {
+    throw new HttpError('account_suspended', 'This account can’t join rooms');
+  }
   const now = await db
     .prepare('SELECT closed_at FROM rooms WHERE id = ?1')
     .bind(room.id)

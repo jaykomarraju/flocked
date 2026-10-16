@@ -10,7 +10,8 @@
 // Authored questions: `queued` ones (public in the vote queue) and `used` ones whose daily round has
 // opened (a used question is locked a day ahead and must not leak before its round opens), never a
 // room's question (W8-D: private to the room). Split quality comes from the Free mode's revealed
-// tally of a final mode, or the Stakes one without it.
+// tally of a settled mode, or the Stakes one without it; a refunded or voided mode has none (W8-F1
+// L6, decision of Oct 16, 2026).
 import {
   QuestionOptionSchema,
   gameDayOf,
@@ -90,7 +91,7 @@ async function splitQualities(
               CAST(json_extract(s.tally_json, '$[1].headcount') AS INTEGER) AS h1
        FROM settlements s
        JOIN round_modes m ON m.round_id = s.round_id AND m.mode = s.mode
-         AND m.status IN ('settled', 'refunded') AND m.revealed_at IS NOT NULL
+         AND m.status = 'settled' AND m.revealed_at IS NOT NULL
        WHERE s.superseded_at IS NULL AND s.round_id IN (SELECT value FROM json_each(?1))
        ORDER BY s.mode`, // 'free' before 'stakes'
     )

@@ -92,12 +92,15 @@ beforeAll(async () => {
   for (const n of [21, 22, 23, 24]) await seedUser(n);
   await seedUser(25, { verified: false });
   await question('2026-11-02', u(21), 3, 1); // 0.5
-  await question('2026-11-03', u(21), 2, 2); // 1.0 (a refunded tie still has its tally)
+  // A refunded tie: not counted, settled modes only (W8-F1 L6). Counted, its 1.0 would make u21
+  // first with 3 used questions (mean 0.77).
+  await question('2026-11-03', u(21), 2, 2);
+  await question('2026-11-17', u(21), 2, 3); // 0.8
   await question('2026-11-04', u(22), 2, 1); // 2/3
   await question('2026-11-05', u(22), 1, 2); // 2/3
-  await question('2026-11-06', u(22), 5, 5); // 1.0
-  await question('2026-11-07', u(23), 1, 1); // 1.0
-  await question('2026-11-08', u(23), 2, 2); // 1.0
+  await question('2026-11-06', u(22), 4, 5); // 8/9
+  await question('2026-11-07', u(23), 2, 3); // 0.8
+  await question('2026-11-08', u(23), 9, 11); // 0.9
   await question('2026-11-09', u(23), 7, 1); // 0.25
   await question('2026-11-10', u(24), 1, 2); // one used question only
   await question('2026-11-11', u(25), 1, 2); // unverified
@@ -213,9 +216,9 @@ describe('creators', () => {
       [2, u(23), 3],
       [3, u(21), 2],
     ]);
-    expect(b.rows[0]?.splitQuality).toBeCloseTo(7 / 9, 10);
-    expect(b.rows[1]?.splitQuality).toBe(0.75);
-    expect(b.rows[2]?.splitQuality).toBe(0.75);
+    expect(b.rows[0]?.splitQuality).toBeCloseTo(20 / 27, 10);
+    expect(b.rows[1]?.splitQuality).toBeCloseTo(0.65, 10);
+    expect(b.rows[2]?.splitQuality).toBeCloseTo(0.65, 10);
     expect(b.me).toMatchObject({ rank: 3, user: { id: u(21) } });
   });
 
