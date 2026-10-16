@@ -70,6 +70,44 @@ async function isMember(roomId: string, userId: string): Promise<boolean> {
   return row !== null;
 }
 
+/**
+ * `db`, with the first `n` reads of an owner's open-room count (createRoom's pre-check) each held,
+ * after it is read, until all `n` have been read: `n` concurrent creates all see the same count.
+ */
+function preChecksTogether(db: D1Database, n: number): D1Database {
+  let read = 0;
+  let release = () => {};
+  const allRead = new Promise<void>((r) => (release = r));
+  const held = (stmt: D1PreparedStatement) => ({
+    bind: (...args: unknown[]) => {
+      const bound = stmt.bind(...args);
+      return {
+        first: async <T>() => {
+          const row = await bound.first<T>();
+          if (read < n) {
+            read += 1;
+            if (read === n) release();
+            await allRead;
+          }
+          return row;
+        },
+      };
+    },
+  });
+  return new Proxy(db, {
+    get(target, prop) {
+      if (prop !== 'prepare') {
+        const v: unknown = Reflect.get(target, prop);
+        return typeof v === 'function' ? (v as (...a: unknown[]) => unknown).bind(target) : v;
+      }
+      return (sql: string) =>
+        sql.startsWith('SELECT COUNT(*) AS n FROM rooms WHERE owner_user_id = ?1')
+          ? held(target.prepare(sql))
+          : target.prepare(sql);
+    },
+  });
+}
+
 const setStatus = (userId: string, status: string) =>
   env.DB.prepare('UPDATE users SET status = ?2 WHERE id = ?1').bind(userId, status).run();
 
@@ -92,7 +130,13 @@ describe('rooms owned per account (H1)', () => {
   it('holds the cap under concurrent creates (read inside the insert)', async () => {
     const owner = await createUser();
     for (let i = 0; i < 8; i++) expect((await create(owner)).status).toBe(201);
-    const statuses = await Promise.all([1, 2, 3, 4].map(async () => (await create(owner)).status));
+    // Every create passes the app-level pre-check (8 open rooms) before any inserts, so only the count
+    // read inside the insert can hold the cap (W9-Z: it caught the guard's removal only by timing).
+    const gated = { ...e, DB: preChecksTogether(e.DB, 4) };
+    const body = { name: 'Flock', questionSource: 'custom' };
+    const statuses = await Promise.all(
+      [1, 2, 3, 4].map(async () => (await call(gated, owner.user, 'POST', '/rooms', body)).status),
+    );
     expect(statuses.filter((s) => s === 201)).toHaveLength(2);
     expect(statuses.filter((s) => s === 409)).toHaveLength(2);
     expect(await openRoomsOwnedBy(owner.id)).toBe(10);
