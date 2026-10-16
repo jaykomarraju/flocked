@@ -111,13 +111,16 @@ describe('DO-5: a reconnect gets a fresh state', () => {
     expect(free(closed)).toMatchObject({ status: 'pending', entrantCount: 3, pool: '100' });
 
     // Beacon time: settlement is enqueued and `revealing` broadcast. D1 still says pending (the
-    // SettlementDO moves it), so a reconnect gets `state` and then `revealing` as a catch-up.
+    // SettlementDO moves it), but past beacon time a reconnect's `state` says revealing (W7-F1 R1),
+    // so the `revealing` it shows is not replayed after it.
     await alarmAt(r.stub, r.locked.beaconTimeSec * 1000);
     await hubIdle(r.stub, id);
     expect(settled.map((s) => s.roundId)).toContain(id);
     await until(() => watcher.of('revealing').length === 1);
     const caught = await connect(id);
-    expect(caught.messages.map((m) => m.type)).toEqual(['state', 'revealing']);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(caught.messages.map((m) => m.type)).toEqual(['state']);
+    expect(free(stateOf(caught))).toMatchObject({ status: 'revealing', result: null });
     await closeAll([caught]);
 
     // The window: the settlement record (tally, winner) is in D1, `revealed_at` is still null.

@@ -7,15 +7,18 @@
 //     is in the socket's attachment, so nothing is lost when the shard sleeps), then sends `state`
 //     and catches the socket up (below). Every reconnect is a new connection, so it gets a fresh
 //     `state`.
-//   - subscribe: binds the shard to its round and returns the snapshot (src/ws/snapshot.ts). The
-//     snapshot is kept for up to a second and patched by `counts`, and any other message drops it,
-//     so a reconnect storm costs each shard at most one D1 read a second.
+//   - subscribe: binds the shard to its round and returns the snapshot (src/ws/snapshot.ts) as of
+//     the game clock (`asOfClock`: past beacon time a closed round's `pending` mode is `revealing`).
+//     The snapshot is kept for up to a second and patched by `counts`, and any other message drops
+//     it, so a reconnect storm costs each shard at most one D1 read a second.
 //   - broadcast: relays one message (checked against the wire schema) to every open socket and
 //     returns how many it reached; a socket whose send fails is closed.
 //
 // Catch-up: a message relayed while a new socket's snapshot was being read, or relayed in the last
 // 30 s but not yet visible in D1 (the Stakes indexer tells the RoundDO before it writes D1), is sent
-// after `state`, in order. Every replayed message has already gone to every viewer.
+// after `state`, in order. Only each mode's newest event can be: an older one (a `revealed` before a
+// `refunded`) never follows a state that already shows a newer one (W7-F1 R4). Every replayed
+// message has already gone to every viewer.
 //
 // Clients send nothing (the spec defines no client messages) except an optional "ping", which the
 // runtime answers "pong" without waking the shard.
@@ -34,7 +37,7 @@ import type { Env } from '../env.js';
 import { now } from '../lib/clock.js';
 import { log } from '../lib/log.js';
 import { VIEWER_HEADER, type ViewerConnect } from '../ws/shards.js';
-import { roundSnapshot } from '../ws/snapshot.js';
+import { asOfClock, roundSnapshot } from '../ws/snapshot.js';
 import type { RoundViewerDORpc, ViewerSubscription } from './types.js';
 
 /** What each socket carries through hibernation. */
@@ -136,7 +139,9 @@ export class RoundViewerDO extends DurableObject<Env> implements RoundViewerDORp
       throw new RangeError('subscribe: this shard serves another round');
     }
     this.sub = sub;
-    return { ...(await this.snapshot(sub.roundId)), serverTime: now(this.env) };
+    const kept = await this.snapshot(sub.roundId);
+    const t = now(this.env);
+    return asOfClock({ ...kept, serverTime: t }, t);
   }
 
   // eslint-disable-next-line @typescript-eslint/require-await -- RPC methods are async
@@ -266,12 +271,21 @@ export class RoundViewerDO extends DurableObject<Env> implements RoundViewerDORp
   /**
    * What a new socket needs after `state`, in relay order: events from the replay window that the
    * snapshot doesn't show yet, and the latest `counts` if it was relayed during the snapshot read.
+   * Only the newest event of each mode (the round, for `closed`) is a candidate: once a newer one is
+   * shown or replayed, an older one would take the viewer backwards.
    */
   private catchUp(state: WsStateMessage, from: number): WsServerMessage[] {
     const t = Date.now();
-    const out: Relayed<WsServerMessage>[] = this.recent.filter(
-      (r) => t - r.at < REPLAY_WINDOW_MS && !reflected(state, r.message),
-    );
+    const out: Relayed<WsServerMessage>[] = [];
+    const settled = new Set<string>();
+    for (let i = this.recent.length - 1; i >= 0; i--) {
+      const r = this.recent[i] as Relayed<Event>;
+      if (t - r.at >= REPLAY_WINDOW_MS) continue;
+      const key = r.message.type === 'closed' ? 'round' : r.message.mode;
+      if (settled.has(key)) continue;
+      settled.add(key);
+      if (!reflected(state, r.message)) out.push(r);
+    }
     if (this.lastCounts && this.lastCounts.seq > from) out.push(this.lastCounts);
     return out.sort((a, b) => a.seq - b.seq).map((r) => r.message);
   }

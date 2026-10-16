@@ -306,3 +306,47 @@ describe('GET /me/personhood/callback', () => {
     expect(res.status).toBe(400);
   });
 });
+
+// W7-F1 R12 (decision B7): suspended accounts sign in read-only, and verifying is a write.
+describe('suspended accounts cannot verify', () => {
+  const suspend = (id: string) =>
+    env.DB.prepare("UPDATE users SET status = 'suspended' WHERE id = ?1").bind(id).run();
+
+  it('POST /me/personhood refuses account_suspended', async () => {
+    const t = personhoodEnv();
+    const a = await account(t);
+    await suspend(a.id);
+    const res = await call(t.env, 'POST', '/me/personhood', undefined, a.headers);
+    expect([res.status, await errorCode(res)]).toEqual([403, 'account_suspended']);
+  });
+
+  it('a callback for an account suspended since it started binds nothing and starts no merge', async () => {
+    const t = personhoodEnv();
+    const p = person(301);
+    // Another account holds the person: an active caller would get a pending merge.
+    const holder = await account(t);
+    const first = await start(t.env, holder.headers);
+    const verified = await callback(t.env, {
+      state: first.state,
+      code: t.coinbase.approve(first.url, p),
+    });
+    expect((await outcome(verified)).status).toBe('verified');
+
+    for (const who of [p, person(302)]) {
+      const a = await account(t);
+      const { url, state } = await start(t.env, a.headers);
+      await suspend(a.id);
+      const out = await outcome(
+        await callback(t.env, { state, code: t.coinbase.approve(url, who) }),
+      );
+      expect(out).toEqual({ status: 'failed', reason: 'account_suspended' });
+      expect((await userRow(a.id))?.person_id).toBeNull();
+      const merges = await env.DB.prepare(
+        'SELECT COUNT(*) AS n FROM merges WHERE kept_user_id = ?1 OR losing_user_id = ?1',
+      )
+        .bind(a.id)
+        .first<{ n: number }>();
+      expect(merges?.n).toBe(0);
+    }
+  });
+});

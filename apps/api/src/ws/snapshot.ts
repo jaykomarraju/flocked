@@ -5,7 +5,9 @@
 //     which is the record: the RoundDO keeps a finalized Stakes mode at `settle_proposed` (W6-Z);
 //   - entrant counts and pools from the RoundDO while the round is live, else from D1 `entries`;
 //   - a mode's result only through `revealed_at`: the settlement row is joined on it, never read
-//     by its mere presence (Stakes writes its record before the proposal is confirmed onchain).
+//     by its mere presence (Stakes writes its record before the proposal is confirmed onchain);
+//   - one difference, applied when a shard serves it (`asOfClock`): past beacon time a closed
+//     round's `pending` mode reads `revealing`.
 import {
   TallySchema,
   WsStateMessageSchema,
@@ -70,6 +72,25 @@ async function liveCounts(env: Env, roundId: string): Promise<Counts> {
     log.warn('ws_counts_fallback', { roundId, error: String(err) });
     return d1Counts(env.DB, roundId);
   }
+}
+
+/**
+ * The snapshot as of `nowMs` (game clock): once the round has closed and its beacon time has
+ * passed, settlement has started, so a mode D1 still shows `pending` reads `revealing` (W7-F1 R1).
+ * D1 moves it only when the SettlementDO (Free) or the indexer (Stakes) gets to it, and the RoundDO's
+ * `revealing` broadcast is kept for catching up for 30 s, in memory: without this a viewer arriving
+ * after a late beacon or slow relays, or on a shard that slept, would stay at `pending`, and a
+ * reconnect could go backwards. The shard's `reflected()` then counts that `revealing` as shown.
+ */
+export function asOfClock(s: WsStateMessage, nowMs: number): WsStateMessage {
+  const closed = s.status === 'closed' || nowMs >= s.closesAt * 1000;
+  if (!closed || nowMs < s.beaconTime * 1000) return s;
+  const modes = { ...s.modes };
+  for (const mode of ['free', 'stakes'] as const) {
+    const m = modes[mode];
+    if (m?.status === 'pending') modes[mode] = { ...m, status: 'revealing' };
+  }
+  return { ...s, modes };
 }
 
 function result(m: ModeRow): WsModeSnapshot['result'] {

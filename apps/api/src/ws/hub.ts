@@ -8,7 +8,10 @@
 //   - each message goes to every viewer shard (src/ws/shards.ts) on one promise chain per round, so
 //     messages arrive in the order the RoundDO sent them. A shard that fails gets an event message
 //     once more; a lost `counts` is superseded by the next one or a reconnect's snapshot.
-// The chain never rejects and is held by the hub (no floating promise): tests await `whenIdle`.
+//   - each shard call has `SHARD_RPC_TIMEOUT_MS` to answer, and a timed-out call counts as failed,
+//     so a hung shard delays the round's later messages by at most two timeouts (W7-F1 R5).
+// The chain never rejects (a step that throws is logged and the chain goes on) and is held by the
+// hub (no floating promise): tests await `whenIdle`.
 //
 // One hub per round in the RoundDO's isolate. Coalescing uses wall time, not the game clock, which
 // tests and the local stack pin (src/lib/clock.ts).
@@ -19,6 +22,29 @@ import { viewerShardCount, viewerStub } from './shards.js';
 
 /** At most one `counts` per round per this many ms. */
 export const COUNTS_INTERVAL_MS = 1000;
+
+/** How long one shard's `broadcast` may take before it counts as failed. */
+export const SHARD_RPC_TIMEOUT_MS = 5_000;
+
+let shardRpcTimeoutMs = SHARD_RPC_TIMEOUT_MS;
+
+/** Tests only: a shorter per-shard timeout; no argument restores `SHARD_RPC_TIMEOUT_MS`. */
+export function setShardRpcTimeoutForTests(ms: number = SHARD_RPC_TIMEOUT_MS): void {
+  shardRpcTimeoutMs = ms;
+}
+
+/** `call`, or a rejection once `ms` have passed without an answer. */
+async function withTimeout<T>(call: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`no answer within ${ms} ms`)), ms);
+  });
+  try {
+    return await Promise.race([call, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 export interface FanoutResult {
   type: WsServerMessage['type'];
@@ -37,7 +63,11 @@ async function fanOut(
   message: WsServerMessage,
 ): Promise<Omit<FanoutResult, 'releasedAt'>> {
   const n = viewerShardCount(env);
-  const send = (shard: number) => viewerStub(env, roundId, shard).broadcast(message);
+  const send = (shard: number) =>
+    withTimeout(
+      Promise.resolve(viewerStub(env, roundId, shard).broadcast(message)),
+      shardRpcTimeoutMs,
+    );
   let pending = Array.from({ length: n }, (_, i) => i);
   let delivered = 0;
   const tries = message.type === 'counts' ? 1 : 2;
@@ -122,11 +152,20 @@ class RoundHub {
 
   private enqueue(message: WsServerMessage): void {
     const releasedAt = Date.now();
-    this.tail = this.tail.then(async () => {
-      const r = await fanOut(this.env, this.roundId, message);
-      this.results.push({ ...r, releasedAt });
-      this.lastActive = Date.now();
-    });
+    this.tail = this.tail
+      .then(async () => {
+        const r = await fanOut(this.env, this.roundId, message);
+        this.results.push({ ...r, releasedAt });
+        this.lastActive = Date.now();
+      })
+      .catch((err: unknown) => {
+        // A step that throws loses this message only; the round's later messages still go out.
+        log.error('ws_fanout_chain_failed', {
+          roundId: this.roundId,
+          type: message.type,
+          error: String(err),
+        });
+      });
   }
 }
 

@@ -245,6 +245,18 @@ export const LOCKED_CONFIG_DEFAULTS = {
   },
 } as const;
 
+// ---- Admin-editable limits (the `config` table) ----
+
+/**
+ * The `config` key of the maximum daily stake cap (spec "Compliance and responsible play" ›
+ * Responsible play): USDC base units, so legal (OA-21) can lower it. `PUT /me/limits` refuses a
+ * cap above it. A missing or invalid value, or one above the default, reads as the default.
+ */
+export const MAX_DAILY_STAKE_CAP_KEY = 'limits.stakes.maxDailyCap';
+
+/** The maximum daily stake cap by default, and its upper bound: 1,000 USDC per game day. */
+export const DEFAULT_MAX_DAILY_STAKE_CAP = 1_000_000_000n;
+
 // ---- Hashes committed at lock ----
 
 /**

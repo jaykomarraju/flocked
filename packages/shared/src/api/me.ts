@@ -152,6 +152,13 @@ export type TosState = z.infer<typeof TosStateSchema>;
 
 // GET /me ---------------------------------------------------------------------------------------
 
+/** `/me`'s limits: the stored limits, plus the highest daily cap `PUT /me/limits` accepts now. */
+export const MeLimitsSchema = LimitsStateSchema.extend({
+  /** `limits.stakes.maxDailyCap` (USDC base units; 1,000 USDC unless lowered). */
+  maxDailyCap: DecimalBigintSchema,
+});
+export type MeLimits = z.infer<typeof MeLimitsSchema>;
+
 /** GET /me: profile, balances, limits, flags, verification status and Stakes eligibility. */
 export const MeResponseSchema = z.object({
   user: z.object({
@@ -173,7 +180,7 @@ export const MeResponseSchema = z.object({
     global: DecimalBigintSchema,
     rooms: z.array(z.object({ roomId: UlidSchema, balance: DecimalBigintSchema })),
   }),
-  limits: LimitsStateSchema,
+  limits: MeLimitsSchema,
   /** Feature flags that affect this user's UI. */
   flags: z.record(z.string(), z.boolean()),
   tos: TosStateSchema,
