@@ -65,6 +65,7 @@ export const NOTIFICATION_EVENTS = [
   'question_used',
   'streak_at_risk',
   'question_edited',
+  'question_rejected',
   'security_notice',
 ] as const;
 export type NotificationEvent = (typeof NOTIFICATION_EVENTS)[number];

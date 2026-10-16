@@ -39,8 +39,13 @@ const SPEC_COLUMNS: Record<string, readonly string[]> = {
     'moderation_json',
     'score',
     'created_at',
+    // 0017 (W8-A): admin review, and the rejection the author sees (not yet in the spec's data model).
+    'needs_review',
+    'rejection_reason',
+    'rejected_at',
   ],
-  question_votes: ['question_id', 'user_id', 'value', 'created_at'],
+  // 0017 (W8-A): each vote's decay weight, fixed when it is cast.
+  question_votes: ['question_id', 'user_id', 'value', 'created_at', 'weight'],
   rounds: [
     'id',
     'kind',
@@ -250,6 +255,9 @@ const SPEC_COLUMNS: Record<string, readonly string[]> = {
     // 0015 (W7-B): the deleted account, so re-verification carries its tickets (W7-B spec issue).
     'user_id',
   ],
+  // 0017 (W8-A): split quality per settled mode of a daily round ("Question pipeline" step 5); not
+  // yet a row in the spec's data model.
+  question_splits: ['round_id', 'mode', 'question_id', 'split_quality', 'entrants', 'created_at'],
 };
 
 /** Primary keys the spec names ("PK (...)", or "(PK)" on a column). */
@@ -268,6 +276,7 @@ const SPEC_PRIMARY_KEYS: Record<string, readonly string[]> = {
   share_cards: ['share_id'],
   config: ['key'],
   person_tombstones: ['person_id'],
+  question_splits: ['round_id', 'mode'],
 };
 
 interface KeySpec {
@@ -844,6 +853,210 @@ describe('0016 (W6-F1 O1)', () => {
     await env.DB.batch(m.queries.map((q) => env.DB.prepare(q)));
     expect(await rows()).toEqual(before);
     expect(before).toHaveLength(4);
+  });
+});
+
+describe('0017 (W8-A)', () => {
+  const q = (id: string, cols: Record<string, unknown> = {}) => {
+    const row: Record<string, unknown> = {
+      id,
+      prompt: 'Tea or coffee?',
+      options_json: '[{"label":"Tea"},{"label":"Coffee"}]',
+      category: 'food',
+      created_at: 0,
+      ...cols,
+    };
+    const names = Object.keys(row);
+    return [
+      `INSERT INTO questions (${names.join(', ')}) VALUES (${names.map((_, i) => `?${i + 1}`).join(', ')})`,
+      ...Object.values(row),
+    ] as const;
+  };
+  const insert = async (id: string, cols: Record<string, unknown> = {}) => {
+    const [sql, ...params] = q(id, cols);
+    await env.DB.prepare(sql)
+      .bind(...params)
+      .run();
+  };
+
+  it('records the migration', async () => {
+    const { results } = await env.DB.prepare('SELECT name FROM d1_migrations').all<{
+      name: string;
+    }>();
+    expect(results.map((r) => r.name)).toContain('0017_question_pipeline.sql');
+  });
+
+  it('category is one of the fixed list ("Core game rules" › Question format)', async () => {
+    for (const c of ['food', 'life', 'tech', 'money', 'pop', 'hypothetical', 'other']) {
+      await insert(`q17-cat-${c}`, { category: c });
+    }
+    for (const c of ['test', 'animals', 'Food', '']) {
+      expect(await rejects(...q(`q17-bad-${c}`, { category: c }))).toContain(
+        'CHECK constraint failed',
+      );
+    }
+  });
+
+  it('rejected_at and rejection_reason are set together, exactly when the status is rejected', async () => {
+    await insert('q17-rej', {
+      status: 'rejected',
+      rejected_at: 5,
+      rejection_reason: 'Not two-sided',
+    });
+    for (const [id, cols] of [
+      ['q17-r1', { status: 'rejected' }],
+      ['q17-r2', { status: 'rejected', rejected_at: 5 }],
+      ['q17-r3', { status: 'rejected', rejection_reason: 'x' }],
+      ['q17-r4', { status: 'queued', rejected_at: 5, rejection_reason: 'x' }],
+      ['q17-r5', { status: 'submitted', rejection_reason: 'x' }],
+    ] as const) {
+      expect(await rejects(...q(id, cols))).toContain(
+        'CHECK constraint failed: questions_rejection',
+      );
+    }
+    // Un-rejecting clears both, or fails.
+    expect(await rejects("UPDATE questions SET status = 'queued' WHERE id = 'q17-rej'")).toContain(
+      'questions_rejection',
+    );
+    await env.DB.prepare(
+      "UPDATE questions SET status = 'queued', rejected_at = NULL, rejection_reason = NULL WHERE id = 'q17-rej'",
+    ).run();
+  });
+
+  it('needs_review is 0 or 1, and 1 only while submitted', async () => {
+    await insert('q17-nr', { status: 'submitted', needs_review: 1 });
+    await insert('q17-new');
+    const row = await env.DB.prepare(
+      "SELECT status, needs_review FROM questions WHERE id = 'q17-new'",
+    ).first<{ status: string; needs_review: number }>();
+    expect(row).toEqual({ status: 'submitted', needs_review: 0 });
+    expect(await rejects(...q('q17-nr2', { status: 'queued', needs_review: 1 }))).toContain(
+      'CHECK constraint failed: questions_review',
+    );
+    expect(await rejects(...q('q17-nr3', { status: 'submitted', needs_review: 2 }))).toContain(
+      'CHECK constraint failed',
+    );
+    // Approving clears the flag in the same update, or fails.
+    expect(await rejects("UPDATE questions SET status = 'queued' WHERE id = 'q17-nr'")).toContain(
+      'questions_review',
+    );
+  });
+
+  it('question_splits: mode, split_quality in [0, 1], entrants > 0, one row per (round, mode)', async () => {
+    const split =
+      'INSERT INTO question_splits (round_id, mode, question_id, split_quality, entrants, created_at) VALUES (?1, ?2, ?3, ?4, ?5, 0)';
+    await env.DB.prepare(split).bind('r17', 'free', 'q', 0, 1).run();
+    await env.DB.prepare(split).bind('r17', 'stakes', 'q', 1, 3).run();
+    expect(await rejects(split, 'r17', 'free', 'q', 0.5, 2)).toContain('UNIQUE');
+    expect(await rejects(split, 'r17b', 'rooms', 'q', 0.5, 2)).toContain('CHECK constraint failed');
+    expect(await rejects(split, 'r17b', 'free', 'q', -0.01, 2)).toContain(
+      'CHECK constraint failed',
+    );
+    expect(await rejects(split, 'r17b', 'free', 'q', 1.01, 2)).toContain('CHECK constraint failed');
+    expect(await rejects(split, 'r17b', 'free', 'q', 0.5, 0)).toContain('CHECK constraint failed');
+    expect((await indexesOf('question_splits')).map((i) => i.columns)).toContainEqual([
+      'question_id',
+    ]);
+  });
+
+  // The rebuild against the table it replaced: 0001's `questions` (unchanged until 0017) on a
+  // renamed copy, with rows, then 0017's questions statements on it.
+  it('the rebuild copies every row: a bad category becomes other, a rejected row gets its time and a reason', async () => {
+    const rename = (sql: string) =>
+      sql
+        .replace(/\bquestions_(\w+)/g, 'mig_questions_$1')
+        .replace(/\bquestions\b/g, 'mig_questions');
+    const statement = (sql: string) => sql.replace(/^(\s*--[^\n]*\n)*\s*/, '');
+    const queriesOf = (name: string) => {
+      const m = env.TEST_MIGRATIONS.find((x) => x.name === name);
+      if (!m) throw new Error(`no migration ${name}`);
+      return m.queries;
+    };
+    const v1 = queriesOf('0001_init.sql').filter((x) =>
+      /^CREATE (TABLE|INDEX \w+ ON) questions\b/.test(statement(x)),
+    );
+    expect(v1).toHaveLength(3);
+    for (const x of v1) await env.DB.prepare(rename(x)).run();
+    const opts = '[{"label":"Tea","emoji":"🍵"},{"label":"Coffee","emoji":"☕"}]';
+    await env.DB.batch(
+      [
+        ['M1', null, 'animals', 'queued', null, 2.5, 10],
+        ['M2', 'U1', 'food', 'rejected', '{"safe":false}', -1, 20],
+        ['M3', 'U2', 'tech', 'used', null, 0, 30],
+        ['M4', 'U3', 'test', 'submitted', null, 1, 40],
+      ].map((r) =>
+        env.DB.prepare(
+          'INSERT INTO mig_questions (id, author_user_id, prompt, options_json, category, status, moderation_json, score, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)',
+        ).bind(r[0], r[1], `p ${String(r[0])}`, opts, r[2], r[3], r[4], r[5], r[6]),
+      ),
+    );
+
+    const v17 = queriesOf('0017_question_pipeline.sql').filter((x) =>
+      /^(CREATE TABLE questions_new|INSERT INTO questions_new|DROP TABLE questions\b|ALTER TABLE questions_new|CREATE INDEX \w+ ON questions\b)/.test(
+        statement(x),
+      ),
+    );
+    expect(v17).toHaveLength(8);
+    for (const x of v17) await env.DB.prepare(rename(x)).run();
+
+    const { results } = await env.DB.prepare(
+      'SELECT id, author_user_id, category, status, moderation_json, score, created_at, needs_review, rejection_reason, rejected_at FROM mig_questions ORDER BY id',
+    ).all();
+    const common = { needs_review: 0, moderation_json: null };
+    expect(results).toEqual([
+      {
+        ...common,
+        id: 'M1',
+        author_user_id: null,
+        category: 'other',
+        status: 'queued',
+        score: 2.5,
+        created_at: 10,
+        rejection_reason: null,
+        rejected_at: null,
+      },
+      {
+        ...common,
+        id: 'M2',
+        author_user_id: 'U1',
+        category: 'food',
+        status: 'rejected',
+        moderation_json: '{"safe":false}',
+        score: -1,
+        created_at: 20,
+        rejection_reason: 'Rejected',
+        rejected_at: 20,
+      },
+      {
+        ...common,
+        id: 'M3',
+        author_user_id: 'U2',
+        category: 'tech',
+        status: 'used',
+        score: 0,
+        created_at: 30,
+        rejection_reason: null,
+        rejected_at: null,
+      },
+      {
+        ...common,
+        id: 'M4',
+        author_user_id: 'U3',
+        category: 'other',
+        status: 'submitted',
+        score: 1,
+        created_at: 40,
+        rejection_reason: null,
+        rejected_at: null,
+      },
+    ]);
+    // The rebuilt table has the new CHECKs.
+    await expect(
+      env.DB.prepare(
+        "INSERT INTO mig_questions (id, prompt, options_json, category, created_at) VALUES ('M5', 'p', '[1,2]', 'test', 0)",
+      ).run(),
+    ).rejects.toThrow(/CHECK constraint failed/);
+    await env.DB.prepare('DROP TABLE mig_questions').run();
   });
 });
 

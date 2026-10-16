@@ -119,6 +119,8 @@ export const NotifyMessageSchema = z.discriminatedUnion('event', [
     closesAt: UnixSecondsSchema,
   }),
   notify('question_edited', { questionId: UlidSchema, auditId: z.string().min(1) }),
+  /** An admin rejected the user's question; `reason` is the admin's, shown to the author. */
+  notify('question_rejected', { questionId: UlidSchema, reason: z.string().min(1).max(500) }),
   notify('security_notice', {
     noticeId: z.string().min(1),
     kind: z.enum(SECURITY_NOTICE_KINDS),

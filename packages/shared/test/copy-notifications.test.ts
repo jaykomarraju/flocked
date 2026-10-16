@@ -31,7 +31,10 @@ function strings(value: unknown): string[] {
 
 const QUESTION_120 = 'Q'.repeat(119) + '?';
 
-/** The longest value each placeholder can take; `refundLine` is varied separately. */
+/**
+ * The longest value each placeholder can take; `refundLine` is varied separately. A `reason` longer
+ * than the push body is cut to it by the consumer (NOTIFICATION_PLACEHOLDERS).
+ */
 const WORST: NotificationValues = {
   amount: '+1,234,567.89 USDC',
   payout: '1,234,567.89 USDC',
@@ -39,6 +42,7 @@ const WORST: NotificationValues = {
   question: QUESTION_120,
   streak: '1000',
   mode: 'Stakes',
+  reason: 'R'.repeat(PUSH_LIMITS.body - 1) + '…',
 };
 
 describe('notification copy (spec "Notifications")', () => {
@@ -52,6 +56,7 @@ describe('notification copy (spec "Notifications")', () => {
       question_used: ['farcaster', 'webpush'],
       streak_at_risk: ['farcaster', 'webpush'],
       question_edited: ['farcaster', 'webpush'],
+      question_rejected: ['farcaster', 'webpush'],
       security_notice: ['farcaster', 'webpush', 'email'],
     });
   });
@@ -81,6 +86,7 @@ describe('notification copy (spec "Notifications")', () => {
       question_used: ['scheduled', 'settled'],
       streak_at_risk: ['default'],
       question_edited: ['default'],
+      question_rejected: ['default'],
       security_notice: [...SECURITY_NOTICE_KINDS],
     };
     for (const event of NOTIFICATION_EVENTS) {
@@ -131,6 +137,16 @@ describe('notification copy (spec "Notifications")', () => {
           }
         }
       }
+    }
+  });
+
+  it('question_rejected carries the reason on push, and is not sent by email (spec row)', () => {
+    expect(NOTIFICATION_COPY.question_rejected.email).toBeNull();
+    for (const channel of ['farcaster', 'webpush'] as const) {
+      const copy = NOTIFICATION_COPY.question_rejected[channel]?.default;
+      const reason = 'It asks for a fact, not a preference.';
+      expect(copy && fillCopy(copy.title, {})).toBe('Your question was rejected');
+      expect(copy && fillCopy(copy.body, { reason })).toBe(reason);
     }
   });
 

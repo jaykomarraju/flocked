@@ -70,6 +70,27 @@ export const QuestionSchema = z.object({
 });
 export type Question = z.infer<typeof QuestionSchema>;
 
+/** Submissions per user per game day (spec "Question pipeline" step 1). */
+export const QUESTIONS_PER_DAY = 3;
+/** Rejections within `QUESTION_REJECTION_WINDOW_MS` that block submission (spec "Anti-abuse"). */
+export const QUESTION_REJECTION_LIMIT = 5;
+export const QUESTION_REJECTION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+/** How long submission stays blocked after the 5th rejection. */
+export const QUESTION_BLOCK_MS = 7 * 24 * 60 * 60 * 1000;
+/** The queue page shows the top 50 (spec "Question pipeline" step 3). */
+export const QUEUE_TOP_LIMIT = 50;
+
+/**
+ * The caller's submission allowance: what's left in the current game day (21:00 to 21:00 New
+ * York), rejections in the last 7 days, and the end of a 7-day block (null when not blocked).
+ */
+export const QuestionQuotaSchema = z.object({
+  remainingToday: z.int().min(0).max(QUESTIONS_PER_DAY),
+  rejectionsLast7Days: z.int().min(0),
+  blockedUntil: EpochMsSchema.nullable(),
+});
+export type QuestionQuota = z.infer<typeof QuestionQuotaSchema>;
+
 /** The synchronous moderation outcome of a submission. `review` goes to the admin queue. */
 export const ModerationOutcomeSchema = z.object({
   outcome: z.enum(['queued', 'rejected', 'review']),
@@ -82,7 +103,12 @@ export type ModerationOutcome = z.infer<typeof ModerationOutcomeSchema>;
 
 export const QUESTION_SORTS = ['top', 'new'] as const;
 
-/** GET /questions query. Only public statuses can be listed; the default is `queued`, `top`. */
+/**
+ * GET /questions query. Only public statuses can be listed; the default is `queued`, `top`.
+ * `queued` is the voting queue: questions that passed moderation and wait for a day (`submitted`
+ * without a pending review, and admin-approved `queued` ones). `top` serves at most the top 50 by
+ * decayed score, in one page; `new` pages by creation time.
+ */
 export const QuestionsListQuerySchema = z.object({
   status: z.enum(['queued', 'scheduled', 'used']).optional(),
   sort: z.enum(QUESTION_SORTS).optional(),
@@ -91,12 +117,16 @@ export const QuestionsListQuerySchema = z.object({
 });
 export type QuestionsListQuery = z.infer<typeof QuestionsListQuerySchema>;
 
-/** GET /questions response. `myVote` is the caller's vote when signed in, else null. */
+/**
+ * GET /questions response. `myVote` is the caller's vote when signed in, else null; `quota` is the
+ * caller's submission allowance when signed in, else null.
+ */
 export const QuestionsListResponseSchema = z.object({
   questions: z.array(
     QuestionSchema.extend({ myVote: z.union([z.literal(1), z.literal(-1)]).nullable() }),
   ),
   nextCursor: CursorSchema.nullable(),
+  quota: QuestionQuotaSchema.nullable(),
 });
 export type QuestionsListResponse = z.infer<typeof QuestionsListResponseSchema>;
 
@@ -107,9 +137,11 @@ export const SubmitQuestionRequestSchema = z
   .strictObject({ ...questionInputShape, turnstileToken: TurnstileTokenSchema.optional() })
   .refine(optionsDiffer, optionsDifferIssue);
 export type SubmitQuestionRequest = z.infer<typeof SubmitQuestionRequestSchema>;
+/** The stored question (status `rejected` when moderation rejected it), its outcome and the quota after it. */
 export const SubmitQuestionResponseSchema = z.object({
   question: QuestionSchema,
   moderation: ModerationOutcomeSchema,
+  quota: QuestionQuotaSchema,
 });
 export type SubmitQuestionResponse = z.infer<typeof SubmitQuestionResponseSchema>;
 
