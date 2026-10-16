@@ -48,18 +48,29 @@
 - **Owns.** `apps/web/src/features/{today,sealed,reveal}/**`, `apps/web/src/ws/**`, `apps/web/src/crypto/**`, `e2e/ui/{today,sealed,reveal,tlock-bundle}.spec.ts`. It notes route registrations for D.
 - **Required tests.** TL-1 (browser half: the production bundle encrypts in Chromium, and the Worker decrypts with a recorded signature). Screenshot comparisons for every core-flow state it implements. Reduced-motion test (NFR-9 part). Receipt-mismatch handling. axe checks.
 
-## W9-D: Free UI e2e + notification e2e
+## W9-D: Free UI e2e + notification e2e (+ merges W8-F1)
 
-- **Role / size:** integrate, M.
-- **Objective.** Merge A, B and C; register routes. Write UI e2e for a full Free round in the browser: sign in, pick, seal, close, beacon, reveal, result (E2E-1 Free UI, E2E-2). E2E-8: exactly one outcome notification per entrant per game day, and `question_live` only to non-entrants. Run the verify CLI against e2e bundles (PIPE-6 e2e).
-- **Read first.** `plan.md` §2, §3.4. Handoffs W9-A, B, C. `e2e/README.md`.
-- **Owns.** Registry files; `e2e/ui/free-round.spec.ts`, `e2e/tests/{notifications,verify-cli}.spec.ts`.
-- **Required tests.** `pnpm check`, `pnpm e2e`, `pnpm e2e:ui` green.
-- **Emits.** W9-Z prompt.
+Split up front into W9-D and W9-D.2 (owner decision, Oct 16, 2026; plan.md 2.8: an integrate session that builds features after its merges is split, and subagent tokens count toward its size).
+
+- **W9-D.**
+  - **Role / size:** integrate, M.
+  - **Objective.** Merge A, B, C and W8-F1 (the wave-8 review fixes, `wave-8.md` "W8-F1"; owner decision, Oct 16, 2026) as a fourth branch; register routes. Run the API-level work: E2E-8, exactly one outcome notification per entrant per game day, and `question_live` only to non-entrants (`e2e/tests/notifications.spec.ts`); the verify CLI against e2e bundles (PIPE-6 e2e, `e2e/tests/verify-cli.spec.ts`). Re-run a sample of W8-F1's mutations on the merged tree.
+  - **Read first.** `plan.md` §2, §3.4. Handoffs W9-A, B, C and W8-F1. `e2e/README.md`.
+  - **Owns.** Registry files; `e2e/tests/{notifications,verify-cli}.spec.ts`.
+  - **Required tests.** `pnpm check` and `pnpm e2e` green; W8-F1's sampled mutations caught on the merged tree.
+  - **Emits.** `docs/prompts/W9-D.2.md`.
+- **W9-D.2: Browser Free-round e2e.**
+  - **Role / size:** integrate, M. On `w9-integration`, after W9-D.
+  - **Objective.** UI e2e for a full Free round in the browser: sign in, pick, seal, close, beacon, reveal, result (E2E-1 Free UI, E2E-2), in `e2e/ui/free-round.spec.ts`.
+  - **Read first.** `plan.md` §2, §3.4. Handoffs W9-C and W9-D. `e2e/README.md`.
+  - **Owns.** `e2e/ui/free-round.spec.ts` (and the registry files, only for a fix the spec needs).
+  - **Required tests.** `pnpm check`, `pnpm e2e` and `pnpm e2e:ui` green (`pnpm e2e:ui` on its own fresh stack, plan.md 4.3).
+  - **Emits.** W9-Z prompt.
 
 ## W9-Z checklist
 
 - TL-1, E2E-1 (Free UI), E2E-2, E2E-8, PIPE-6 proven.
+- W8-F1's items (H1, M1–M3, L1–L6 and the Oct 16 decisions that need code) each have a passing, mutation-checked test, and W8-F1 is merged.
 - Confirm OA-D4 is frozen before W10-A.
 - Migrations for wave 10: W10-A `0023`, W10-B (watcher's own D1) `watcher/0001`, W10-D `0024`.
 
@@ -105,3 +116,20 @@
   - RoundDO down (decision E7): keep the last state with a "Reconnecting" banner and poll `GET /rounds/:id` until the socket is back; an entry POST that answers 503 `unavailable` is retried;
   - the WebSocket client (W7-A): the first message is always `state`, possibly followed by catch-up events; send "ping" to keep a socket alive (answered "pong"); reconnect with jitter. `refunded.provisional` marks a Stakes refund proposal ("Final at" `finalAt`);
   - a refunded mode's `state` has `result: null` and its tally is on `GET /rounds/:id` only; the reveal animation is for settled modes (decision A2).
+
+## Carry-over from W8-Z (Oct 16, 2026)
+
+- **All:** read `docs/sessions/W8-Z.md` for the spec sections changed on Oct 16. **W8-F1** (review fixes and five owner decisions) runs alongside W9-A/B/C from the tag `wave-8`; its files are listed in `wave-8.md` "W8-F1". Don't edit them.
+- **W9-A:**
+  - the `question_rejected` consumer, with the copy the owner approved (Oct 16): push only (Farcaster and web push), title "Your question was rejected", body "{reason}", the reason cut to 128 characters with "…" by the consumer; no email. `question_rejected`, `question_edited` and `question_used` are game notifications (none for self-excluded users);
+  - `identity_unlinked` is missing from `SECURITY_NOTICE_KINDS`;
+  - the email mock lets W9-D read sent emails: a seam route such as `GET /__test/email/last?to=` (W8-C), so tests stop reading wrangler's log;
+  - `src/indexer/handlers/stakes.ts` (its Stakes outcome enqueue) and `src/settlement/hooks.ts` stay W9-A's this wave; W8-F1 fixes L5 inside `src/stats/apply.ts` instead.
+- **W9-B:** room bundles carry `qualifies`; rule 1 counts only qualifying entrants there (`docs/bundle-format.md`).
+- **W9-C:**
+  - the Today entry flow replaces W8-C's interim Today (drop the disabled CTA) and shows the crowd-history hint, per mode (Free and Stakes tallies separately);
+  - `apps/web/src/routes.tsx` is D-owned: note route registrations for W9-D;
+  - clients treat WebSocket events idempotently: a timed-out shard event is retried, so it can arrive twice (W7-F1 R5);
+  - the Today exports are re-exported with the mode-toggle check (W8-Z design run); match them;
+  - `GET /rounds/:id`'s `revealing` past beacon time is W8-F1's now (`read/rounds.ts`), not W9-C's.
+- **W9-D:** merge W8-F1 as a fourth branch (see the W9-D objective); W9-D and W9-D.2 are split up front.

@@ -64,3 +64,12 @@
   - the limits UI shows the maximum daily cap, 1,000 USDC unless legal lowers it (`limits.stakes.maxDailyCap`, decision B4; W7-F1 R3);
   - a suspended account (decision B7) is read-only, except lowering its cap, self-excluding and editing notification prefs. Raising the cap and lifting an exclusion refuse `account_suspended`.
 - **W12-D:** the dashboard metric definitions (decision E6): split quality is the smaller side's share of valid entries (per mode); verification rate is the verified share of users with at least one entry; D-n retention is the share of a game day's first-time entrants who enter again on game day n (n = 1, 7, 30); beacon → reveal latency per mode (median and max).
+
+## Carry-over from W8-Z (Oct 16, 2026)
+
+- **W12-A:**
+  - `isSingleEmoji` moves to `packages/shared`, and the submit form trims and checks options like the server (owner decision, Oct 16);
+  - the web Rooms tab, room pages and invites build on W8-D's room API.
+- **W12-B** (it may edit the `PATCH /me` handler in `apps/api/src/routes/me.ts` and `routes/limits.ts` for these):
+  - creator payout location (owner decision, Oct 16): `PATCH /me` stores `prefs_json.creator_payout_location_ok_at` when the request's location passes `geo.stakes.allow` while the payout wallet is set, and clears it on a wallet change;
+  - `PUT /me/limits` doesn't carry `maxDailyCap`; only `/me` does (W7-F1).

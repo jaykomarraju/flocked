@@ -80,3 +80,16 @@
 - **W11-D:**
   - bearer tokens on WebSockets for the mini app (W7-A open issue): browsers can't set `Authorization` on a WebSocket, so a mini-app viewer of a room round gets 401 at the upgrade. Issue a short-lived token from an authenticated HTTP call, passed as `Sec-WebSocket-Protocol` or a query parameter. W11-D may edit `src/ws/upgrade.ts`;
   - the Farcaster hub (`FARCASTER_HUB_URL`, decision F6) is decided with OA-11 by W11. Unset, no Farcaster-verified wallet is offered. Neynar's hub needs an API key (a secret); staging (W14) needs a hub.
+
+## Carry-over from W8-Z (Oct 16, 2026)
+
+- **W11-A** (it may edit `src/scheduler/lock.ts` for the creator check):
+  - mount the `questions/admin.ts` actions on `routes/admin.ts`; `adminQuestionView` serves the list page (W8-A);
+  - there is no unassign action: a scheduled question must have another assigned to its day before it can be rejected;
+  - a no-round day can't be rescued after its lock time; adding house questions only fills later days;
+  - creator at lock (owner decision, Oct 16): the lock reads the escrow's treasury and refuses a draft whose creator differs, admin drafts included;
+  - how an admin resolves a room question sent to review: Approve and Assign refuse it today (409 `conflict`); one option is approving it onto the room's next round.
+- **W11-C:** handles are lowercase (`HandleSchema`), so `/users/Woolly` is 400: lowercase a handle before linking to a profile.
+- **W11-D:**
+  - share links and `?ref=` (owner decision, Oct 16): the web client keeps `?ref=` and `/s/:shareId` for 7 days (the attribution window; the server can't check its age) and sends the ref at sign-in;
+  - mini app sign-in e2e: it needs a host-frame harness (W8-C open issue), with OA-11.

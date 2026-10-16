@@ -2,7 +2,7 @@
 // lines for every event in NOTIFICATION_EVENTS on every channel in NOTIFICATION_CHANNELS, designed in Paper (page
 // "Cards and notifications", W6-C.2). Voice: short, dry, deadpan; never explain the joke; never use exclamation
 // points. Templates hold `{placeholder}`s from NOTIFICATION_PLACEHOLDERS; the notify consumer formats the values.
-// `question_rejected` (added Oct 12, 2026) is a W8-A draft awaiting the owner's approval (W8-Z).
+// `question_rejected` (added Oct 12, 2026; drafted by W8-A) was approved by the owner on Oct 16, 2026 (W8-Z): push only.
 
 import type { NotificationChannel } from '../api/me';
 import { VOICE } from '../copy';
@@ -172,7 +172,7 @@ const STREAK_AT_RISK = {
 const QUESTION_EDITED = {
   default: push('Your question was edited', 'We changed its wording. See the new version.'),
 };
-/** Draft (W8-A): the admin's reason is the whole body. */
+/** Approved Oct 16, 2026 (W8-Z): the admin's reason is the whole body. */
 const QUESTION_REJECTED = { default: push('Your question was rejected', '{reason}') };
 const SECURITY_PUSH = {
   email_sign_in: push(

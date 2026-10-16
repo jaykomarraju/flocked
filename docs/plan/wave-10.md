@@ -90,3 +90,7 @@
 - **W10-A:** deleted accounts (W7-B): `DELETE /me` enqueues a card re-render. Build its consumer (cards without handle or avatar) and purge the edge cache for the cards it replaces.
 - **W10-C:** during the challenge window `/claims` already lists the live proposal's payouts with proof and `claimsOpenAt`, though the escrow refuses a claim until final. Show them as "claimable at" that time (decision D3).
 - **W10-D:** the Coinbase Smart Wallet stand-in for the paymaster specs goes in `e2e/fixtures/wallet.ts`, which notes where (W7-D needed none: the API-level specs enter from EOAs).
+
+## Carry-over from W8-Z (Oct 16, 2026)
+
+- **W10-A:** the referral attribution window (7 days) lives in the client (owner decision, Oct 16): the server can't check its age. `GET /s/:shareId` and its "Play today's Flocked" link carry the sharer's `ref` and the share ID to the app; W11-D keeps them in the client.
