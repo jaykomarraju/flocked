@@ -66,7 +66,7 @@ Chunk `i` holds exactly the entries with `i × chunkSize ≤ seq < (i + 1) × ch
 | `beaconRound`    | number                       | The drand round every pick targets                                                                       |
 | `config`         | object                       | The round's locked config (`rounds.config_json`, `LockedConfigSchema`), both modes' sections            |
 | `drand`          | `{chainHash, signature}`      | The chain hash and the signature for `beaconRound`, verified against the pinned public key              |
-| `commitment`     | `{root, anchorTx, entryCount}` \| null | Free: the anchored commitment root, the anchor transaction and its leaf count. null for Stakes and for a Free mode with no entries |
+| `commitment`     | `{root, anchorTx, entryCount}` \| null | Free: the anchored commitment root, the anchor transaction and its leaf count. null for Stakes and for a Free mode with no entries (a Free mode with entries and no commitment can't publish one: rule 4 refunds it before the reveal) |
 | `chainRoundId`   | string \| null                | Stakes: the FlockedEscrow round ID                                                                      |
 | `closeBlock`     | `{number, hash}` \| null      | Stakes: the close block, the last block stamped before `closesAt` (final once the safe head passed it). Free: null |
 | `record`         | object                       | The settlement record (below)                                                                            |
@@ -131,7 +131,11 @@ Stakes entries go straight to `classify`, with the round reference the onchain r
 
 ## Verifying a bundle
 
-1. Check each chunk's `hash`, and `bundleHash` against the onchain anchor (Free) or proposal (Stakes).
+Bundles are public at the API's `GET /rounds/:id/bundles/:mode/:file` (`:file` is `manifest.json` or
+`chunk-{nnnn}.json`) once the mode has revealed; a bucket mirror serves the same keys under `bundles/`.
+
+1. Check each chunk's `hash`, and `bundleHash` against the onchain anchor (Free) or proposal (Stakes). Free:
+   a null `commitment` against an anchor that holds one is a mismatch (entries were left out).
 2. Verify `drand.signature` for `beaconRound` against the pinned chain (`@flocked/tlock` `verifyBeacon`).
 3. Free: rebuild the commitment tree over the entries with `seq < commitment.entryCount` (leaves above,
    OpenZeppelin StandardMerkleTree) and compare with `commitment.root` and the anchored root.

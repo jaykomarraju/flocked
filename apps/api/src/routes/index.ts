@@ -20,10 +20,7 @@ import { rounds } from './rounds.js';
 import { stakes } from './stakes.js';
 import { users } from './users.js';
 
-/**
- * Module `push`: web push subscriptions and the Farcaster mini app webhook (W9-A). The webhook is not
- * in ENDPOINTS: the spec's API table has no row for it yet (W9-D handoff, Spec issues).
- */
+/** Module `push`: web push subscriptions and the Farcaster mini app webhook (W9-A). */
 const notifications = new Hono<AppEnv>().route('/', push).route('/', farcasterWebhook);
 
 export const ROUTE_APPS: Record<RouteModule, Hono<AppEnv>> = {

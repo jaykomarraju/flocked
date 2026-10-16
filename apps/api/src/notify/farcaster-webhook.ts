@@ -10,6 +10,7 @@
 // (`GET /v1/onChainSignersByFid?fid=&signer=`), whose SignedKeyRequest metadata names the client app's
 // FID: tokens are stored per (fid, app_fid). Without FARCASTER_HUB_URL nothing can be verified and the
 // route answers 503. W9-D mounts `farcasterWebhook` and adds its ENDPOINTS row ("Notes for D").
+import { FarcasterWebhookRequestSchema } from '@flocked/shared';
 import { Hono } from 'hono';
 import { decodeAbiParameters, type Hex } from 'viem';
 import { z } from 'zod';
@@ -23,11 +24,7 @@ import { b64urlDecode } from './channels/webpush.js';
 /** The webhook route's path (registered by W9-D). */
 export const FARCASTER_WEBHOOK_PATH = '/farcaster/webhook';
 
-const JfsSchema = z.object({
-  header: z.string().min(1).max(4096),
-  payload: z.string().min(1).max(4096),
-  signature: z.string().min(1).max(256),
-});
+const JfsSchema = FarcasterWebhookRequestSchema;
 
 const HeaderSchema = z.object({
   fid: z.int().positive(),
