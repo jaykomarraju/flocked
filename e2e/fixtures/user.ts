@@ -11,7 +11,9 @@ import {
   PersonhoodCallbackResponseSchema,
   SiweNonceResponseSchema,
   StartPersonhoodResponseSchema,
+  UserProfileResponseSchema,
   type MeResponse,
+  type UserProfileResponse,
 } from '@flocked/shared';
 import { createSiweMessage } from 'viem/siwe';
 import { http } from './http';
@@ -135,6 +137,18 @@ export async function acceptTerms(stack: Stack, user: User): Promise<void> {
 
 export async function getMe(stack: Stack, user: User): Promise<MeResponse> {
   return MeResponseSchema.parse(ok('GET /me', await stack.api('/me', auth(user))));
+}
+
+/** `PATCH /me {handle}`: a new account has no handle (so no public profile) until it picks one. */
+export async function setHandle(stack: Stack, user: User, handle: string): Promise<void> {
+  ok('PATCH /me', await stack.api('/me', { ...auth(user), method: 'PATCH', body: { handle } }));
+}
+
+/** `GET /users/:handle`, the public profile (no session). */
+export async function getProfile(stack: Stack, handle: string): Promise<UserProfileResponse> {
+  return UserProfileResponseSchema.parse(
+    ok(`GET /users/${handle}`, await stack.api(`/users/${handle}`)),
+  );
 }
 
 /** The request options that act as this player. */

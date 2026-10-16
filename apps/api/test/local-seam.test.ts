@@ -1,14 +1,21 @@
 // The local test seam (src/local/seam.ts): closed unless ENVIRONMENT is 'local' and the per-run key
 // is presented; otherwise it creates and locks rounds (or leaves one for the scheduler), pins the
 // game clock for the Worker and its DOs, runs a cron expression's jobs, and refuses a reveal with a
-// signature that is not the round's beacon. The stack smoke test
+// signature that is not the round's beacon; for rooms (W8-D) it schedules a room round the lock
+// takes as a custom room's and backdates an account. The stack smoke test
 // (e2e/tests/stack-smoke.test.ts) covers the full flow with a real drand network.
 import { exports } from 'cloudflare:workers';
 import { env } from 'cloudflare:test';
-import { ErrorEnvelopeSchema, RoundDetailResponseSchema, newUlid } from '@flocked/shared';
+import {
+  ErrorEnvelopeSchema,
+  ROOM_MIN_QUALIFYING_ENTRANTS,
+  RoundDetailResponseSchema,
+  newUlid,
+} from '@flocked/shared';
 import { beaconTime, chainFromEnv, firstRoundAtOrAfter } from '@flocked/tlock';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { seamEnabled } from '../src/local/seam.js';
+import { lockRound, type RoundRow } from '../src/scheduler/lock.js';
 
 const KEY = 'a'.repeat(64);
 const chain = chainFromEnv(env as unknown as Record<string, string | undefined>);
@@ -267,5 +274,124 @@ describe('W6-F1 O1: POST /holds/release (the guardian’s admin action, locally)
     await expectNotFound(await seam('/holds/release', { ...body, reason: 'void_rate' }));
     expect(await audits(roundId)).toHaveLength(1);
     expect((await seam('/holds/release', { ...body, reason: 'other' })).status).toBe(400);
+  });
+});
+
+describe('W8-D: room rounds and account age (e2e/tests/rooms.spec.ts)', () => {
+  const ROUND_COLUMNS =
+    'id, kind, room_id, question_id, opens_at, closes_at, beacon_round, status, locked_at, config_json';
+
+  async function insertUser(createdAt: number): Promise<string> {
+    const id = newUlid();
+    await env.DB.prepare(
+      "INSERT INTO users (id, handle, ref_code, status, created_at) VALUES (?1, ?2, ?3, 'active', ?4)",
+    )
+      .bind(id, `seam_${id.slice(-8).toLowerCase()}`, `SM${id.slice(-12)}`, createdAt)
+      .run();
+    return id;
+  }
+
+  async function insertCustomRoom(owner: string): Promise<string> {
+    const roomId = newUlid();
+    await env.DB.prepare(
+      "INSERT INTO rooms (id, name, owner_user_id, invite_code, question_source, created_at) VALUES (?1, 'Flock', ?2, ?3, 'custom', ?4)",
+    )
+      .bind(roomId, owner, `inv${roomId.slice(-10)}`, T)
+      .run();
+    return roomId;
+  }
+
+  it('schedules a room round whose question is the room’s own, and the lock takes it with the room minimum', async () => {
+    await seam('/clock', { nowMs: T });
+    const roomId = await insertCustomRoom(await insertUser(T));
+    const opensAt = T + 60_000;
+    const res = await seam('/rounds/scheduled', {
+      opensAt,
+      closesAt: opensAt + 120_000,
+      beaconDelay: 120,
+      roomId,
+    });
+    expect(res.status).toBe(201);
+    const { roundId, questionId } = await res.json<{ roundId: string; questionId: string }>();
+    const row = await env.DB.prepare(`SELECT ${ROUND_COLUMNS} FROM rounds WHERE id = ?1`)
+      .bind(roundId)
+      .first<RoundRow>();
+    expect(row).toMatchObject({
+      kind: 'room',
+      room_id: roomId,
+      question_id: questionId,
+      status: 'scheduled',
+      locked_at: null,
+    });
+    const question = await env.DB.prepare('SELECT room_id, status FROM questions WHERE id = ?1')
+      .bind(questionId)
+      .first<{ room_id: string | null; status: string }>();
+    expect(question).toEqual({ room_id: roomId, status: 'scheduled' });
+
+    // The scheduler's lock reads it as a custom room's round: its own question, Free with minEntrants 3.
+    expect(await lockRound(env, chain, row as RoundRow, T)).toEqual({
+      status: 'locked',
+      houseFill: false,
+    });
+    const locked = await env.DB.prepare(
+      'SELECT question_id, locked_at, config_json FROM rounds WHERE id = ?1',
+    )
+      .bind(roundId)
+      .first<{ question_id: string; locked_at: number; config_json: string }>();
+    expect(locked).toMatchObject({ question_id: questionId, locked_at: T });
+    expect(JSON.parse(locked?.config_json as string)).toMatchObject({
+      free: { minEntrants: ROOM_MIN_QUALIFYING_ENTRANTS, awardRecipient: null },
+    });
+  });
+
+  it('keeps a round without roomId daily, with a question of no room, and answers 404 for an unknown room', async () => {
+    await seam('/clock', { nowMs: T });
+    const opensAt = T + 60_000;
+    const daily = await seam('/rounds/scheduled', { opensAt, closesAt: opensAt + 60_000 });
+    const { roundId, questionId } = await daily.json<{ roundId: string; questionId: string }>();
+    const kind = await env.DB.prepare('SELECT kind, room_id FROM rounds WHERE id = ?1')
+      .bind(roundId)
+      .first();
+    expect(kind).toEqual({ kind: 'daily', room_id: null });
+    const q = await env.DB.prepare('SELECT room_id FROM questions WHERE id = ?1')
+      .bind(questionId)
+      .first();
+    expect(q).toEqual({ room_id: null });
+
+    const before = await env.DB.prepare('SELECT COUNT(*) AS n FROM rounds').first<{ n: number }>();
+    await expectNotFound(
+      await seam('/rounds/scheduled', { opensAt, closesAt: opensAt + 60_000, roomId: newUlid() }),
+    );
+    const after = await env.DB.prepare('SELECT COUNT(*) AS n FROM rounds').first<{ n: number }>();
+    expect(after?.n).toBe(before?.n);
+    const bad = await seam('/rounds/scheduled', { opensAt, closesAt: opensAt + 1000, roomId: 'x' });
+    expect(bad.status).toBe(400);
+  });
+
+  it('POST /users/age sets an account’s created_at; 404 for an unknown user, 400 on a bad body', async () => {
+    const userId = await insertUser(T);
+    const createdAt = T - 2 * 24 * 60 * 60 * 1000;
+    const res = await seam('/users/age', { userId, createdAt });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ userId, createdAt });
+    const row = await env.DB.prepare('SELECT created_at FROM users WHERE id = ?1')
+      .bind(userId)
+      .first<{ created_at: number }>();
+    expect(row?.created_at).toBe(createdAt);
+
+    await expectNotFound(await seam('/users/age', { userId: newUlid(), createdAt }));
+    expect((await seam('/users/age', { userId, createdAt: -1 })).status).toBe(400);
+    expect((await seam('/users/age', { userId, createdAt, extra: 1 })).status).toBe(400);
+  });
+
+  it('POST /users/age answers 404 without the key and leaves the account as it was', async () => {
+    const userId = await insertUser(T);
+    await expectNotFound(await seam('/users/age', { userId, createdAt: 0 }, null));
+    Object.assign(env, { ENVIRONMENT: 'production' });
+    await expectNotFound(await seam('/users/age', { userId, createdAt: 0 }));
+    const row = await env.DB.prepare('SELECT created_at FROM users WHERE id = ?1')
+      .bind(userId)
+      .first<{ created_at: number }>();
+    expect(row?.created_at).toBe(T);
   });
 });
