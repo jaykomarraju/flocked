@@ -94,13 +94,19 @@ function TodayScreen({ data }: { data: RoundsTodayResponse }) {
   const { client } = useAuth();
   const queryClient = useQueryClient();
   const [closedReveal, setClosedReveal] = useState<string | null>(null);
-  const prev = usePlayed(previousRoundId);
+  // The API drops `previousRoundId` once the round settles; the reveal on screen stays until the player
+  // moves on, and its "Last round" strip for the rest of the visit.
+  const [sticky, setSticky] = useState<string | null>(null);
+  const prevId = previousRoundId ?? sticky;
+  const prev = usePlayed(prevId);
+  useEffect(() => {
+    if (previousRoundId && prev.entered) setSticky(previousRoundId);
+  }, [previousRoundId, prev.entered]);
   const cur = usePlayed(round?.id ?? null);
   const prevView = useQuery({
-    queryKey: roundKey(previousRoundId ?? ''),
-    queryFn: ({ signal }) =>
-      client.call(roundDetail, { params: { id: previousRoundId ?? '' }, signal }),
-    enabled: previousRoundId !== null && prev.entered,
+    queryKey: roundKey(prevId ?? ''),
+    queryFn: ({ signal }) => client.call(roundDetail, { params: { id: prevId ?? '' }, signal }),
+    enabled: prevId !== null && prev.entered,
   });
   const refetchToday = useCallback(
     () => void queryClient.invalidateQueries({ queryKey: ROUNDS_TODAY_KEY }),
@@ -109,16 +115,16 @@ function TodayScreen({ data }: { data: RoundsTodayResponse }) {
 
   if (prev.pending || cur.pending) return <Skeleton />;
 
-  if (previousRoundId && prev.entered && closedReveal !== previousRoundId) {
+  if (prevId && prev.entered && closedReveal !== prevId) {
     if (prevView.isError) return <ErrorBox onRetry={() => void prevView.refetch()} />;
     if (!prevView.data) return <Skeleton />;
     return (
       <PlayedRound
-        key={previousRoundId}
+        key={prevId}
         seed={prevView.data.round}
         played={prev}
         next={round}
-        onNext={() => setClosedReveal(previousRoundId)}
+        onNext={() => setClosedReveal(prevId)}
         onClosed={refetchToday}
       />
     );
@@ -130,7 +136,7 @@ function TodayScreen({ data }: { data: RoundsTodayResponse }) {
     );
   }
   const lastRound =
-    previousRoundId && prev.entered ? (
+    prevId && prev.entered ? (
       <LastRoundStrip
         summary={lastRoundSummary(prev.me, prev.stored)}
         onSee={() => setClosedReveal(null)}

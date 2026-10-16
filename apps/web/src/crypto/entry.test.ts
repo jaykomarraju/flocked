@@ -311,3 +311,23 @@ describe('sealPick', () => {
     expect(a.ciphertext.length).toBe(b.ciphertext.length);
   });
 });
+
+describe('the 21:00 close check', () => {
+  it('applies to room rounds too, and only the local chain may skip it', async () => {
+    const room = testRound({
+      kind: 'room',
+      roomId: '01JA0000000000000000000RM1',
+      gameDay: '2026-10-16',
+    });
+    const h = harness(testRound());
+    expect((await refusal(submitFreeEntry({ round: room, ...ENTRY }, deps(h)))).kind).toBe(
+      'target_round',
+    );
+    const daily = testRound({ gameDay: '2026-10-16' });
+    const local = { ...TEST_CHAIN, skipDailyClose: true };
+    const ok = harness(daily);
+    await expect(
+      submitFreeEntry({ round: daily, ...ENTRY }, deps(ok, { chain: local })),
+    ).resolves.toBeDefined();
+  });
+});

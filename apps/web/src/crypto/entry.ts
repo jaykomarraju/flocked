@@ -104,7 +104,8 @@ export async function checkFreeRound(i: {
     beaconDelay: round.config.beaconDelay,
     beaconRound: round.beaconRound,
     now: nowSec,
-    dailyClose: round.kind === 'daily' ? { gameDay: round.gameDay } : undefined,
+    // Daily and room rounds both close at 21:00 New York on their game day (spec "Sealed picks").
+    dailyClose: chain.skipDailyClose ? undefined : { gameDay: round.gameDay },
   });
   if (!target.ok) throw new EntryRefused({ kind: 'target_round', reason: target.reason });
   const configHash = publishedFreeConfigHash(round);

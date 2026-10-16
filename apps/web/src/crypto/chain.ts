@@ -20,6 +20,11 @@ export interface ClientChain {
   /** The FlockedAnchor address: the lock leaf, the receipt signer and the receipts' EIP-712 domain. */
   anchor: Address;
   drand: DrandChain;
+  /**
+   * Local chain only: skip the 21:00 New York close check, because the stack's rounds close a minute
+   * after they open (`e2e/fixtures/rounds.ts`). Never set for Base or Base Sepolia.
+   */
+  skipDailyClose?: boolean;
 }
 
 /** The local stack's values, set by the e2e specs before the app loads (non-production builds only). */
@@ -27,6 +32,8 @@ export interface LocalChainGlobal {
   rpcUrl: string;
   anchor: Address;
   drand: DrandChain;
+  /** The stack's rounds close a minute out, not at 21:00 New York (see `ClientChain`). */
+  skipDailyClose?: boolean;
 }
 
 declare global {
@@ -57,7 +64,13 @@ export function clientChain(env: ImportMetaEnv = import.meta.env): ClientChain {
   if (chain.id === LOCAL_CHAIN_ID) {
     const local = env.MODE === 'production' ? undefined : window.__FLOCKED_LOCAL_CHAIN__;
     if (!local) throw new ChainConfigError('No local chain: start the stack and load its values');
-    return { chainId: chain.id, rpcUrl: local.rpcUrl, anchor: local.anchor, drand: local.drand };
+    return {
+      chainId: chain.id,
+      rpcUrl: local.rpcUrl,
+      anchor: local.anchor,
+      drand: local.drand,
+      skipDailyClose: local.skipDailyClose === true,
+    };
   }
   let anchor: Address;
   try {
