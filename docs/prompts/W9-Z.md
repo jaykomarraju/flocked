@@ -145,7 +145,7 @@ Compare `wave-9.md` "Pinned interfaces" with what was built:
 ## Constraints
 
 - Never merge a red wave (plan.md 2.6). Fixes over ~50 lines, or with new behaviour, go to a `W9-F{k}` session, with a `W9-Z.2` prompt to run after it (or, by the Oct 12 option, Z runs the fix itself on branches off `w9-integration`; or, by the Oct 11 option, a green wave merges and the fix runs alongside wave 10).
-- Never commit secrets (`e2e/stack/.dev.vars`, `.state.json` and `.run/` are gitignored; the VAPID pair, the mocks' values and the Anthropic key are placeholders made per run). Don't fake owner actions or launch gates.
+- Never commit secrets (`e2e/stack/.dev.vars`, `.state.json` and `.run/` are gitignored; the VAPID pair is made per run, and the mocks' values and the Anthropic key are placeholders). Don't fake owner actions or launch gates.
 - Stage files by name. Commits end with the attribution line from your system reminder. Stay within size M; if you're running low, follow plan.md 2.6. Subagents may take the diff reviews, the spec edits and the Paper work; their tokens count toward the size (plan.md 2.8).
 
 ## End of session
