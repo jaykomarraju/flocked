@@ -27,6 +27,10 @@ interface StackState {
   coinbaseUrl: string;
   easUrl: string;
   turnstileUrl?: string;
+  farcasterUrl: string;
+  pushUrl?: string;
+  farcasterNotifyUrl?: string;
+  emailUrl?: string;
   drand: { url: string; chainHash: string; publicKey: string; genesis: number; period: number };
   anvil: { rpcUrl: string; chainId: number };
   contracts: { escrow: Address; usdc: Address; anchor: Address };
@@ -97,6 +101,10 @@ export class Stack {
   readonly coinbaseUrl: string;
   readonly easUrl: string;
   readonly turnstileUrl: string | null;
+  /** The Farcaster Quick Auth mock (W3-A). */
+  readonly farcasterUrl: string;
+  /** The notification mocks (W9-A): a web push service, Farcaster's endpoint and hub, and email. */
+  readonly notifyMocks: { push: string; farcaster: string; email: string } | null;
   readonly rpcUrl: string;
   readonly chainId: number;
   readonly contracts: StackState['contracts'];
@@ -121,6 +129,11 @@ export class Stack {
     this.coinbaseUrl = state.coinbaseUrl;
     this.easUrl = state.easUrl;
     this.turnstileUrl = state.turnstileUrl ?? null;
+    this.farcasterUrl = state.farcasterUrl;
+    this.notifyMocks =
+      state.pushUrl && state.farcasterNotifyUrl && state.emailUrl
+        ? { push: state.pushUrl, farcaster: state.farcasterNotifyUrl, email: state.emailUrl }
+        : null;
     this.rpcUrl = state.anvil.rpcUrl;
     this.chainId = state.anvil.chainId;
     this.contracts = state.contracts;
