@@ -25,7 +25,7 @@ No features.
 
 ## Starting point
 
-- Base: `w8-integration`, pushed. W8-D's head and its CI, Stack and E2E runs are listed in `W8-D.md`; the handoff and this prompt sit on top.
+- Base: `w8-integration`, pushed. W8-D's head `c272959` (handoff and this prompt) has CI 38857002282, Stack 38857002294 and E2E 38857002327 green; `W8-D.md` lists the earlier runs and the local checks.
 - Worktree. W8-D's worktree `../flocked-w8-d` has `w8-integration` checked out. Work there, or remove it first (`git worktree remove`, which works on a clean worktree), then:
   ```bash
   git fetch origin --tags

@@ -41,6 +41,8 @@ complete — W7-F1, W8-A, W8-B and W8-C merged onto `w8-integration`, their regi
 | `e2e/tests/rooms.spec.ts` alone, fresh stack, three runs | 6 passed each (about 2.4 min) |
 | CI on `dd0460e` (merges, registrations, hooks) | CI 38845883069, Stack 38845883063, E2E 38845883108 (api, ui, screens) green |
 | CI on `fe4c707` (rooms) | CI 38849011657, Stack 38849011629, E2E 38849011615 green |
+| CI on `848c941` (rooms e2e) | CI 38850924784, Stack 38850924905, E2E 38850924831 (api with `rooms.spec.ts`, ui, screens) green |
+| CI on `c272959` (handoff head, with the `stakes-settle` fix) | CI 38857002282, Stack 38857002294, E2E 38857002327 (api, ui, screens) green |
 | `git diff audit-candidate-1 HEAD -- contracts/src` | empty |
 
 Mutation checks: the Stakes hook wiring (3 mutations: registrations removed, the status condition, reason 4), R2's nine (room creation, min-3 forcing, `countQualifyingOnly`, the age rule twice, the entry grant, daily-first ordering, the Stakes flags, VOID qualifying), the privacy filters and the admin guard. Each fails a named test.
