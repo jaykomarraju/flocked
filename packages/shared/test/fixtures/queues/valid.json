@@ -76,7 +76,8 @@
         "mode": "free",
         "result": "win",
         "amount": "87",
-        "nextRoundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CY"
+        "nextRoundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CY",
+        "refundReason": null
       }
     },
     {
@@ -89,7 +90,8 @@
         "mode": "free",
         "result": "loss",
         "amount": "-50",
-        "nextRoundId": null
+        "nextRoundId": null,
+        "refundReason": null
       }
     },
     {

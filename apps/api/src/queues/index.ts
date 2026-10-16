@@ -15,6 +15,7 @@ import {
 import type { Env } from '../env.js';
 import { NotImplementedError } from '../lib/errors.js';
 import { log } from '../lib/log.js';
+import { notifyHandler } from '../notify/consumer.js';
 import { decryptHandler } from './decrypt.js';
 import { settleHandler } from './settle.js';
 
@@ -50,7 +51,7 @@ export const HANDLERS: Handlers = {
   'decrypt-daily': (body, _message, env) => decryptHandler(body, env),
   'decrypt-rooms': (body, _message, env) => decryptHandler(body, env),
   cards: stub('cards'),
-  notify: stub('notify'),
+  notify: (body, _message, env) => notifyHandler(body, env),
 };
 
 /** Runs one message through its schema and handler, then acks or retries it. */

@@ -3,6 +3,8 @@
 // "Cards and notifications", W6-C.2). Voice: short, dry, deadpan; never explain the joke; never use exclamation
 // points. Templates hold `{placeholder}`s from NOTIFICATION_PLACEHOLDERS; the notify consumer formats the values.
 // `question_rejected` (added Oct 12, 2026; drafted by W8-A) was approved by the owner on Oct 16, 2026 (W8-Z): push only.
+// `security_notice` `identity_unlinked` (decision B6): push and email body approved in principle on Oct 12, 2026 (W7-Z);
+// its email subject, preheader, heading and CTA follow `identity_linked` (W9-A, for Z to confirm).
 
 import type { NotificationChannel } from '../api/me';
 import { VOICE } from '../copy';
@@ -183,6 +185,10 @@ const SECURITY_PUSH = {
     'New sign-in method',
     "A sign-in method was linked to your account. If that wasn't you, check Settings.",
   ),
+  identity_unlinked: push(
+    'Sign-in method removed',
+    "A sign-in method was removed from your account. If that wasn't you, check Settings.",
+  ),
   merge_pending: push(
     'Account merge pending',
     'A request to merge two of your Flocked accounts is waiting. Confirm it in Settings by signing in to both, or ignore it.',
@@ -291,6 +297,13 @@ export const NOTIFICATION_COPY: NotificationCopyTable = {
         preheader: 'A sign-in method was linked to your account.',
         heading: 'New sign-in method',
         body: "A sign-in method was linked to your Flocked account. If that was you, there's nothing to do. If it wasn't, remove it in Settings.",
+        cta: 'Open Settings',
+      },
+      identity_unlinked: {
+        subject: 'Sign-in method removed',
+        preheader: 'A sign-in method was removed from your account.',
+        heading: 'Sign-in method removed',
+        body: "A sign-in method was removed from your Flocked account. If that was you, there's nothing to do. If it wasn't, review your sign-in methods in Settings.",
         cta: 'Open Settings',
       },
       merge_pending: {
