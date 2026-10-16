@@ -31,7 +31,7 @@ export type Answer = (url: URL, init?: RequestInit) => Response | Promise<Respon
 export function apiFetch(answers: Record<string, Answer> = {}) {
   const all: Record<string, Answer> = {
     'GET /me': UNAUTHORIZED,
-    'GET /rounds/today': () => json(200, { round: null, previousRoundId: null }),
+    'GET /rounds/today': () => json(200, { round: null, previousRoundId: null, crowdHint: null }),
     'POST /auth/logout': () => json(200, { ok: true }),
     ...answers,
   };

@@ -78,23 +78,23 @@ describe('readCrowdHint', () => {
       kind: 'room',
       modes: { free: { status: 'settled', entries: voters(1, 9) } },
     });
-    await settled(dayAfter(44), 1, 9, { day: dayAfter(44), category: 'sports', modes: {} });
+    await settled(dayAfter(44), 1, 9, { day: dayAfter(44), category: 'tech', modes: {} });
     await settled('2026-12-01', 1, 9); // closes after the open round
     expect(await readCrowdHint(env.DB, 'food', before)).toEqual(base);
-    expect((await readCrowdHint(env.DB, 'sports', before)).free).toBeNull();
+    expect((await readCrowdHint(env.DB, 'tech', before)).free).toBeNull();
   });
 
   it('keeps each mode apart', async () => {
     for (let i = 0; i < 5; i++) {
       await seedDay({
         day: dayAfter(50 + i),
-        category: 'animals',
+        category: 'pop',
         modes: { stakes: { status: 'settled', entries: voters(2, 3) } },
       });
     }
-    expect(await readCrowdHint(env.DB, 'animals', FIXTURE_ROUND.closesAt)).toEqual({
+    expect(await readCrowdHint(env.DB, 'pop', FIXTURE_ROUND.closesAt)).toEqual({
       free: null,
-      stakes: { category: 'animals', winningShare: 0.4, rounds: 5 },
+      stakes: { category: 'pop', winningShare: 0.4, rounds: 5 },
     });
   });
 });

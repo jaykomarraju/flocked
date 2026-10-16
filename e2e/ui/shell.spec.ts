@@ -66,7 +66,7 @@ test.describe('shell screens', () => {
       route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ round: null, previousRoundId: null }),
+        body: JSON.stringify({ round: null, previousRoundId: null, crowdHint: null }),
       }),
     );
   }
