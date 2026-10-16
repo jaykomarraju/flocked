@@ -8,8 +8,12 @@
 //      user's prefs, configured here and reachable for the user (a subscription, a token, an email);
 //   4. record each channel reached and finish the key. A transient failure keeps what was reached,
 //      gives up the lease and throws, so the queue retries only the rest.
+// `notifyBatch` runs steps 1–2 per message, then step 3 once per channel for the whole queue batch
+// (so Farcaster can put identical notifications into one request), then step 4 per message.
 import {
+  NOTIFICATION_CHANNELS,
   NOTIFICATION_EVENT_CHANNELS,
+  NotifyMessageSchema,
   isGameNotification,
   type NotificationChannel,
   type NotifyMessage,
@@ -70,14 +74,149 @@ export function defaultNotifyDeps(env: NotifyEnv): NotifyDeps {
   return { channels: channelsFor(env, now), origin: env.APP_ORIGIN ?? DEFAULT_ORIGIN, now };
 }
 
+/** What happened to one message of a batch: delivered (or nothing to deliver), or retry it later. */
+export type NotifyResult = 'ok' | 'retry';
+
+/** A claimed message with its rendered deliveries, waiting for the channels' batched sends. */
+interface Planned {
+  index: number;
+  key: string;
+  deliveries: Map<NotificationChannel, Delivery>;
+}
+
+/**
+ * Handles a batch of `notify` messages: claims and renders each one, then hands every channel all of
+ * the batch's deliveries for it in one `send` (Farcaster groups identical sends into one request of
+ * up to 100 tokens), then records each message's channels and finishes or releases its key. Returns
+ * one result per input, in order.
+ */
+export async function notifyBatch(
+  inputs: readonly NotifyMessage[],
+  env: NotifyEnv,
+  deps: NotifyDeps = defaultNotifyDeps(env),
+): Promise<NotifyResult[]> {
+  const db = env.DB;
+  const t = deps.now();
+  const results: NotifyResult[] = inputs.map(() => 'ok');
+  const planned: Planned[] = [];
+  for (const [index, input] of inputs.entries()) {
+    try {
+      const p = await plan(env, deps, input, t);
+      if (p === 'retry') results[index] = 'retry';
+      else if (p !== null) {
+        if (p.deliveries.size === 0) await finishKey(db, p.key, t);
+        else planned.push({ index, ...p });
+      }
+    } catch (err) {
+      log.warn('notify_plan_failed', {
+        event: input.event,
+        dedupeKey: input.dedupeKey,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      results[index] = 'retry';
+    }
+  }
+
+  // One send per channel for the whole batch. A delivery listed in `retry`, or in a send that threw,
+  // is retried with its message; the others count as reached.
+  const failed = new Set<string>();
+  const sendFailed = (channel: NotificationChannel, key: string) =>
+    failed.add(`${channel}\n${key}`);
+  for (const name of NOTIFICATION_CHANNELS) {
+    const batch = planned.flatMap((p) => p.deliveries.get(name) ?? []);
+    const channel: Channel | undefined = deps.channels[name];
+    if (batch.length === 0 || !channel) continue;
+    try {
+      const out = await channel.send(batch);
+      for (const key of out.retry) sendFailed(name, key);
+    } catch (err) {
+      log.warn('notify_channel_failed', {
+        channel: name,
+        deliveries: batch.length,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      for (const d of batch) sendFailed(name, d.dedupeKey);
+    }
+  }
+
+  for (const p of planned) {
+    let ok = true;
+    try {
+      for (const name of p.deliveries.keys()) {
+        if (failed.has(`${name}\n${p.key}`)) ok = false;
+        else await markDelivered(db, p.key, name);
+      }
+      if (ok) await finishKey(db, p.key, t);
+      else await releaseKey(db, p.key);
+    } catch (err) {
+      log.warn('notify_record_failed', {
+        dedupeKey: p.key,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      await releaseKey(db, p.key).catch(() => undefined);
+      ok = false;
+    }
+    if (!ok) results[p.index] = 'retry';
+  }
+  return results;
+}
+
 /** Handles one `notify` message. Resolves when it was delivered or needs nothing; throws to retry. */
 export async function notifyHandler(
   input: NotifyMessage,
   env: NotifyEnv,
   deps: NotifyDeps = defaultNotifyDeps(env),
 ): Promise<void> {
+  const [result] = await notifyBatch([input], env, deps);
+  if (result === 'retry') throw new NotifyRetry(`notify ${input.dedupeKey}: retry later`);
+}
+
+/**
+ * The `notify` queue's batch entry point (W9-D wires it in `queue()`, so a batch is sent together):
+ * validates each message like `handleMessage`, then acks or retries each one by its result.
+ */
+export async function notifyQueueBatch(
+  batch: MessageBatch<unknown>,
+  env: NotifyEnv,
+  deps: NotifyDeps = defaultNotifyDeps(env),
+): Promise<void> {
+  const valid: { message: Message<unknown>; body: NotifyMessage }[] = [];
+  for (const message of batch.messages) {
+    const parsed = NotifyMessageSchema.safeParse(message.body);
+    if (parsed.success) valid.push({ message, body: parsed.data });
+    else {
+      log.error('queue_message_invalid', {
+        queue: 'notify',
+        messageId: message.id,
+        attempts: message.attempts,
+        issues: parsed.error.issues.slice(0, 5).map((i) => `${i.path.join('.')}: ${i.message}`),
+      });
+      message.ack();
+    }
+  }
+  const results = await notifyBatch(
+    valid.map((v) => v.body),
+    env,
+    deps,
+  );
+  for (const [i, { message }] of valid.entries()) {
+    if (results[i] === 'retry') message.retry();
+    else message.ack();
+  }
+}
+
+/**
+ * Claims `input`'s key and renders it for every channel it still needs. Returns null when nothing is
+ * to be sent and the key needs no finishing (a repeat, or a second mode's outcome), 'retry' when
+ * another consumer holds the key, or the claimed key with its deliveries (none: finish it).
+ */
+async function plan(
+  env: NotifyEnv,
+  deps: NotifyDeps,
+  input: NotifyMessage,
+  t: number,
+): Promise<{ key: string; deliveries: Map<NotificationChannel, Delivery> } | 'retry' | null> {
   const db = env.DB;
-  const t = deps.now();
   let msg = input;
   let claim = await claimKey(
     db,
@@ -87,7 +226,7 @@ export async function notifyHandler(
   if (claim.kind === 'taken' && msg.event === 'outcome') {
     if (!laterRefund(msg.payload)) {
       log.info('notify_outcome_in_app_only', { dedupeKey: msg.dedupeKey, claimedBy: claim.source });
-      return;
+      return null;
     }
     msg = asRefunded(msg);
     claim = await claimKey(
@@ -96,92 +235,66 @@ export async function notifyHandler(
       t,
     );
   }
-  if (claim.kind === 'done') return;
+  if (claim.kind === 'done') return null;
   if (claim.kind === 'taken') {
     // Two producers built the same key for different things: a producer bug; never send twice.
     log.error('notify_key_conflict', { dedupeKey: msg.dedupeKey, claimedBy: claim.source });
-    return;
+    return null;
   }
-  if (claim.kind === 'busy') throw new NotifyRetry(`notify ${msg.dedupeKey} is being delivered`);
-
-  const key = msg.dedupeKey;
+  if (claim.kind === 'busy') return 'retry';
   try {
-    const delivered = await deliver(env, deps, msg, new Set(claim.delivered), t);
-    if (!delivered) {
-      await releaseKey(db, key);
-      throw new NotifyRetry(`notify ${key}: a channel failed`);
-    }
-    await finishKey(db, key, t);
+    return await render(env, deps, msg, new Set(claim.delivered), t);
   } catch (err) {
-    if (!(err instanceof NotifyRetry)) await releaseKey(db, key).catch(() => undefined);
+    await releaseKey(db, msg.dedupeKey).catch(() => undefined);
     throw err;
   }
 }
 
-/** Sends `msg` on every channel it still needs. Returns false when one must be retried. */
-async function deliver(
+/** The deliveries for a claimed message on each channel it still needs (`done`: already reached). */
+async function render(
   env: NotifyEnv,
   deps: NotifyDeps,
   msg: NotifyMessage,
   done: ReadonlySet<string>,
   t: number,
-): Promise<boolean> {
+): Promise<{ key: string; deliveries: Map<NotificationChannel, Delivery> }> {
   const db = env.DB;
+  const key = msg.dedupeKey;
+  const deliveries = new Map<NotificationChannel, Delivery>();
   const recipient = await loadRecipient(db, msg.userId, t);
   if (!recipient) {
-    log.info('notify_no_recipient', { event: msg.event, dedupeKey: msg.dedupeKey });
-    return true;
+    log.info('notify_no_recipient', { event: msg.event, dedupeKey: key });
+    return { key, deliveries };
   }
   if (recipient.excluded && isGameNotification(msg.event)) {
-    log.info('notify_excluded', { event: msg.event, dedupeKey: msg.dedupeKey });
-    return true;
+    log.info('notify_excluded', { event: msg.event, dedupeKey: key });
+    return { key, deliveries };
   }
-  const channels = (
-    NOTIFICATION_EVENT_CHANNELS[msg.event] as readonly NotificationChannel[]
-  ).filter((c) => !done.has(c) && prefEnabled(recipient, c, msg.event));
   const ready: Channel[] = [];
-  for (const c of channels) {
+  for (const c of NOTIFICATION_EVENT_CHANNELS[msg.event] as readonly NotificationChannel[]) {
+    if (done.has(c) || !prefEnabled(recipient, c, msg.event)) continue;
     const channel: Channel | undefined = deps.channels[c];
-    if (!channel) {
-      log.info('notify_channel_unconfigured', { channel: c, event: msg.event });
-      continue;
-    }
-    if (channel.available(recipient)) ready.push(channel);
+    if (!channel) log.info('notify_channel_unconfigured', { channel: c, event: msg.event });
+    else if (channel.available(recipient)) ready.push(channel);
   }
-  if (ready.length === 0) return true;
+  if (ready.length === 0) return { key, deliveries };
 
   const prepared = await prepare(db, msg, recipient.userId);
   if (!prepared) {
-    log.warn('notify_unrenderable', { event: msg.event, dedupeKey: msg.dedupeKey });
-    return true;
+    log.warn('notify_unrenderable', { event: msg.event, dedupeKey: key });
+    return { key, deliveries };
   }
-  let ok = true;
   for (const channel of ready) {
     const copy = renderCopy(channel.name, msg.event, prepared);
     if (!copy) continue;
-    const delivery: Delivery = {
+    deliveries.set(channel.name, {
       event: msg.event,
-      dedupeKey: msg.dedupeKey,
+      dedupeKey: key,
       recipient,
       copy,
       targetUrl: new URL(prepared.path, deps.origin).toString(),
       nextLive: prepared.nextLive,
-    };
-    try {
-      const out = await channel.send([delivery]);
-      if (out.retry.length > 0) {
-        ok = false;
-        continue;
-      }
-      await markDelivered(db, msg.dedupeKey, channel.name);
-    } catch (err) {
-      log.warn('notify_channel_failed', {
-        channel: channel.name,
-        dedupeKey: msg.dedupeKey,
-        error: err instanceof Error ? err.message : String(err),
-      });
-      ok = false;
-    }
+    });
   }
-  return ok;
+  return { key, deliveries };
 }

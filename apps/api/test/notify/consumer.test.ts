@@ -4,7 +4,7 @@
 import { env } from 'cloudflare:test';
 import { REFUND_LINES, type NotifyMessage } from '@flocked/shared';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { NotifyRetry, notifyHandler } from '../../src/notify/consumer.js';
+import { NotifyRetry, notifyHandler, notifyQueueBatch } from '../../src/notify/consumer.js';
 import { seedFixture, type Fixture } from '../helpers/index.js';
 import {
   T,
@@ -439,5 +439,33 @@ describe('question_rejected', () => {
       deps,
     );
     expect(webpush.sent[0]?.copy.body).toBe('Already asked last week.');
+  });
+});
+
+describe('notifyQueueBatch', () => {
+  it('acks delivered and malformed messages, and retries one a channel failed', async () => {
+    const { deps, webpush } = fakeDeps();
+    webpush.failOnce.add('question_edited:qb2');
+    const calls: string[] = [];
+    const message = (id: string, body: unknown) =>
+      ({
+        id,
+        body,
+        attempts: 1,
+        timestamp: new Date(T),
+        ack: () => void calls.push(`ack ${id}`),
+        retry: () => void calls.push(`retry ${id}`),
+      }) as unknown as Message<unknown>;
+    const batch = {
+      queue: 'notify',
+      messages: [
+        message('m1', edited(ids.user, 'qb1')),
+        message('m2', edited(ids.user, 'qb2')),
+        message('m3', { event: 'nope' }),
+      ],
+    } as unknown as MessageBatch<unknown>;
+    await notifyQueueBatch(batch, env, deps);
+    expect(calls.sort()).toEqual(['ack m1', 'ack m3', 'retry m2']);
+    expect(webpush.sent.map((d) => d.dedupeKey)).toEqual(['question_edited:qb1']);
   });
 });
