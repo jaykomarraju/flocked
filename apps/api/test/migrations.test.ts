@@ -179,6 +179,19 @@ const SPEC_COLUMNS: Record<string, readonly string[]> = {
   sessions: ['id_hash', 'user_id', 'expires_at', 'created_at', 'user_agent'],
   notification_prefs: ['user_id', 'channel', 'event', 'enabled'],
   push_subscriptions: ['id', 'user_id', 'endpoint', 'keys_json'],
+  // 0021 (W9-A): notification dedupe and delivery state, and Farcaster mini app notification tokens;
+  // not yet rows in the spec's data model.
+  notification_log: [
+    'dedupe_key',
+    'user_id',
+    'event',
+    'source',
+    'claimed_until',
+    'channels',
+    'done_at',
+    'created_at',
+  ],
+  farcaster_notification_tokens: ['fid', 'app_fid', 'url', 'token', 'enabled', 'updated_at'],
   limits: [
     'user_id',
     'daily_stake_cap',
@@ -1247,5 +1260,47 @@ describe('fixture', () => {
       .bind(f.round.id)
       .first<{ n: number }>();
     expect(row?.n).toBe(2);
+  });
+});
+
+describe('0021 (W9-A)', () => {
+  it('notification_log: one row per dedupe key; channels is JSON', async () => {
+    const { results } = await env.DB.prepare('SELECT name FROM d1_migrations').all<{
+      name: string;
+    }>();
+    expect(results.map((r) => r.name)).toContain('0021_notifications.sql');
+    await env.DB.prepare(
+      "INSERT INTO notification_log (dedupe_key, user_id, event, source, created_at) VALUES ('k', 'u', 'outcome', 'r:free', 1)",
+    ).run();
+    expect(
+      await env.DB.prepare(
+        "SELECT channels, done_at FROM notification_log WHERE dedupe_key = 'k'",
+      ).first(),
+    ).toEqual({ channels: '[]', done_at: null });
+    expect(
+      await rejects(
+        "INSERT INTO notification_log (dedupe_key, user_id, event, source, created_at) VALUES ('k', 'u', 'outcome', 'r:stakes', 2)",
+      ),
+    ).toContain('UNIQUE constraint failed');
+    expect(
+      await rejects(
+        "INSERT INTO notification_log (dedupe_key, event, source, channels, created_at) VALUES ('j', 'x', 'j', 'nope', 1)",
+      ),
+    ).toContain('CHECK constraint failed');
+    await env.DB.prepare('DELETE FROM notification_log').run();
+  });
+
+  it('farcaster_notification_tokens: one token per (fid, client app)', async () => {
+    const insert =
+      "INSERT INTO farcaster_notification_tokens (fid, app_fid, url, token, updated_at) VALUES (?1, ?2, 'https://n.example/x', 't', 1)";
+    await env.DB.prepare(insert).bind(7, 9152).run();
+    expect(await rejects(insert, 7, 9152)).toContain('UNIQUE constraint failed');
+    expect(await rejects(insert, 0, 9152)).toContain('CHECK constraint failed');
+    expect(
+      await env.DB.prepare(
+        'SELECT enabled FROM farcaster_notification_tokens WHERE fid = 7',
+      ).first(),
+    ).toEqual({ enabled: 1 });
+    await env.DB.prepare('DELETE FROM farcaster_notification_tokens').run();
   });
 });

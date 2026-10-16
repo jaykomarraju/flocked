@@ -14,6 +14,7 @@
 import type { Mode, RoundKind } from '@flocked/shared';
 import type { Env } from '../env.js';
 import { log } from '../lib/log.js';
+import { notifyOnModeFinal } from '../notify/outcomes.js';
 import { onQuestionModeFinal } from '../questions/final.js';
 import { referralsOnModeFinal } from '../referrals/reward.js';
 import { statsOnModeFinal } from '../stats/apply.js';
@@ -64,3 +65,5 @@ export async function runModeFinal(env: Env, event: ModeFinalEvent): Promise<voi
 onModeFinal(statsOnModeFinal);
 onModeFinal(referralsOnModeFinal);
 onModeFinal(onQuestionModeFinal);
+// W9-A: Free outcomes, and the Stakes claim and refund notices (daily rounds; src/notify/outcomes.ts).
+onModeFinal(notifyOnModeFinal);

@@ -77,6 +77,7 @@ const notify = <E extends string, P extends z.ZodRawShape>(event: E, payload: P)
 export const SECURITY_NOTICE_KINDS = [
   'email_sign_in',
   'identity_linked',
+  'identity_unlinked',
   'merge_pending',
   'merge_completed',
 ] as const;
@@ -96,6 +97,8 @@ export const NotifyMessageSchema = z.discriminatedUnion('event', [
     /** Net change for the user (points or USDC base units); null when not shown. */
     amount: SignedDecimalBigintSchema.nullable(),
     nextRoundId: UlidSchema.nullable(),
+    /** The refund rule when `result` is `refund` (owner decision, Oct 12, 2026); null otherwise. */
+    refundReason: RefundReasonCodeSchema.nullable(),
   }),
   notify('payout_claimable', {
     roundId: UlidSchema,

@@ -18,6 +18,7 @@ import { publicClient } from '../chain/client.js';
 import type { LockedRound } from '../do/types.js';
 import type { Env } from '../env.js';
 import { log } from '../lib/log.js';
+import { enqueueVoidOutcomes } from '../notify/outcomes.js';
 import { applyMovement, creditMovement, scopeForRound } from '../points/index.js';
 import { listFreeEntries } from '../rounds/entry.js';
 
@@ -195,6 +196,9 @@ export async function applyVoid(env: Env, locked: LockedRound, t: number): Promi
     .all<{ mode: Mode }>();
   const voided = results.map((r) => r.mode);
   log.warn('round_voided', { roundId: id, modes: voided, freeRefunds: refunded });
+  // W9-A: rule 4 tells everyone who entered (daily rounds). A failure throws, so the RoundDO retries
+  // the void, which enqueues again for every voided mode.
+  await enqueueVoidOutcomes(env, id);
   return voided;
 }
 

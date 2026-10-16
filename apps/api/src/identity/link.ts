@@ -128,6 +128,7 @@ export async function unlinkIdentity(env: Env, userId: string, identityId: strin
     );
   }
   log.info('identity_unlinked', { userId, provider: row.provider, at: t });
+  await enqueueSecurityNotice(env, userId, 'identity_unlinked', t);
 }
 
 /** A wallet with Stakes entries in a round that isn't final, or unclaimed Stakes payouts. */
