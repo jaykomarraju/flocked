@@ -105,6 +105,9 @@ const IMPLEMENTED = new Set([
   'GET /questions',
   'POST /questions',
   'POST /questions/:id/vote',
+  // W8-B (test/boards/, test/stats/, test/referrals/)
+  'GET /leaderboards/:board',
+  'GET /users/:handle',
 ]);
 
 /**
@@ -124,9 +127,14 @@ describe.each(
     const res = await exports.default.fetch(requestFor(ep));
     expect(res.status).not.toBe(501);
     if (res.status === 404) {
-      // A round read answers 404 for a round that does not exist: from its handler, not the router.
-      expect(ep.path.startsWith('/rounds/:id')).toBe(true);
-      expect(ErrorEnvelopeSchema.parse(await res.json()).error.message).toBe('No such round');
+      // A round read answers 404 for a round that does not exist, and a profile for an unknown
+      // handle: from its handler, not the router.
+      const message = ErrorEnvelopeSchema.parse(await res.json()).error.message;
+      if (ep.path === '/users/:handle') expect(message).toBe('No such user');
+      else {
+        expect(ep.path.startsWith('/rounds/:id')).toBe(true);
+        expect(message).toBe('No such round');
+      }
     }
   });
 });

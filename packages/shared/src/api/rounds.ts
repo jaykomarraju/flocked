@@ -201,12 +201,30 @@ export type RoundView = z.infer<typeof RoundViewSchema>;
 // GET /rounds/today -----------------------------------------------------------------------------
 
 /**
+ * The crowd-history hint (spec "Client app", Today): the mean winning-side share of valid entrants
+ * over the category's last 30 settled daily rounds in one mode (the winning side is the smaller
+ * one, so the share is below 0.5). Hidden (null) until the category has 5 such rounds.
+ */
+export const CrowdHintSchema = z.object({
+  category: CategorySchema,
+  winningShare: z.number().min(0).max(0.5),
+  /** Settled daily rounds averaged, 5..30. */
+  rounds: z.int().min(5).max(30),
+});
+export type CrowdHint = z.infer<typeof CrowdHintSchema>;
+
+/**
  * GET /rounds/today: the open daily round (null in a schedule gap) and, while it is still
- * revealing or settling, the previous daily round's ID.
+ * revealing or settling, the previous daily round's ID. `crowdHint` is the open round's category
+ * hint per mode (W8-B); each mode's is null while hidden, and the whole field is null without a
+ * round.
  */
 export const RoundsTodayResponseSchema = z.object({
   round: RoundViewSchema.nullable(),
   previousRoundId: UlidSchema.nullable(),
+  crowdHint: z
+    .object({ free: CrowdHintSchema.nullable(), stakes: CrowdHintSchema.nullable() })
+    .nullable(),
 });
 export type RoundsTodayResponse = z.infer<typeof RoundsTodayResponseSchema>;
 

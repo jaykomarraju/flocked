@@ -96,11 +96,16 @@
             }
           }
         },
-        "previousRoundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CN"
+        "previousRoundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CN",
+        "crowdHint": {
+          "free": { "category": "food", "winningShare": 0.4125, "rounds": 12 },
+          "stakes": null
+        }
       },
       {
         "round": null,
-        "previousRoundId": null
+        "previousRoundId": null,
+        "crowdHint": null
       }
     ],
     "RoundDetailResponseSchema": [
@@ -355,6 +360,30 @@
     ]
   },
   "invalid": {
+    "RoundsTodayResponseSchema": [
+      {
+        "why": "a winning-side share above one half",
+        "value": {
+          "round": null,
+          "previousRoundId": null,
+          "crowdHint": {
+            "free": { "category": "food", "winningShare": 0.6, "rounds": 12 },
+            "stakes": null
+          }
+        }
+      },
+      {
+        "why": "a hint from fewer than 5 rounds",
+        "value": {
+          "round": null,
+          "previousRoundId": null,
+          "crowdHint": {
+            "free": { "category": "food", "winningShare": 0.4, "rounds": 4 },
+            "stakes": null
+          }
+        }
+      }
+    ],
     "RoundDetailResponseSchema": [
       {
         "why": "settlement before reveal (reveal gating)",
