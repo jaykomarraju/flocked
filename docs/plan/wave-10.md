@@ -80,6 +80,7 @@ Split up front into W10-D and W10-D.2 (plan.md 2.8, W9-Z, Oct 16, 2026: it merge
 - AC-7 (cards), AC-8, PIPE-5 (Stakes), E2E-1 (Stakes UI), E2E-4 (UI), E2E-5, E2E-11 proven.
 - W9-F1's items (the guardian-void notice, R2–R4, the room successor, `memberCount`, the archive's `revealing`) each have a passing, mutation-checked test, and W9-F1 is merged. W9-F1's spec issue on merges and push subscriptions goes to the owner.
 - Confirm OA-D3 is frozen before W11-C, and OA-D5 (Admin) before W11-A (moved up from W12 on Oct 12).
+- A design subagent adds the `identity_unlinked` security notice to the Farcaster, web push and email all-events notification sheets (missing since decision B6; `docs/design/screens.md` notes it), re-exports them and re-runs `pnpm e2e:screens`.
 - Migrations for wave 11: W11-A `0025`, W11-B `watcher/0002`, W11-D `0026`.
 
 ## Carry-over from W2-Z (Oct 8, 2026)
