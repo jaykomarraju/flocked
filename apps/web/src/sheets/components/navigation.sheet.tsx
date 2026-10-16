@@ -50,9 +50,9 @@ function NavigationSheet({ theme }: { theme: SheetTheme }) {
             ink at 400, so the active tab never relies on color. The accent never appears here.
           </Note>
           <Note title="Destinations">
-            Today, Archive, Boards (Leaderboards), Rooms, You (Profile, with Claims and Settings).
-            Submit and Queue open from You on mobile and from the avatar menu on desktop. Five is
-            the cap; a sixth destination needs a design decision.
+            Today, Archive, Boards (Leaderboards), Rooms, You (with Claims and Settings). Submit and
+            Queue open from You on mobile and from the avatar menu on desktop. Five is the cap; a
+            sixth destination needs a design decision.
           </Note>
         </div>
       </section>

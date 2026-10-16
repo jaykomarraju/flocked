@@ -72,6 +72,7 @@ Split up front into W9-D and W9-D.2 (owner decision, Oct 16, 2026; plan.md 2.8: 
 - TL-1, E2E-1 (Free UI), E2E-2, E2E-8, PIPE-6 proven.
 - W8-F1's items (H1, M1–M3, L1–L6 and the Oct 16 decisions that need code) each have a passing, mutation-checked test, and W8-F1 is merged.
 - Confirm OA-D4 is frozen before W10-A.
+- A design subagent (W8-Z's leftovers, before W10-C builds Stakes entry): the mode-toggle check on the remaining Core-flow toggles (Sealed, Reveal, Stakes entry, global states; W8-Z did onboarding, sign-in and Today) and the Social page's toggles; `question_rejected` on the all-events notification sheets; the feedback sheet's offline-banner header draws the 32 px avatar ring at 2 px (the kit is 1.5 px). Re-export, update `screens.md`, and re-run `pnpm e2e:screens`; plus any design problems W9-C records.
 - Migrations for wave 10: W10-A `0023`, W10-B (watcher's own D1) `watcher/0001`, W10-D `0024`.
 
 ## Carry-over from W2-Z (Oct 8, 2026)
