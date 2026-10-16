@@ -268,3 +268,44 @@ describe('lag', () => {
     expect(quiet.alerts).toEqual([]);
   });
 });
+
+describe('W7-F1 R18: the position’s block timestamp', () => {
+  it('is stored with every position: a full poll, one stopped short, a quiet stretch and a reorg rewind', async () => {
+    const stamp = async () => {
+      const s = await readIndexState(env.DB, dep.chainId, dep.escrow);
+      if (!s) throw new Error('no position');
+      return [s.lastBlockNumber, s.lastBlockTimestamp];
+    };
+    const at = (n: number) => [n, chain.blocks[n]!.timestamp];
+    // Uneven block times, so no count of blocks gives the timestamp.
+    chain.mine([escrowEvent(dep.escrow, 'Paused', { account: `0x${'0a'.repeat(20)}` })], {
+      gapSec: 7,
+    });
+    chain.mine([], { gapSec: 11 });
+    await run();
+    expect(await stamp()).toEqual(at(chain.headNumber));
+
+    // A poll that stops short of the head stores the timestamp of the block it stopped at.
+    for (let i = 0; i < 6; i++) chain.mine([], { gapSec: 3 + i });
+    await run({ maxBlocksPerPoll: 4 });
+    expect(await stamp()).toEqual(at(chain.headNumber - 2));
+    // A stretch with no escrow event at all still moves it.
+    for (let i = 0; i < 5; i++) chain.mine([], { gapSec: 13 });
+    await run();
+    expect(await stamp()).toEqual(at(chain.headNumber));
+
+    // A reorg: the new branch's blocks have other times.
+    chain.reorg(2);
+    chain.mine([], { gapSec: 40 });
+    chain.mine([], { gapSec: 5 });
+    chain.mine([], { gapSec: 5 });
+    await run();
+    expect(await stamp()).toEqual(at(chain.headNumber));
+    const raw = await env.DB.prepare(
+      'SELECT last_block_timestamp FROM indexer_state WHERE chain_id = ?1 AND contract = ?2',
+    )
+      .bind(dep.chainId, dep.anchor)
+      .first<{ last_block_timestamp: number }>();
+    expect(raw?.last_block_timestamp).toBe(chain.blocks[chain.headNumber]!.timestamp);
+  });
+});

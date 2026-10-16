@@ -6,11 +6,13 @@
 //      means there is nothing to post; another bundle's proposal is an integrity failure;
 //   2. the settlement record of this proposal: `proposal_seq` 0, then one more after each proposal
 //      the indexer saw leave the chain (it supersedes the record), superseding the record before
-//      it; each entry's option, validity and VOID reason; `round_modes.bundle_hash`. Written once
-//      per proposal (W6-F1 R4): the entries first, then the record, so a call that finds this
-//      proposal's record (every ~23 s while its propose is pending) writes nothing. A new proposal
-//      waits while a settlement hold is open (O1: the indexer opens `refund_vetoed` in the batch
-//      that supersedes a vetoed refund proposal, so the coordinator's own hold check can't race it);
+//      it; each entry's option, validity and VOID reason. Written once per proposal (W6-F1 R4): the
+//      entries first, then the record, so a call that finds this proposal's record (every ~23 s
+//      while its propose is pending) writes nothing. `round_modes.bundle_hash` is not written here:
+//      it is the chain's, which the indexer's `OutcomeProposed` handler records (W7-F1 R15). A new
+//      proposal waits while a settlement hold is open (O1: the indexer opens `refund_vetoed` in the
+//      batch that supersedes a vetoed refund proposal, so the coordinator's own hold check can't
+//      race it);
 //   3. `propose(n0, n1, nVoid, payoutRoot, bundleHash)` through the operator, at most once per
 //      `propose:<roundId>:<seq>` (src/chain/operator.ts), so a retry polls the same transaction and
 //      never posts twice. The payout tree's leaves are settle's payouts (win, rebate when r > 0,
@@ -174,9 +176,6 @@ async function writeRecord(db: D1Database, result: TallyResult, seq: number, t: 
         manifestKey(roundId, 'stakes'),
         bundleHash,
       ),
-    db
-      .prepare("UPDATE round_modes SET bundle_hash = ?2 WHERE round_id = ?1 AND mode = 'stakes'")
-      .bind(roundId, bundleHash),
   ]);
   const row = await db
     .prepare(
