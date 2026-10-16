@@ -110,8 +110,10 @@ export async function checkEligibility(
   if (row.status === 'suspended') return reject('account_suspended', 'account is suspended');
   if (row.status !== 'active') return reject('account_deleted', 'account is not active');
   if (isSelfExcluded(row, i.now)) return reject('self_excluded', 'entries are paused');
+  // A room round doesn't exist for a non-member (spec "API" › Reveal gating): the unknown
+  // round's answer, as the route gives it before the RoundDO is asked.
   if (i.roomId !== null && row.member !== 1) {
-    return reject('not_member', 'only room members can enter');
+    return reject('not_found', 'No such round');
   }
   return null;
 }
