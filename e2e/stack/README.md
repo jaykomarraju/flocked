@@ -37,7 +37,8 @@ Needs Docker (OrbStack on the owner's Mac, OA-01), Foundry 1.7.1 (`anvil`, `forg
    (`e2e/mocks/farcaster`, `127.0.0.1:8789`), Coinbase OAuth and API (`e2e/mocks/coinbase`, `:8790`), the
    Coinbase Verifications chain reads (`e2e/mocks/eas`, `:8791`) and Turnstile's siteverify (`e2e/mocks/turnstile`,
    `:8792`, W7-D; the API calls it through `TURNSTILE_SITEVERIFY_URL`, honoured only locally, so no stack test calls
-   Cloudflare). Settlement fetches beacons from the local drand network (`DRAND_RELAYS`).
+   Cloudflare) and Anthropic's Messages API for question moderation (`e2e/mocks/anthropic`, `:8793`, W8-A; through
+   `ANTHROPIC_BASE_URL`, honoured only locally, with the mock's placeholder `ANTHROPIC_API_KEY`). Settlement fetches beacons from the local drand network (`DRAND_RELAYS`).
    - **Ticket signer** (`apps/signer`, W6-B): the same `wrangler dev` runs it as a second Worker
      (`--config apps/api/wrangler.jsonc --config e2e/stack/.run/signer/wrangler.json`). The API's `SIGNER` service
      binding resolves in process, and both Workers share the local D1, so the signer sees the `stakes_tickets` row
@@ -85,7 +86,7 @@ One row per part; any `FAIL` (or a half-finished `up`) exits 1, and `up` starts 
 | `anvil`  | The process, and `FlockedAnchor` has code                                                                                                                                                                                                                                                                                                      |
 | `api`    | The `wrangler dev` process, `.dev.vars`, and `GET /api/v1/me` answers 401                                                                                                                                                                                                                                                                      |
 | `signer` | wrangler's Local Explorer API (`/cdn-cgi/local/explorer/api/local/workers`) lists the Worker that the API's `SIGNER` binding names (`apps/api/wrangler.jsonc`) as running in this `wrangler dev`, with the API's D1 and persistence. `.dev.vars` has no `TICKET_SIGNER_KEY`, and the signer's `.dev.vars` links to the key file, which has one |
-| mocks    | `farcaster`, `coinbase`, `eas`, `turnstile`: the process and `GET /health`                                                                                                                                                                                                                                                                     |
+| mocks    | `farcaster`, `coinbase`, `eas`, `turnstile`, `anthropic`: the process and `GET /health`                                                                                                                                                                                                                                                        |
 | `cron`   | The driver process, and a heartbeat in the last few intervals                                                                                                                                                                                                                                                                                  |
 
 `stakes-ticket` exercises the binding itself: the API's prepare route has the signer sign a ticket.

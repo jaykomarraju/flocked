@@ -40,6 +40,7 @@ import {
   STACK_DIR,
   TOS_VERSION,
   TURNSTILE_TEST_SECRET,
+  ANTHROPIC_MOCK_KEY,
   WEB_DIST_DIR,
   alive,
   ensureDir,
@@ -67,17 +68,19 @@ const urls = {
   coinbase: `http://127.0.0.1:${PORTS.coinbase}`,
   eas: `http://127.0.0.1:${PORTS.eas}`,
   turnstile: `http://127.0.0.1:${PORTS.turnstile}`,
+  anthropic: `http://127.0.0.1:${PORTS.anthropic}`,
 };
 
 /**
- * The service mocks: the Farcaster Quick Auth (W3-A), Coinbase OAuth and API, and EAS (W5-B), and
- * Turnstile's siteverify (W7-D).
+ * The service mocks: the Farcaster Quick Auth (W3-A), Coinbase OAuth and API, and EAS (W5-B),
+ * Turnstile's siteverify (W7-D) and Anthropic's Messages API for moderation (W8-A).
  */
 const MOCKS = [
   ['farcaster', 'MOCK_FARCASTER_PORT', PORTS.farcaster],
   ['coinbase', 'MOCK_COINBASE_PORT', PORTS.coinbase],
   ['eas', 'MOCK_EAS_PORT', PORTS.eas],
   ['turnstile', 'MOCK_TURNSTILE_PORT', PORTS.turnstile],
+  ['anthropic', 'MOCK_ANTHROPIC_PORT', PORTS.anthropic],
 ];
 
 /** Runs a command to completion, output to `.run/logs/<name>.log`; rejects with the log's tail. */
@@ -417,6 +420,9 @@ async function main() {
     TURNSTILE_SECRET_KEY: TURNSTILE_TEST_SECRET,
     // No stack test calls Cloudflare: siteverify goes to the mock (W7-D).
     TURNSTILE_SITEVERIFY_URL: `${urls.turnstile}/turnstile/v0/siteverify`,
+    // Question moderation goes to the Anthropic mock (W8-A), honoured only locally.
+    ANTHROPIC_BASE_URL: urls.anthropic,
+    ANTHROPIC_API_KEY: ANTHROPIC_MOCK_KEY,
     FARCASTER_AUTH_ORIGIN: urls.farcaster,
     FLOCKED_TEST_SEAM_KEY: seamKey,
     // Settlement fetches beacons from the local drand network (W5-A).
@@ -498,6 +504,7 @@ async function main() {
   state.coinbaseUrl = urls.coinbase;
   state.easUrl = urls.eas;
   state.turnstileUrl = urls.turnstile;
+  state.anthropicUrl = urls.anthropic;
   state.devVars = rel(DEV_VARS_FILE);
   state.logs = rel(LOG_DIR);
   save();
