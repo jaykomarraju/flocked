@@ -105,7 +105,7 @@ const NOTES: Record<string, Omit<NotesBandProps, 'breakpoint'>> = {
         'Refund lines, one per reason (reasons.ts codes). The card shows 3. Drafts for the owner via W3-Z; only 3 is a Voice line.',
       lines: [
         '1 · Too few entrants (both): "Not enough sheep showed up. Everyone gets their stake back."',
-        '2 · One-sided (both): "Everyone picked the same side. No strays, no round. Stakes returned."',
+        '2 · One-sided (both): "Everyone picked the same side. No strays, no round. Everyone gets their stake back."',
         '3 · Headcount tie (both): "A dead heat. Nobody strayed, so everyone gets their stake back."',
         '4 · Voided (both): "This round was called off before it closed. Everyone gets their stake back."',
         '5 · Vetoed (Stakes): "The result was challenged and thrown out. Everyone gets their stake back."',

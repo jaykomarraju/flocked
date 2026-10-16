@@ -96,13 +96,42 @@ the source of truth and the code matches it.
 - **Split-bar ceiling:** the ">99%" side's fill stops at the track width − 24, mirroring the 24px floor of the
   "<1%" side.
 - **Avatar ring at 32:** 1.5px, as the lists sheet's `avatar/32` swatch and note ("1.5px below 40"), the
-  navigation sheet's headers, the screen headers and the app draw it. The feedback sheet's offline-banner header is
-  the one 2px outlier (fix it in the next design pass).
+  navigation sheet's headers, the screen headers and the app draw it. The feedback sheet's offline-banner header was
+  the one 2px outlier; W9-Z set it to 1.5px.
 - **Sign-in dialog** (`core/sign-in/*`): titles Fredoka 700 22/28 (the title role is 600). The sheet is padded 12
   (with the handle) 20 32, the 400-wide modal 32 20, with 20 between the heading, the controls and the note.
 - **"Not now":** none on the sign-in choose (browser), code and mini-app artboards. The email-address step ends in
   "Not now" and the Farcaster wait step in "Cancel", both text buttons.
 - **Onboarding cards:** no Back button; ArrowLeft goes back a card.
+
+## Kit and screen conventions (W9-Z, Oct 16, 2026)
+
+W9-C's builders found these while matching the web app to the Core-flow exports. Where the app followed a decision
+and Paper lagged, W9-Z changed Paper; where both already agreed, the convention is written down here.
+
+- **Mode toggle check everywhere:** every Free/Stakes toggle on Core flow and Social has the selected segment's check
+  (16px, stroked in `bg` at 2.2, 6 from the label). Toggle widths are unchanged: 176 on Core flow, 200 on Social.
+  The static "Free" label (blocked region, self-exclusion) is not a control and has no check.
+- **Stake slider:** the ink fill runs to the value. Fill width = (track width − 24) × (value − min) / (top − min),
+  where top is the range's top (100) or the balance when it is lower; the 24px thumb follows the fill. With 25 of
+  10–100 that is 54 on mobile (a 348 track) and 89.33 from tablet up (560). The end labels use the caption role
+  (Inter 500 13/18, 0.01em, `muted`, tabular figures).
+- **Disabled pick:** while the pick is being sealed (and while a Stakes entry is pending) the picked option card is
+  disabled but keeps the selected look (ink fill, `bg` label, checked radio). Only the other card takes the disabled
+  style (dashed `muted` border, `bg` fill).
+- **Notes under the CTA:** the Free note ("Free to play. Points have no cash value.") belongs to the CTA and sits 12
+  under it (−12 on the 24 content gap). The sealing note is a status line in its own row, at the content gap (24).
+  Both are Inter 400 14/20 `muted`, centred.
+- **Notice icons:** a notice above the question (the DST day) uses a 24px icon on a 24 grid, stroked at 2, 12 from
+  the text: the clock is a circle (r 9) with hands `M12 7v5l3 2`. It is a screen icon. The kit's 16px `clock` (the
+  "Final at" chip) stays the inline size.
+- **Counter row:** the kit draws the entrant and pool counter as a 40-tall row on its own (round-status sheet). In a
+  screen's status block (Today, Sealed, Reveal) it is 28 tall, under the countdown on mobile and on its baseline
+  from tablet up. Both are as drawn, and the app does the same (the component is 40, the screens set 28).
+- **Screen type without a token:** the Sealed and Reveal question ("question, compact") is Fredoka 700, −0.01em,
+  28/32 on mobile and 32/36 from tablet up; Today keeps the `question` role (36/40, up to `display` from tablet).
+  The reveal's phase title, "Counting the flock…", is Fredoka 600 28/36 in ink. Neither is a `design-tokens.json`
+  role; use these values where those screens draw them.
 
 ## Screen conventions (Core flow)
 
@@ -118,6 +147,10 @@ the source of truth and the code matches it.
 - Pages reached from You (Claims): mobile nav has You active; the desktop header shows no active link.
 - Reveal artboards end in a `notes (not part of the screen)` band (motion notes, refund lines). Crop it when using
   the PNG as a baseline.
+- Reveal artboards draw the end state, the last frame of the motion. On a win the lone sheep walks off-screen and
+  comes back: after the result card springs up, it walks off to the right over the first 60% of `motion.walkOff`
+  (1.6 s) and fades back into its place over the rest, so the end-state artboard shows it (W9-Z decision; the win
+  band's "walks off-screen" line means this). Reduced motion goes straight to the end state with `motion.fade`.
 - Rows sit 1200 apart on the canvas; a row whose mobile artboard runs past ~1100 takes two slots.
 
 ## Screen conventions (Social)
