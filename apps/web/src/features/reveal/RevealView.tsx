@@ -188,18 +188,26 @@ export function RevealView({
           className={s.toggle}
         />
       </div>
-      <h1 className={breakpoint === 'mobile' ? 'type-question' : 'type-display'}>{question}</h1>
+      <h1 className={s.question} data-breakpoint={breakpoint}>
+        {question}
+      </h1>
 
       {phase === 'unsealing' || phase === 'counting' ? (
-        <div className={s.status}>
+        <div className={s.status} data-breakpoint={breakpoint}>
           {phase === 'unsealing' ? (
             <Countdown label={UNSEALING_LABEL} remainingMs={unsealingMs} style="ms" />
           ) : (
-            <p className={`type-title ${s.counting}`} role="status">
+            <p className={s.counting} role="status">
               {COUNTING_TITLE}
             </p>
           )}
-          <EntrantCounter mode={mode} entrants={entrants} pool={pool} live={false} />
+          <EntrantCounter
+            mode={mode}
+            entrants={entrants}
+            pool={pool}
+            live={false}
+            className={s.counter}
+          />
         </div>
       ) : null}
 

@@ -4,7 +4,23 @@
 // skipping to the end state with a fade (NFR-9), each with axe.
 import type { Page } from '@playwright/test';
 import { expect, test } from '../fixtures';
+import { expectArtboard } from '../fixtures/screenshot';
 import { expectAccessible, mockWorld, setPageTime, type World } from './world';
+
+/** The Reveal artboard rows the sheet draws (apps/web/src/sheets/core/reveal.sheet.tsx). */
+const REVEAL_STATES = ['unsealing', 'counting', 'next-live'];
+const BREAKPOINTS = ['mobile', 'tablet', 'desktop'] as const;
+
+test.describe('Reveal sheets match Paper', () => {
+  for (const state of REVEAL_STATES) {
+    for (const breakpoint of BREAKPOINTS) {
+      const artboard = `core/reveal/${state}/${breakpoint}`;
+      test(artboard, { tag: '@screenshot' }, async ({ page }) => {
+        await expectArtboard(page, artboard);
+      });
+    }
+  }
+});
 
 const TALLY = [
   { headcount: 62, total: '1550' },

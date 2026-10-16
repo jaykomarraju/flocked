@@ -2,7 +2,8 @@
 // data (`core/today/*`), drawn by the real TodayView inside the real ShellFrame at an artboard's
 // breakpoint, optionally with an overlay (a scrim and a dialog) over the whole artboard. The Today
 // sheet draws its states with it; the onboarding and sign-in sheets draw their dialogs on top of
-// signed-out Today.
+// signed-out Today; the Sealed and Reveal sheets put their own view in the content column instead of
+// Today (`children`), on the 844-tall mobile artboard of a short screen (`short`).
 //
 // The overlay is any inline dialog (`Modal inline`, `BottomSheet inline`): its scrim fills the
 // artboard. Paper pads a centred modal's scrim by 16 (the Modal's fixed layout does too); an inline
@@ -16,7 +17,10 @@ import type { SheetBreakpoint } from '../types';
 
 const noop = () => undefined;
 
-/** Mobile overlay artboards are 844 tall (docs/design/README.md "Screen conventions (Core flow)"). */
+/**
+ * Mobile overlay and short-screen artboards are 844 tall (docs/design/README.md "Screen conventions
+ * (Core flow)").
+ */
 export const MOBILE_OVERLAY_HEIGHT = 844;
 
 /** Paper's example round: "Thursday, Oct 8", 04:12:37 to close, 1,204 in, 30,100 points. */
@@ -47,14 +51,25 @@ export interface CoreArtboardProps {
   player?: { user: HeaderUser; balance: Balance } | null;
   /** TodayView props over signed-out Today's (Paper's example round, nothing picked). */
   today?: Partial<TodayViewProps>;
+  /** A short screen: the mobile artboard is 844 tall, as under an overlay. */
+  short?: boolean;
+  /** The screen in the content column instead of Today (Sealed, the reveal). */
+  children?: ReactNode;
 }
 
 /**
- * Today at a breakpoint, light, as the Core-flow artboards draw it: 380 wide on mobile (844 tall and
- * clipped like Paper under an overlay, otherwise as tall as the content), 768 or 1120 wide and as tall
- * as the content from tablet up.
+ * Today (or `children`) at a breakpoint, light, as the Core-flow artboards draw it: 380 wide on mobile
+ * (844 tall and clipped like Paper under an overlay or on a short screen, otherwise as tall as the
+ * content), 768 or 1120 wide and as tall as the content from tablet up.
  */
-export function CoreArtboard({ breakpoint, overlay, player = null, today }: CoreArtboardProps) {
+export function CoreArtboard({
+  breakpoint,
+  overlay,
+  player = null,
+  today,
+  short = false,
+  children,
+}: CoreArtboardProps) {
   const width = breakpoint === 'mobile' ? 380 : breakpoint === 'tablet' ? 768 : 1120;
   return (
     <div data-theme="light" style={{ width }}>
@@ -68,26 +83,30 @@ export function CoreArtboard({ breakpoint, overlay, player = null, today }: Core
         }}
         active="today"
         overlay={overlay}
-        artboard={breakpoint === 'mobile' && overlay ? { height: MOBILE_OVERLAY_HEIGHT } : {}}
+        artboard={
+          breakpoint === 'mobile' && (overlay || short) ? { height: MOBILE_OVERLAY_HEIGHT } : {}
+        }
       >
-        <TodayView
-          breakpoint={breakpoint}
-          date={EXAMPLE_TODAY.date}
-          mode="free"
-          onModeChange={noop}
-          question={EXAMPLE_TODAY.question}
-          options={EXAMPLE_TODAY.options}
-          pick={null}
-          onPick={noop}
-          crowdHint={EXAMPLE_TODAY.crowdHint}
-          remainingMs={EXAMPLE_TODAY.remainingMs}
-          entrants={EXAMPLE_TODAY.entrants}
-          pool={EXAMPLE_TODAY.pool}
-          live
-          signedIn={false}
-          onSignIn={noop}
-          {...today}
-        />
+        {children ?? (
+          <TodayView
+            breakpoint={breakpoint}
+            date={EXAMPLE_TODAY.date}
+            mode="free"
+            onModeChange={noop}
+            question={EXAMPLE_TODAY.question}
+            options={EXAMPLE_TODAY.options}
+            pick={null}
+            onPick={noop}
+            crowdHint={EXAMPLE_TODAY.crowdHint}
+            remainingMs={EXAMPLE_TODAY.remainingMs}
+            entrants={EXAMPLE_TODAY.entrants}
+            pool={EXAMPLE_TODAY.pool}
+            live
+            signedIn={false}
+            onSignIn={noop}
+            {...today}
+          />
+        )}
       </ShellFrame>
     </div>
   );

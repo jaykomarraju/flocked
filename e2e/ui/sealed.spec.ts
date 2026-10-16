@@ -3,7 +3,22 @@
 // "Pick not on this device" when only the server knows the entry, each with axe.
 import { VOICE } from '@flocked/shared';
 import { expect, test } from '../fixtures';
+import { expectArtboard } from '../fixtures/screenshot';
 import { QUESTION, expectAccessible, mockWorld } from './world';
+
+const SEALED_STATES = ['pick-known', 'pick-lost'] as const;
+const BREAKPOINTS = ['mobile', 'tablet', 'desktop'] as const;
+
+test.describe('Sealed sheets match Paper', () => {
+  for (const state of SEALED_STATES) {
+    for (const breakpoint of BREAKPOINTS) {
+      const artboard = `core/sealed/${state}/${breakpoint}`;
+      test(artboard, { tag: '@screenshot' }, async ({ page }) => {
+        await expectArtboard(page, artboard);
+      });
+    }
+  }
+});
 
 test.describe('Sealed in the browser', () => {
   test('the stored pick, the stake and the reveal countdown, with axe', async ({ page }) => {

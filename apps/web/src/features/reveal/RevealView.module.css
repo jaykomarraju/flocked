@@ -5,6 +5,29 @@
   gap: var(--spacing-8);
 }
 
+/* Before the result (Paper `unsealing`, `counting`) the sections sit at the content column's gap (24
+   on mobile, 28 from tablet up), as on Today and Sealed. */
+.reveal:is([data-phase='unsealing'], [data-phase='counting']),
+.reveal:is([data-phase='unsealing'], [data-phase='counting']) .body {
+  gap: inherit;
+}
+
+/* Paper draws the question smaller once it's answered: Fredoka 700 28/32 on mobile, 32/36 from tablet
+   up (Today's question and display roles are 36/40 and 40/44). */
+.question {
+  color: var(--color-ink);
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 32px;
+  letter-spacing: -0.01em;
+}
+
+.question:not([data-breakpoint='mobile']) {
+  font-size: 32px;
+  line-height: 36px;
+}
+
 .meta {
   display: flex;
   align-items: center;
@@ -20,6 +43,8 @@
   width: 176px;
 }
 
+/* The unsealing countdown (or "Counting the flock…") over the final count on mobile; one row from
+   tablet up, the count on the bottom line. */
 .status {
   display: flex;
   flex-direction: column;
@@ -27,8 +52,24 @@
   gap: var(--spacing-1);
 }
 
+.status:not([data-breakpoint='mobile']) {
+  flex-direction: row;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+
+/* Paper draws the counter row 28 tall here. */
+.status .counter {
+  height: 28px;
+}
+
+/* "Counting the flock…": Fredoka 600 28/36, untracked. */
 .counting {
   color: var(--color-ink);
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 36px;
 }
 
 .body {

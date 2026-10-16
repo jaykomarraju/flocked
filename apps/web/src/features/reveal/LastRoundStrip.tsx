@@ -25,14 +25,20 @@ export function lastRoundSummary(me: RoundMeResponse | null, stored: StoredPick 
   }
 }
 
+/** "Last round" over the result, and "See the reveal" at the end of the row (Paper `next-live`). */
 export function LastRoundStrip({ summary, onSee }: { summary: string; onSee: () => void }) {
   return (
     <div className={s.strip}>
-      <p className="type-label">
-        <span className={s.label}>{LAST_ROUND}: </span>
-        {summary}
+      <p className={s.text}>
+        <span className={s.label}>
+          {LAST_ROUND}
+          <span className="visually-hidden">: </span>
+        </span>
+        <span className={s.summary}>{summary}</span>
       </p>
-      <TextButton onClick={onSee}>{SEE_THE_REVEAL}</TextButton>
+      <TextButton className={s.link} onClick={onSee}>
+        {SEE_THE_REVEAL}
+      </TextButton>
     </div>
   );
 }

@@ -70,7 +70,9 @@ export function SealedView({
           className={s.toggle}
         />
       </div>
-      <h1 className={breakpoint === 'mobile' ? 'type-question' : 'type-display'}>{question}</h1>
+      <h1 className={s.question} data-breakpoint={breakpoint}>
+        {question}
+      </h1>
       <div className={s.sealed}>
         <SealedBadge />
         <SealedPick option={pick ?? PICK_LOST} mode={mode} stake={stake} />
@@ -79,7 +81,13 @@ export function SealedView({
       </div>
       <div className={s.status} data-breakpoint={breakpoint}>
         <Countdown label="Reveal in" remainingMs={revealInMs} />
-        <EntrantCounter mode={mode} entrants={entrants} pool={pool} live={live} />
+        <EntrantCounter
+          mode={mode}
+          entrants={entrants}
+          pool={pool}
+          live={live}
+          className={s.counter}
+        />
       </div>
       <div className={s.actions}>
         <Button variant="secondary" onClick={onRemind}>

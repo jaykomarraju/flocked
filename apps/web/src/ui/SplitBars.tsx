@@ -81,7 +81,7 @@ export function SplitBars({
             <div className={s.head}>
               <span className={s.option}>
                 <span className="type-body-strong">{option}</span>
-                {pick === i && <span className={`type-label ${s.pick}`}>Your pick</span>}
+                {pick === i && <span className={s.pick}>Your pick</span>}
               </span>
               {share !== null && <span className="type-number">{share}</span>}
               {won && <span className="visually-hidden">, the winning side</span>}
