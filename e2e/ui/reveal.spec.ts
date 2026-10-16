@@ -8,7 +8,15 @@ import { expectArtboard } from '../fixtures/screenshot';
 import { expectAccessible, mockWorld, setPageTime, type World } from './world';
 
 /** The Reveal artboard rows the sheet draws (apps/web/src/sheets/core/reveal.sheet.tsx). */
-const REVEAL_STATES = ['unsealing', 'counting', 'next-live'];
+const REVEAL_STATES = [
+  'unsealing',
+  'counting',
+  'win',
+  'loss',
+  'refund',
+  'mode-toggle',
+  'next-live',
+];
 const BREAKPOINTS = ['mobile', 'tablet', 'desktop'] as const;
 
 test.describe('Reveal sheets match Paper', () => {

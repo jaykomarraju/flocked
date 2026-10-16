@@ -1,9 +1,11 @@
-// The share-card preview and the Share button on the reveal (Paper `core/reveal/win/*`): a small copy
-// of the result card W10-A renders (question, the split, the result word, "@handle · Flocked", the
-// sheep), then Share, the screen's one accent action. Share uses the system share sheet when there is
-// one, else copies the link.
+// The share-card preview and the Share button on the reveal (Paper `core/reveal/{win,loss,refund}/*`,
+// `share`): a small copy of the result card W10-A renders (question, the mini split, the result word,
+// "@handle · Flocked", the sheep) on a bg card 232 tall on mobile and 300 from tablet up, then Share,
+// the screen's one accent action. Share uses the system share sheet when there is one, else copies the
+// link.
 import { BRAND, type MascotPose } from '@flocked/shared';
 import { Mascot } from '@flocked/shared/mascot/react';
+import type { Breakpoint } from '../../theme';
 import { Button } from '../../ui/Button';
 import { splitFillWidth } from '../../ui/SplitBars';
 import s from './ShareBlock.module.css';
@@ -15,6 +17,8 @@ export interface ShareBlockProps {
   result: 'unflocked' | 'got-flocked' | 'refunded';
   handle: string | null;
   url: string;
+  /** The preview's size: small on mobile (the default), larger from tablet up. */
+  breakpoint?: Breakpoint;
 }
 
 const POSE: Record<ShareBlockProps['result'], MascotPose> = {
@@ -35,7 +39,15 @@ export async function shareLink(url: string, title: string): Promise<void> {
   await navigator.clipboard?.writeText(url);
 }
 
-export function ShareBlock({ question, counts, winner, result, handle, url }: ShareBlockProps) {
+export function ShareBlock({
+  question,
+  counts,
+  winner,
+  result,
+  handle,
+  url,
+  breakpoint = 'mobile',
+}: ShareBlockProps) {
   const total = counts[0] + counts[1];
   const word =
     result === 'unflocked'
@@ -44,9 +56,9 @@ export function ShareBlock({ question, counts, winner, result, handle, url }: Sh
         ? BRAND.gotFlocked
         : 'Refunded';
   return (
-    <div className={s.block}>
+    <div className={s.block} data-breakpoint={breakpoint}>
       <figure className={s.preview} aria-label="Share card preview">
-        <p className={`type-body-strong ${s.question}`}>{question}</p>
+        <p className={s.question}>{question}</p>
         <div className={s.bars} aria-hidden="true">
           {counts.map((c, i) => (
             <div key={i} className={s.track}>
@@ -59,13 +71,17 @@ export function ShareBlock({ question, counts, winner, result, handle, url }: Sh
           ))}
         </div>
         <div className={s.foot}>
-          <div>
+          <div className={s.who}>
             <p className={s.word} data-result={result}>
               {word}
             </p>
-            <p className="type-label">{handle ? `@${handle} · Flocked` : 'Flocked'}</p>
+            <p className={s.handle}>{handle ? `@${handle} · Flocked` : 'Flocked'}</p>
           </div>
-          <Mascot pose={POSE[result]} size={56} className={s.sheep} />
+          <Mascot
+            pose={POSE[result]}
+            size={breakpoint === 'mobile' ? 56 : 72}
+            className={s.sheep}
+          />
         </div>
       </figure>
       <Button onClick={() => void shareLink(url, question)}>Share</Button>

@@ -1,14 +1,9 @@
-/* The reveal fills the shell's content column; its own sections keep the column's 32 gap. */
+/* The reveal fills the shell's content column. Every phase (Paper `unsealing`, `counting`, `win`,
+   `loss`, `refund`, `mode-toggle`) keeps the column's gap between its sections (24 on mobile, 28 from
+   tablet up), as on Today and Sealed. */
 .reveal {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-8);
-}
-
-/* Before the result (Paper `unsealing`, `counting`) the sections sit at the content column's gap (24
-   on mobile, 28 from tablet up), as on Today and Sealed. */
-.reveal:is([data-phase='unsealing'], [data-phase='counting']),
-.reveal:is([data-phase='unsealing'], [data-phase='counting']) .body {
   gap: inherit;
 }
 
@@ -75,18 +70,35 @@
 .body {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-8);
+  gap: inherit;
 }
 
 .note {
   color: var(--color-ink);
 }
 
+/* A mode the player didn't play (Paper `other-mode`): a read-only box (line border), padded 20 24, the
+   line, the totals and the way back 8 apart. */
 .notPlayed {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: var(--spacing-3);
+  gap: var(--spacing-2);
+  padding: var(--spacing-5) var(--spacing-6);
+  border: var(--border-default) solid var(--color-line);
+  border-radius: var(--radius-card);
+}
+
+/* Paper draws the link 4 below the totals, flush left, as tall as its line. */
+.back {
+  height: auto;
+  padding: var(--spacing-1) 0 0;
+}
+
+/* The result card's sheep is 72 wide on mobile (104 from tablet up). */
+.reveal[data-breakpoint='mobile'] .result :global(svg[data-pose]) {
+  width: 72px;
+  height: 63px;
 }
 
 /* The result card springs up from the bottom once the bars have landed (motion.spring). */
@@ -142,20 +154,23 @@
   }
 }
 
+/* "The next question is already live" (Paper `next-live`): a line rule, 24 above the title, 12 to the
+   card. */
 .next {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-4);
-  padding-top: var(--spacing-8);
+  gap: var(--spacing-3);
+  padding-top: var(--spacing-6);
   border-top: var(--border-default) solid var(--color-line);
 }
 
+/* The card: surface, 2px ink border, padded 20 20 20 24; the text column, then the arrow 16 after. */
 .nextCard {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--spacing-1);
-  padding: var(--spacing-5) var(--spacing-8);
+  align-items: center;
+  gap: var(--spacing-4);
+  margin: 0;
+  padding: var(--spacing-5) var(--spacing-5) var(--spacing-5) var(--spacing-6);
   border: var(--border-strong) solid var(--color-ink);
   border-radius: var(--radius-card);
   background: var(--color-surface);
@@ -164,8 +179,27 @@
   cursor: pointer;
 }
 
+.nextText {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: var(--spacing-1);
+}
+
 .nextCloses {
   color: var(--color-muted);
+}
+
+/* The next question: Fredoka 700 20/24. */
+.nextQuestion {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 24px;
+}
+
+.arrow {
+  flex-shrink: 0;
 }
 
 @keyframes spring-up {

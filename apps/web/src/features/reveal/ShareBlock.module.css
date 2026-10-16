@@ -1,39 +1,61 @@
+/* Paper `share`: the preview, then Share, 12 apart. */
 .block {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-4);
+  gap: var(--spacing-3);
 }
 
-/* A small copy of the share card: line border, surface, 24 padding. */
+/* A small copy of the share card: bg, a 1.5px line border, radius 16, a fixed height with its three
+   rows spread out (12 apart at least). Mobile: 232 tall, padded 20; from tablet up 300, padded 28. */
 .preview {
   display: flex;
+  flex-shrink: 0;
   flex-direction: column;
-  gap: var(--spacing-6);
+  justify-content: space-between;
+  gap: var(--spacing-3);
+  height: 232px;
   margin: 0;
-  padding: var(--spacing-6);
+  padding: var(--spacing-5);
   border: var(--border-default) solid var(--color-line);
   border-radius: var(--radius-card);
-  background: var(--color-surface);
+  background: var(--color-bg);
+  color: var(--color-ink);
 }
 
+.block:not([data-breakpoint='mobile']) .preview {
+  height: 300px;
+  padding: 28px;
+}
+
+/* The question: Fredoka 700 17/20 on mobile, 22/26 from tablet up. */
 .question {
   font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 20px;
 }
 
+.block:not([data-breakpoint='mobile']) .question {
+  font-size: 22px;
+  line-height: 26px;
+}
+
+/* The mini split: 10px bars, 6 apart. */
 .bars {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-2);
+  gap: 6px;
 }
 
 .track {
-  height: 12px;
+  display: flex;
+  height: 10px;
   border-radius: var(--radius-pill);
   background: var(--color-line);
 }
 
 .fill {
-  height: 12px;
+  height: 10px;
   border-radius: var(--radius-pill);
   background: var(--color-ink);
 }
@@ -46,14 +68,27 @@
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
+  gap: var(--spacing-3);
 }
 
+.who {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* The result word: Fredoka 700 24/28 on mobile, 32/36 from tablet up, untracked. */
 .word {
   font-family: var(--font-display);
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 700;
-  line-height: 32px;
+  line-height: 28px;
   text-transform: uppercase;
+}
+
+.block:not([data-breakpoint='mobile']) .word {
+  font-size: 32px;
+  line-height: 36px;
 }
 
 .word[data-result='unflocked'] {
@@ -62,6 +97,15 @@
 
 .word[data-result='refunded'] {
   text-transform: none;
+}
+
+/* "@jay · Flocked": Inter 500 13/18, ink (opsz 26, as Paper renders 13px Inter). */
+.handle {
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+  font-variation-settings: 'opsz' 26;
 }
 
 .sheep {

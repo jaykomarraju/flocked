@@ -8,14 +8,18 @@
 //              Share and "The next question is already live" fade in last
 //   refunded   no animation (no winner): the split for rules 1, 2, 3 and 5, else the entrant count,
 //              and the refund card with the reason's line
-// A mode the player didn't play shows its split with "You didn't play … this round." and a link back,
-// no result card and no Share. Reduced motion skips to the end state with a fade. `animate` is false
-// once this device has played the round's reveal (played.ts), and in the design sheets.
+// A mode the player didn't play shows its split with "You didn't play … this round.", its totals and a
+// link back in a line-bordered box, no result card and no Share. Every phase keeps the content column's
+// gap between its sections (24 on mobile, 28 from tablet up), as Paper draws them. Reduced motion skips
+// to the end state with a fade. `animate` is false once this device has played the round's reveal
+// (played.ts), and in the design sheets.
 // Presentational: the live screen and the design sheets feed it plain props.
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { Breakpoint } from '../../theme';
+import { formatAmount, groupDigits } from '../../ui/amounts';
 import { Countdown, formatCountdown } from '../../ui/Countdown';
 import { EntrantCounter } from '../../ui/EntrantCounter';
+import { ArrowRightIcon } from '../../ui/icons/ArrowRightIcon';
 import { ModeToggle, type Mode } from '../../ui/ModeToggle';
 import { ResultCard, type ResultCardProps } from '../../ui/ResultCard';
 import { SplitBars } from '../../ui/SplitBars';
@@ -67,8 +71,11 @@ export interface RevealViewProps {
   hideSplit?: boolean;
   /** The player's result card; null when they didn't play this mode. */
   result?: ResultCardProps | null;
-  /** This mode wasn't played: the line and the way back to the played mode. */
-  notPlayed?: { onBack: () => void; playedMode: Mode } | null;
+  /**
+   * This mode wasn't played: the line, its totals and the way back to the played mode. `finalAt` is a
+   * Stakes result's challenge-window end as shown ("11:03pm"), until it is final.
+   */
+  notPlayed?: { onBack: () => void; playedMode: Mode; finalAt?: string } | null;
   /** The share-card preview and Share (only for a mode the player played). */
   share?: ReactNode;
   next?: NextQuestion | null;
@@ -175,6 +182,7 @@ export function RevealView({
   return (
     <div
       className={s.reveal}
+      data-breakpoint={breakpoint}
       data-phase={phase}
       data-reveal-stage={stage}
       data-motion={fade ? 'fade' : animate && revealing ? 'full' : 'none'}
@@ -228,9 +236,14 @@ export function RevealView({
 
         {settled && notPlayed ? (
           <div className={s.notPlayed}>
-            <p className="type-body">{notPlayedLine(mode)}</p>
-            <EntrantCounter mode={mode} entrants={entrants} pool={pool} live={false} />
-            <TextButton onClick={notPlayed.onBack}>{backToLine(notPlayed.playedMode)}</TextButton>
+            <p className="type-body-strong">{notPlayedLine(mode)}</p>
+            <p className="type-number-small">
+              {groupDigits(entrants)} in · {formatAmount(pool, mode)}
+              {notPlayed.finalAt === undefined ? null : ` · Final at ${notPlayed.finalAt}`}
+            </p>
+            <TextButton className={s.back} onClick={notPlayed.onBack}>
+              {backToLine(notPlayed.playedMode)}
+            </TextButton>
           </div>
         ) : null}
 
@@ -248,10 +261,13 @@ export function RevealView({
             {NEXT_LIVE_TITLE}
           </h2>
           <button type="button" className={s.nextCard} onClick={next.onOpen}>
-            <span className={`type-label ${s.nextCloses}`}>
-              Closes in {formatCountdown(next.remainingMs)}
+            <span className={s.nextText}>
+              <span className={`type-label tnum ${s.nextCloses}`}>
+                Closes in {formatCountdown(next.remainingMs)}
+              </span>
+              <span className={s.nextQuestion}>{next.question}</span>
             </span>
-            <span className="type-body-strong">{next.question}</span>
+            <ArrowRightIcon className={s.arrow} />
           </button>
         </section>
       ) : null}

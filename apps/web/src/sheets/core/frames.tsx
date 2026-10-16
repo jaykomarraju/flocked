@@ -3,7 +3,8 @@
 // breakpoint, optionally with an overlay (a scrim and a dialog) over the whole artboard. The Today
 // sheet draws its states with it; the onboarding and sign-in sheets draw their dialogs on top of
 // signed-out Today; the Sealed and Reveal sheets put their own view in the content column instead of
-// Today (`children`), on the 844-tall mobile artboard of a short screen (`short`).
+// Today (`children`), on the 844-tall mobile artboard of a short screen (`short`), and the Reveal's
+// result states end in a notes band under the screen (`notes`).
 //
 // The overlay is any inline dialog (`Modal inline`, `BottomSheet inline`): its scrim fills the
 // artboard. Paper pads a centred modal's scrim by 16 (the Modal's fixed layout does too); an inline
@@ -55,6 +56,14 @@ export interface CoreArtboardProps {
   short?: boolean;
   /** The screen in the content column instead of Today (Sealed, the reveal). */
   children?: ReactNode;
+  /** Under the screen, full width: the Reveal artboards' notes band (not part of the screen). */
+  notes?: ReactNode;
+  /**
+   * The artboard is a half pixel tall (fit-content over 1.5px borders; its 2x export has an odd
+   * height). Paper exports such an artboard 0.25px low with a half-covered first row
+   * (docs/design/README.md "Keep artboards whole-pixel tall"), so the sheet draws it 0.25px low too.
+   */
+  halfPixel?: boolean;
 }
 
 /**
@@ -69,10 +78,15 @@ export function CoreArtboard({
   today,
   short = false,
   children,
+  notes,
+  halfPixel = false,
 }: CoreArtboardProps) {
   const width = breakpoint === 'mobile' ? 380 : breakpoint === 'tablet' ? 768 : 1120;
   return (
-    <div data-theme="light" style={{ width }}>
+    <div
+      data-theme="light"
+      style={halfPixel ? { width, transform: 'translateY(0.25px)' } : { width }}
+    >
       <ShellFrame
         breakpoint={breakpoint}
         header={{
@@ -108,6 +122,7 @@ export function CoreArtboard({
           />
         )}
       </ShellFrame>
+      {notes}
     </div>
   );
 }
