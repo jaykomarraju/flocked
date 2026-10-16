@@ -11,7 +11,8 @@ import s from './YouSheet.module.css';
 export interface YouSheetProps {
   open: boolean;
   onClose: () => void;
-  onSignOut: () => void;
+  /** Signs out; without it (signed out) the sheet has no "Sign out" row. */
+  onSignOut?: () => void;
   /** The list's id: the You tab's `aria-controls`. */
   id?: string;
   /** Render in place (design sheets). */
@@ -32,17 +33,21 @@ export function YouSheet({ open, onClose, onSignOut, id, inline }: YouSheetProps
             </li>
           ))}
         </ul>
-        <div className={s.rule} />
-        <button
-          type="button"
-          className={`type-body ${s.item}`}
-          onClick={() => {
-            onClose();
-            onSignOut();
-          }}
-        >
-          Sign out
-        </button>
+        {onSignOut ? (
+          <>
+            <div className={s.rule} />
+            <button
+              type="button"
+              className={`type-body ${s.item}`}
+              onClick={() => {
+                onClose();
+                onSignOut();
+              }}
+            >
+              Sign out
+            </button>
+          </>
+        ) : null}
       </nav>
       <TextButton onClick={onClose}>Not now</TextButton>
     </BottomSheet>

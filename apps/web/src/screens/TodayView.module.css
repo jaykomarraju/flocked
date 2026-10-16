@@ -1,0 +1,74 @@
+/* The date line and the mode toggle on one row. */
+.meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.date {
+  color: var(--color-muted);
+}
+
+/* Paper draws the toggle 176 wide. */
+.toggle {
+  flex-shrink: 0;
+  width: 176px;
+}
+
+/* The option cards, 12 apart, then the crowd hint. */
+.options,
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+}
+
+/* The crowd-history hint: Inter 400 14/20, muted, 4px below the gap (opsz 28 as Paper renders 14px
+   Inter). */
+.hint,
+.note {
+  color: var(--color-muted);
+  font-family: var(--font-body);
+  font-size: var(--text-label);
+  font-weight: 400;
+  line-height: 20px;
+  font-variation-settings: 'opsz' 28;
+}
+
+.hint {
+  padding-top: var(--spacing-1);
+}
+
+/* Countdown over counter on mobile; one row from tablet up, the counter on the countdown's baseline. */
+.status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-1);
+}
+
+.status:not([data-breakpoint='mobile']) {
+  flex-direction: row;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+
+.countdown {
+  flex-shrink: 0;
+}
+
+/* Paper draws the counter row 28 tall here. */
+.status .counter {
+  height: 28px;
+}
+
+.cta {
+  flex-shrink: 0;
+  width: 100%;
+}
+
+/* The Free note sits 12 under the CTA. */
+.note {
+  margin-top: -12px;
+  text-align: center;
+}

@@ -1,0 +1,7 @@
+/* The whole page: the mobile content column, centred in 560 from tablet up. */
+.page {
+  width: 100%;
+  max-width: calc(560px + 2 * var(--spacing-4));
+  margin-inline: auto;
+  padding: var(--spacing-10) var(--spacing-4);
+}

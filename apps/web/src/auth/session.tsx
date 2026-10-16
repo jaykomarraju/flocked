@@ -140,7 +140,8 @@ export function AuthProvider({
 
   const signInWithWallet = useCallback(async () => {
     const wallet = await connectWallet(wagmiConfig);
-    // Account creation needs a Turnstile token; ask for it while the user signs.
+    // Account creation needs a Turnstile token. Asked for once the wallet is connected: a token
+    // lives 300 s, and asking before a slow wallet prompt could hand the API an expired one.
     const turnstile = turnstileToken();
     const session = await siweSignIn({
       client,
@@ -161,7 +162,10 @@ export function AuthProvider({
         opts.onApprove?.(request.url, request.cancel);
         return request.token;
       };
-      const [token, turnstile] = await Promise.all([quickAuth(), turnstileToken()]);
+      // Turnstile after the Farcaster token: the browser's relay approval can take minutes, and a
+      // Turnstile token lives 300 s.
+      const token = await quickAuth();
+      const turnstile = await turnstileToken();
       const session = await client.call(api.farcaster, {
         body: { token, transport, ...(turnstile ? { turnstileToken: turnstile } : {}) },
       });

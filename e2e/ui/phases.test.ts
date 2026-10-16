@@ -4,7 +4,7 @@
 // it needs no stack or browser. Run by `pnpm test` (node:test; Node strips the types).
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import config from '../playwright.config.ts';
@@ -44,7 +44,14 @@ const all = specs(listing.suites);
 const isWarp = (spec: ListedSpec) => spec.tags.includes('warp') || /@warp\b/.test(spec.title);
 
 void test('lists the api and ui specs', () => {
-  assert.ok(all.some((s) => s.file.startsWith('lifecycle.spec')));
+  // Files are relative to the root testDir (tests/), so ui specs read `../ui/<name>`.
+  assert.ok(all.some((s) => basename(s.file) === 'lifecycle.spec.ts'));
+  for (const spec of ['shell.spec', 'onboarding.spec', 'sign-in.spec']) {
+    assert.ok(
+      all.some((s) => basename(s.file) === `${spec}.ts`),
+      spec,
+    );
+  }
 });
 
 void test('every test runs in exactly one project', () => {

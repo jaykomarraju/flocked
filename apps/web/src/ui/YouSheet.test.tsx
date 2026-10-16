@@ -28,6 +28,17 @@ describe('YouSheet', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
+  it('has no Sign out row when signed out (no onSignOut)', () => {
+    render(
+      <MemoryRouter>
+        <YouSheet open onClose={() => undefined} />
+      </MemoryRouter>,
+    );
+    const dialog = screen.getByRole('dialog', { name: 'You' });
+    expect(within(dialog).getAllByRole('link')).toHaveLength(4);
+    expect(within(dialog).queryByRole('button', { name: 'Sign out' })).not.toBeInTheDocument();
+  });
+
   it('is a dialog named You with the You links and Sign out', () => {
     renderSheet();
     const dialog = screen.getByRole('dialog', { name: 'You' });
