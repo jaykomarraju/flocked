@@ -1,0 +1,140 @@
+/* The sign-in panel (Paper `core/sign-in/<state>/<breakpoint>`): a column, 20 between the heading,
+   the controls and the note; the heading's title and line 6 apart; the controls 12 apart. */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-5);
+}
+
+.heading {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Paper draws the sheet titles in Fredoka 700 at the title size (the title role is 600). */
+.heading .title {
+  font-weight: 700;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+}
+
+/* The notes and the account's second line: Inter 400 14/20, muted (the label size, so its optical
+   size, at 400). */
+.panel .quiet {
+  font-weight: 400;
+  color: var(--color-muted);
+}
+
+/* A provider: the secondary pill at 52, the icon and label from the left, 20 in. */
+.provider.provider {
+  --h: 52px;
+  justify-content: flex-start;
+  padding-inline: var(--spacing-5);
+}
+
+.providerLabel {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+}
+
+.icon {
+  flex-shrink: 0;
+}
+
+.block {
+  width: 100%;
+}
+
+/* The mini app's account: a read-only box (bg, 1.5 line border), the avatar and the handle. */
+.account {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  padding: var(--spacing-3) var(--spacing-4);
+  border: var(--border-default) solid var(--color-line);
+  border-radius: var(--radius-card);
+  background: var(--color-bg);
+}
+
+.accountText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* The code: Inter 600 20/24, tabular, spaced 0.3em. */
+.code input {
+  font-size: var(--text-option);
+  line-height: 24px;
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  font-feature-settings: 'tnum';
+}
+
+/* "Send a new code.": an action inside the note, drawn as the note's own text. */
+.inlineAction {
+  appearance: none;
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: inherit;
+  text-underline-position: from-font;
+}
+
+.inlineAction:hover,
+.inlineAction:focus-visible {
+  text-decoration-line: underline;
+}
+
+.inlineAction[aria-busy='true'] {
+  cursor: progress;
+}
+
+/* "Open Farcaster": a link drawn as the primary CTA (56, accent, the cta label). */
+.cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 56px;
+  padding: 0 var(--spacing-6);
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+  text-decoration: none;
+  transition: transform var(--motion-press-duration) var(--motion-press-easing);
+}
+
+.cta:active {
+  transform: scale(0.97);
+}
+
+.waiting {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-2);
+}
+
+.spinner {
+  flex-shrink: 0;
+  animation: spin 900ms linear infinite;
+}
+
+.notNow {
+  align-self: center;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

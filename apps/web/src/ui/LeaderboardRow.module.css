@@ -1,0 +1,94 @@
+.list {
+  display: flex;
+  flex-direction: column;
+  border-top: var(--border-default) solid var(--color-line);
+}
+
+/* 68px rows: rank, avatar, who, value, 12 apart. */
+.row {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--spacing-3);
+  height: 68px;
+  padding-inline: var(--spacing-3);
+  border-bottom: var(--border-default) solid var(--color-line);
+  color: var(--color-ink);
+}
+
+/* Your row: a surface card with an ink border; 10px inline padding keeps its lanes on the 12px ones. */
+.you {
+  border: var(--border-strong) solid var(--color-ink);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  padding-inline: calc(var(--spacing-3) - var(--border-strong));
+}
+
+.pinned {
+  margin-top: var(--spacing-3);
+}
+
+/* The rank slot: 32 wide and never shrinks, so 148 fits. */
+.rank {
+  flex-shrink: 0;
+  width: 32px;
+}
+
+.who {
+  display: flex;
+  flex: 1 1 0%;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.handleLine {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+.caption {
+  color: var(--color-muted);
+}
+
+/* The "You" pill: ink fill, bg label, Inter 600 13/20. */
+.youPill {
+  flex-shrink: 0;
+  padding-inline: var(--spacing-2);
+  border-radius: var(--radius-pill);
+  background: var(--color-ink);
+  color: var(--color-bg);
+  font-family: var(--font-body);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  line-height: 20px;
+  font-variation-settings: 'opsz' 26;
+}
+
+/* The value slot: 72 wide, right-aligned; the plain value sits 14 in, on the pill's text lane. */
+.valueSlot,
+.pillSlot {
+  display: flex;
+  flex-shrink: 0;
+  justify-content: flex-end;
+  width: 72px;
+}
+
+.valueSlot {
+  padding-right: 14px;
+}
+
+.value {
+  text-align: right;
+}
+
+/* The live stray-streak pill: accent fill, cta-role number in accent ink. */
+.streakPill {
+  display: flex;
+  align-items: center;
+  height: 36px;
+  padding-inline: 14px;
+  border-radius: var(--radius-pill);
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+}

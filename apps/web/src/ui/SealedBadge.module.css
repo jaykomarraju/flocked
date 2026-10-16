@@ -1,0 +1,22 @@
+/* Paper: 32 tall, padding 10 left and 12 right, the padlock 6px before the text; it never stretches. */
+.badge {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  height: 32px;
+  padding: 0 var(--spacing-3) 0 10px;
+  border-radius: var(--radius-pill);
+  background: var(--color-ink);
+  color: var(--color-bg);
+}
+
+.icon {
+  flex-shrink: 0;
+}
+
+/* The label role at weight 600. */
+.text {
+  font-weight: 600;
+}

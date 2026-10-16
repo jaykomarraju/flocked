@@ -1,0 +1,76 @@
+/* The flat scrim, the sheet at its bottom. */
+.scrim {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  overflow: clip;
+  background: var(--color-scrim);
+  animation: fade var(--motion-fade-duration) var(--motion-fade-easing);
+}
+
+.fixed {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+}
+
+.inline {
+  position: relative;
+}
+
+/* Surface, 2px ink border on the top and sides, 16 radius on the top corners. */
+.sheet {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: var(--spacing-4);
+  max-height: 100%;
+  overflow-y: auto;
+  padding: var(--spacing-3) var(--spacing-5) 28px;
+  border: var(--border-strong) solid var(--color-ink);
+  border-bottom: 0;
+  border-radius: var(--radius-card) var(--radius-card) 0 0;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  animation: slide-up var(--motion-spring-duration) var(--motion-spring-easing);
+  transition: transform var(--motion-micro-duration) var(--motion-micro-easing);
+}
+
+.sheet:focus,
+.sheet:focus-visible {
+  outline: none;
+}
+
+/* The handle: 36 × 4, line colour. Its hit area reaches past the drawing, without moving it. */
+.handle {
+  position: relative;
+  flex-shrink: 0;
+  align-self: center;
+  width: 36px;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--color-line);
+}
+
+.handle[data-draggable] {
+  cursor: grab;
+  touch-action: none;
+}
+
+.handle[data-draggable]::before {
+  content: '';
+  position: absolute;
+  inset: -12px -40px;
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+  }
+}

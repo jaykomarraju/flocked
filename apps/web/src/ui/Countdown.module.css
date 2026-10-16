@@ -1,0 +1,7 @@
+/* Paper: a column, the label-role line 2px above the numberXL time. */
+.countdown {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--color-ink);
+}

@@ -1,0 +1,111 @@
+.fieldSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-5);
+}
+
+.states {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-4);
+}
+
+.state {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: var(--spacing-3);
+  width: 320px;
+}
+
+/* Sheet notes: Inter 400 13/18 in ink (the sheet's own note style, not the caption role). */
+.note {
+  font-family: var(--font-body);
+  font-size: var(--text-caption);
+  line-height: 18px;
+  letter-spacing: 0.01em;
+  font-variation-settings: 'opsz' 26;
+}
+
+.overlays {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-4);
+  padding-top: var(--spacing-8);
+  border-top: var(--border-default) solid var(--color-line);
+}
+
+.modalDemo,
+.sheetDemo {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: var(--spacing-3);
+}
+
+.modalDemo {
+  width: 596px;
+}
+
+.sheetDemo {
+  width: 380px;
+}
+
+/* The demo frame the overlays sit in: a 540-tall rounded scrim (with a line edge in dark). */
+.demoScrim {
+  flex-shrink: 0;
+  height: 540px;
+  border-radius: var(--radius-card);
+}
+
+[data-theme='dark'] .demoScrim {
+  border: var(--border-default) solid var(--color-line);
+}
+
+.modalTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.mascot {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 120px;
+  height: 105px;
+}
+
+.copy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+/* The onboarding title: Fredoka 700 28/32, no tracking. */
+.cardTitle {
+  font-family: var(--font-display);
+  font-size: var(--text-result);
+  font-weight: 700;
+  line-height: 32px;
+}
+
+.dots {
+  display: flex;
+  gap: 6px;
+}
+
+.dot,
+.dotActive {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--color-line);
+}
+
+.dotActive {
+  width: 20px;
+  background: var(--color-ink);
+}

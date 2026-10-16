@@ -1,0 +1,34 @@
+/* Today's shape: eyebrow, two question lines (the second at 70%), two 80px option cards. */
+.skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.eyebrow,
+.question,
+.option {
+  flex-shrink: 0;
+  background: var(--color-line);
+}
+
+.eyebrow {
+  width: 120px;
+  height: 14px;
+  border-radius: var(--radius-pill);
+}
+
+.question {
+  width: 100%;
+  height: 32px;
+  border-radius: 8px;
+}
+
+.questionShort {
+  width: round(70%, 1px);
+}
+
+.option {
+  height: 80px;
+  border-radius: var(--radius-card);
+}

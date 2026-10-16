@@ -102,9 +102,11 @@ export async function verifyPersonhood(
     throw new Error(`Coinbase mock authorize: HTTP ${approved.status}`);
   }
   const callback = new URL(location);
+  // The callback consumes its OAuth state, so a retried GET would fail on a state already used.
   const outcome = await http(`${stack.apiUrl}${callback.pathname}${callback.search}`, {
     ...auth(user),
     headers: { accept: 'application/json' },
+    idempotent: false,
   });
   const verified = PersonhoodCallbackResponseSchema.parse(ok('personhood callback', outcome));
   if (verified.status !== 'verified') {

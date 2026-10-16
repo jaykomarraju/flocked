@@ -8,7 +8,8 @@ nvm use                      # Node 22.23
 pnpm stack:up                # ~20 s (the first run on a Mac also pulls the drand image)
 pnpm --filter @flocked/e2e exec vitest run tests/stack-smoke.test.ts   # ~70 s
 pnpm --filter @flocked/e2e exec vitest run   # every stack test, one file at a time, in CI's order (~10 min)
-pnpm e2e                     # the Playwright specs (W7-D, ~20 min); on a fresh stack, see "Playwright specs"
+pnpm e2e                     # the Playwright API specs (W7-D, ~20 min); on a fresh stack, see "Playwright specs"
+pnpm e2e:ui                  # the web app's browser specs (W8-C); on a fresh stack of its own, see e2e/ui/README.md
 pnpm stack:status            # exits 1 if anything is down
 pnpm stack:down              # stops everything and deletes the state
 ```
@@ -180,3 +181,18 @@ point that needs a warp, and the `api-warp` project (it depends on `api`) runs t
 chain and game clocks to at least its own target (`clock.warpTo`; neither clock ever moves back) and checks the
 outcome. A spec's `api` phase hands its round and players to its `api-warp` phase in `.run/e2e/<spec>.json`.
 `pnpm e2e` runs both projects; `api-warp` leaves anvil 72 hours ahead, so start a fresh stack to run anything again.
+
+The browser specs follow the same rule as their own suite (W8-C): `ui`, then `ui-warp` for their `@warp` tests, on a
+**fresh stack of their own** (`pnpm e2e:ui`), never after `api-warp` on the same stack. So each warp phase runs after
+the one non-warp phase that shares its stack. The rule is enforced, not just written down:
+
+- the first warp writes `.run/e2e/warped.json` (`fixtures/clock.ts`), and the `stack` fixture then refuses a
+  non-warp project on that stack with "start a fresh stack" (`fixtures/index.ts`);
+- after a warp the game clock never runs behind anvil: `warpTo` floors its pin at wall time, and `clock.release()`
+  keeps the clock pinned at or past anvil's head instead of going back to wall time;
+- `e2e/ui/phases.test.ts` (in `pnpm test`) lists every Playwright test and checks that each lands in exactly one
+  project, that the warp projects hold exactly the `@warp` tests, and that each depends only on its own suite's
+  first phase.
+
+The full local run is therefore two stacks: `pnpm stack:up && pnpm e2e && pnpm stack:down`, then
+`pnpm stack:up && pnpm e2e:ui && pnpm stack:down`. CI runs them as two jobs (`.github/workflows/e2e.yml`).

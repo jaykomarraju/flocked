@@ -1,0 +1,76 @@
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-5);
+  padding: var(--spacing-6);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  border: var(--border-strong) solid var(--color-ink);
+  border-radius: var(--radius-card);
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-4);
+}
+
+.text {
+  display: flex;
+  flex: 1 1 0%;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+/* The result line: the brand term in capitals, the accent only when the player won (28px clears the
+   large-text rule). "Refunded" stays sentence case and untracked, as Paper draws it. */
+.headline {
+  text-transform: uppercase;
+}
+
+.headline[data-result='unflocked'] {
+  color: var(--color-accent);
+}
+
+.headline[data-result='refunded'] {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.sheep {
+  flex-shrink: 0;
+}
+
+/* The "Final at" chip: a read-only box, so a line border. */
+.finalAt {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  align-self: flex-start;
+  gap: 6px;
+  height: 32px;
+  padding: 0 var(--spacing-3) 0 10px;
+  border: var(--border-default) solid var(--color-line);
+  border-radius: var(--radius-pill);
+}
+
+.clock {
+  flex-shrink: 0;
+}
+
+.figures {
+  display: flex;
+  gap: var(--spacing-8);
+  margin: 0;
+  padding-top: var(--spacing-4);
+  border-top: var(--border-default) solid var(--color-line);
+}
+
+.figure {
+  display: flex;
+  flex-direction: column;
+}
+
+.figure dd {
+  margin: 0;
+}

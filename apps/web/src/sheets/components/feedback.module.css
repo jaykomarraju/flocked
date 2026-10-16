@@ -1,0 +1,103 @@
+.toasts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-5);
+}
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-4);
+}
+
+/* Sections after the first sit under a line rule. */
+.ruled {
+  padding-top: var(--spacing-8);
+  border-top: var(--border-default) solid var(--color-line);
+}
+
+.column {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  gap: var(--spacing-3);
+  width: 320px;
+}
+
+.wide {
+  width: 488px;
+}
+
+/* The sheet's notes: Inter 400 13/18, ink (Paper draws them this way, not in the caption role). */
+.note {
+  font-family: var(--font-body);
+  font-size: var(--text-caption);
+  font-weight: 400;
+  line-height: 18px;
+  letter-spacing: 0.01em;
+  font-variation-settings: 'opsz' 26;
+}
+
+/* The empty state and the skeleton sit in 360-tall boxes. */
+.box {
+  flex-shrink: 0;
+  height: 360px;
+}
+
+.skeletonFrame {
+  padding: var(--spacing-8);
+  border: var(--border-default) solid var(--color-line);
+  border-radius: var(--radius-card);
+}
+
+/* The top of a 380-wide mobile screen. */
+.phone {
+  display: flex;
+  flex-direction: column;
+  width: 380px;
+  overflow: clip;
+  background: var(--color-bg);
+  border: var(--border-default) solid var(--color-line);
+  border-radius: var(--radius-card);
+}
+
+.content {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  gap: 10px;
+  height: 72px;
+  padding: var(--spacing-4);
+}
+
+.contentLine {
+  flex-shrink: 0;
+  height: 14px;
+  background: var(--color-line);
+  border-radius: var(--radius-pill);
+}
+
+.contentLine[data-width='60'] {
+  width: round(60%, 1px);
+}
+
+.contentLine[data-width='85'] {
+  width: round(85%, 1px);
+}
+
+.behavior {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  gap: var(--spacing-2);
+  padding-top: var(--spacing-10);
+}
+
+/* Inter 400 14/20: the body face at the label size. */
+.behaviorText {
+  font-family: var(--font-body);
+  font-size: var(--text-label);
+  font-weight: 400;
+  line-height: 20px;
+  font-variation-settings: 'opsz' 28;
+}

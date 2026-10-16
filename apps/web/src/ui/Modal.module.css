@@ -1,0 +1,76 @@
+/* The flat scrim: the scrim token, never a blur. */
+.scrim {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-scrim);
+  animation: fade var(--motion-fade-duration) var(--motion-fade-easing);
+}
+
+.fixed {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  padding: var(--spacing-4);
+  overflow-y: auto;
+}
+
+.inline {
+  position: relative;
+}
+
+/* The card: surface, 2px ink border, 16 radius, 400 wide. */
+.modal {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: var(--spacing-5);
+  width: 400px;
+  max-width: 100%;
+  /* Centred by the scrim; auto margins keep a tall card scrollable from its top. */
+  margin: auto;
+  padding: var(--spacing-6) 28px 28px;
+  border: var(--border-strong) solid var(--color-ink);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  color: var(--color-ink);
+}
+
+/* The dialog itself takes focus on open (so its title is announced); it is not a control, so no ring. */
+.modal:focus,
+.modal:focus-visible {
+  outline: none;
+}
+
+.close {
+  appearance: none;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-ink);
+  transition: background-color var(--motion-micro-duration) var(--motion-micro-easing);
+}
+
+@media (hover: hover) {
+  .close:hover {
+    background: var(--color-line);
+  }
+}
+
+.close:active {
+  background: var(--color-line);
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
