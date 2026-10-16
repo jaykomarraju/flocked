@@ -7,13 +7,14 @@
 //   - the signer's kill-switch refusal answers `stakes_disabled`, and the unsigned row's delete is
 //     retried.
 import { env } from 'cloudflare:test';
-import { gameDayOf, type StakesPrepareResponse } from '@flocked/shared';
+import { MAX_DAILY_STAKE_CAP_KEY, gameDayOf, type StakesPrepareResponse } from '@flocked/shared';
 import type { Hex } from 'viem';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { indexedThroughSec } from '../../src/stakes/cap.js';
 import { DROP_TICKET_ATTEMPTS, insertTicket } from '../../src/stakes/prepare.js';
 import { deploymentOf } from '../../src/chain/client.js';
 import { seedFixture } from '../helpers/index.js';
+import { raceBefore, setStatus } from '../identity/race.js';
 import { HOUR } from '../round-do/helpers.js';
 import {
   T0,
@@ -225,5 +226,46 @@ describe('O3: no region code, and an age21 entry names a region of the request c
     });
     expect(await ticketsOf(p.id)).toEqual([]);
     await ok(await prepare(t, p, r.locked.roundId, p.wallet, { country: 'US', regionCode: 'NY' }));
+  });
+});
+
+// W7-F1 R3: the cap in force is never more than `limits.stakes.maxDailyCap`, so a stored cap above
+// a maximum legal has lowered is held to it at ticket issue.
+describe('R3: the maximum daily cap holds at ticket issue', () => {
+  it('a cap stored above a lowered maximum is held to the maximum', async () => {
+    const r = await round(t);
+    const p = await player(t);
+    await setCap(p.id, 900 * USDC);
+    await env.DB.prepare('INSERT INTO config (key, value_json, updated_at) VALUES (?1, ?2, 0)')
+      .bind(MAX_DAILY_STAKE_CAP_KEY, JSON.stringify(String(4 * USDC)))
+      .run();
+    // The round's stake is 5 USDC: over the 4 USDC maximum, though well under the stored 900.
+    expect(await codeOf(await prepare(t, p, r.locked.roundId, p.wallet))).toBe('stake_cap_reached');
+    expect(await ticketsOf(p.id)).toEqual([]);
+    await setStakesConfig({});
+    await ok(await prepare(t, p, r.locked.roundId, p.wallet));
+  });
+});
+
+// W7-F1 R11: the ticket insert itself requires an active account, so a suspension or deletion that
+// lands after the eligibility check (the race seam runs it just before the insert) issues nothing.
+describe('R11: a suspension or deletion racing /prepare issues no ticket', () => {
+  it('the conditional insert refuses; the answer names the account state', async () => {
+    for (const [status, answer] of [
+      ['suspended', 'account_suspended'],
+      ['deleted', 'account_deleted'],
+    ] as const) {
+      const r = await round(t);
+      const p = await player(t);
+      const race = raceBefore(t.env, { sql: /^INSERT INTO stakes_tickets/ }, () =>
+        setStatus(p.id, status),
+      );
+      const res = await prepare(t, p, r.locked.roundId, p.wallet);
+      race.restore();
+      expect(race.fired()).toBe(true);
+      expect(await codeOf(res)).toBe(answer);
+      expect(await ticketsOf(p.id)).toEqual([]);
+    }
+    expect(t.signer.calls).toEqual([]);
   });
 });

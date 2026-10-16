@@ -6,13 +6,16 @@
 import { env } from 'cloudflare:test';
 import {
   ExclusionLiftResponseSchema,
+  MAX_DAILY_STAKE_CAP_KEY,
   MeResponseSchema,
   SetLimitsResponseSchema,
   newUlid,
   type LimitsState,
+  type MeLimits,
 } from '@flocked/shared';
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { Env } from '../../src/env.js';
+import { parseMaxDailyCap } from '../../src/limits/max-cap.js';
 import { addMonths, excludedSql } from '../../src/limits/rules.js';
 import { limitsView } from '../../src/auth/profile.js';
 import { realSession, seedFixture, withFixedClock } from '../helpers/index.js';
@@ -40,7 +43,7 @@ async function subject() {
   const put = async (ms: number, body: unknown) => call(at(ms), 'PUT', '/me/limits', body, headers);
   const lift = async (ms: number) =>
     call(at(ms), 'POST', '/me/limits/exclusion-lift', undefined, headers);
-  const limits = async (ms: number): Promise<LimitsState> =>
+  const limits = async (ms: number): Promise<MeLimits> =>
     MeResponseSchema.parse(await (await call(at(ms), 'GET', '/me', undefined, headers)).json())
       .limits;
   return { id, put, lift, limits };
@@ -196,6 +199,58 @@ describe('the daily stake cap', () => {
       .bind(s.id)
       .all();
     expect(results).toEqual([{ action: 'limits_set', actor_user_id: s.id }]);
+  });
+});
+
+// W7-F1 R3 (owner decision B4, Oct 12): the cap is at most `limits.stakes.maxDailyCap`, 1,000 USDC
+// per game day unless legal lowers it.
+describe('the maximum daily cap', () => {
+  const setMax = (value: unknown) =>
+    env.DB.prepare(
+      'INSERT INTO config (key, value_json, updated_at) VALUES (?1, ?2, 0) ' +
+        'ON CONFLICT (key) DO UPDATE SET value_json = excluded.value_json',
+    )
+      .bind(MAX_DAILY_STAKE_CAP_KEY, JSON.stringify(value))
+      .run();
+  const clearMax = () =>
+    env.DB.prepare('DELETE FROM config WHERE key = ?1').bind(MAX_DAILY_STAKE_CAP_KEY).run();
+
+  it('PUT /me/limits refuses a cap above it (1,000 USDC unless lowered); GET /me reports it', async () => {
+    const s = await subject();
+    expect(await code(await s.put(T0, { dailyStakeCap: String(1_000 * USDC + 1) }))).toEqual([
+      400,
+      'bad_request',
+    ]);
+    expect(await ok(await s.put(T0, { dailyStakeCap: String(1_000 * USDC) }))).toMatchObject({
+      pendingCap: String(1_000 * USDC),
+    });
+    expect((await s.limits(T0)).maxDailyCap).toBe(String(1_000 * USDC));
+
+    // Legal lowers it to 500 USDC: 600 is refused, 500 is a raise like any other.
+    await setMax(String(500 * USDC));
+    try {
+      expect(await code(await s.put(T0 + HOUR, { dailyStakeCap: String(600 * USDC) }))).toEqual([
+        400,
+        'bad_request',
+      ]);
+      expect(await ok(await s.put(T0 + HOUR, { dailyStakeCap: String(500 * USDC) }))).toMatchObject(
+        { pendingCap: String(500 * USDC) },
+      );
+      expect((await s.limits(T0 + HOUR)).maxDailyCap).toBe(String(500 * USDC));
+    } finally {
+      await clearMax();
+    }
+  });
+
+  it('unset, invalid or above 1,000 USDC, the key reads as 1,000 USDC', () => {
+    const max = 1_000n * BigInt(USDC);
+    expect(parseMaxDailyCap(null)).toBe(max);
+    expect(parseMaxDailyCap('"250000000"')).toBe(250_000_000n);
+    expect(parseMaxDailyCap('250000000')).toBe(250_000_000n);
+    expect(parseMaxDailyCap('"0"')).toBe(0n);
+    for (const bad of ['"abc"', '-5', '1.5', 'null', '{}', 'not json', '"1000000001"']) {
+      expect(parseMaxDailyCap(bad)).toBe(max);
+    }
   });
 });
 

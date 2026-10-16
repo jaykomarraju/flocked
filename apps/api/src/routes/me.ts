@@ -4,7 +4,8 @@
 //
 // Suspended accounts sign in read-only (spec "Identity and personhood" › Identities): every write
 // here refuses `account_suspended`, except notification preferences, which are private and only
-// quieten the account. The personhood routes are W5-B's and accept suspended accounts.
+// quieten the account. The personhood routes refuse them too (decision B7; the callback answers
+// `account_suspended` from src/personhood/verify.ts).
 import {
   AcceptTosRequestSchema,
   AddEmailRequestSchema,
@@ -282,9 +283,10 @@ me.post(
 
 // Coinbase personhood (W5-B; src/personhood/). The callback is authenticated by its single-use
 // OAuth state, never by the session; a session of another user than the state's is refused.
-me.post('/me/personhood', requireUser, limitUser('writes'), async (c) =>
-  c.json(await startPersonhood(c.env, getUser(c).id)),
-);
+me.post('/me/personhood', requireUser, limitUser('writes'), async (c) => {
+  const caller = await writableCaller(c);
+  return c.json(await startPersonhood(c.env, caller.id));
+});
 
 me.get(
   '/me/personhood/callback',

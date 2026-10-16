@@ -5,12 +5,15 @@
 // sign-in identities, within 7 days.
 //
 // Confirmation is one D1 batch. The account created first is kept and takes: the non-null person ID
-// and its verification data; the lower daily cap and any pending increase with its original timer;
+// and its verification data; the lower of the two caps in force, and only a pending increase from
+// the side whose cap that is, with its original timer (`mergedCapState`);
 // every identity; each points balance through paired `merge` ledger rows (ref = merge ID); room
 // memberships and ownership; and the losing account's Stakes tickets for the current and later
 // game days, so the daily cap and the one-live-ticket rule hold per person (W6-Z carry-over). The
 // losing account becomes `merged`, its sessions are revoked, and an `audit_log` row records it.
-// Guards inside the batch re-check every refusal rule, so a racing change rolls it all back.
+// Guards inside the batch re-check every refusal rule (the 30-day limit for both accounts: no
+// chained merges) and that neither account's person ID changed since the read, so a racing change
+// rolls it all back.
 import { newUlid, type Merge, type Provider } from '@flocked/shared';
 import { enqueueSecurityNotice } from '../auth/accounts.js';
 import type { Env } from '../env.js';
@@ -37,7 +40,7 @@ import {
 
 /** A pending merge waits this long for confirmation (Decision log, Oct 12, 2026). */
 export const MERGE_PENDING_TTL_MS = 7 * 24 * 3600 * 1000;
-/** The kept account takes at most one merge per this period (spec: 30 days). */
+/** Neither account may have received a merge within this period (spec: 30 days). */
 export const MERGE_LIMIT_MS = 30 * 24 * 3600 * 1000;
 
 type NotifyEnv = Pick<Env, 'DB' | 'QUEUE_NOTIFY'>;
@@ -101,25 +104,32 @@ export async function createPendingMerge(
   return mergeView(row, row.provider ?? 'coinbase', other.handle);
 }
 
-interface LimitsCapRow {
+export interface LimitsCapRow {
   daily_stake_cap: number | null;
   pending_cap: number | null;
   pending_cap_effective_at: number | null;
-  question_block_until: number | null;
+  question_block_until?: number | null;
 }
 
 /**
- * The kept account's cap state: the lower of the two caps in force, and the most restrictive
- * pending increase still waiting (the lower amount; on a tie the later timer), with its own timer.
+ * The kept account's cap state (spec "Merging accounts"; owner decision B3b, Oct 12): the lower of
+ * the two caps in force (`effectiveDailyCap`: a raise past its 24 hours is in force), and only a
+ * pending increase still waiting from the side whose cap that is, with its own timer. With equal
+ * caps either side's may survive: the lower amount, and on a tie the later timer. Re-verification
+ * after deletion applies the same rule between the account and its person's tombstone
+ * (src/personhood/verify.ts).
  */
 export function mergedCapState(
   a: LimitsCapRow | null,
   b: LimitsCapRow | null,
   t: number,
-): LimitsCapRow {
-  const cap = [effectiveDailyCap(a, t), effectiveDailyCap(b, t)].reduce((x, y) => (y < x ? y : x));
+): Required<LimitsCapRow> {
+  const sides = [a, b].map((row) => ({ row, cap: effectiveDailyCap(row, t) }));
+  const cap = sides.map((s) => s.cap).reduce((x, y) => (y < x ? y : x));
   const explicit = [a, b].some((r) => r?.daily_stake_cap != null || r?.pending_cap != null);
-  const pending = [a, b]
+  const pending = sides
+    .filter((s) => s.cap === cap)
+    .map((s) => s.row)
     .filter(
       (r): r is LimitsCapRow & { pending_cap: number; pending_cap_effective_at: number } =>
         r?.pending_cap != null &&
@@ -149,7 +159,8 @@ const CAP_STATE_IS =
 const CAP_STATE_UNSET =
   'NOT EXISTS (SELECT 1 FROM limits WHERE user_id = ?1 AND (daily_stake_cap IS NOT NULL OR pending_cap IS NOT NULL))';
 
-function capStateUnchanged(db: D1Database, userId: string, row: LimitsCapRow | null) {
+/** A guard: the user's cap columns are still `row` (no limits row, or no cap set, for null). */
+export function capStateUnchanged(db: D1Database, userId: string, row: LimitsCapRow | null) {
   return row
     ? abortIf(
         db,
@@ -166,7 +177,12 @@ function capStateUnchanged(db: D1Database, userId: string, row: LimitsCapRow | n
 function refusal(
   me: AccountRow,
   other: AccountRow,
-  state: { openEntries: boolean; excluded: boolean; recentMerge: boolean },
+  state: {
+    openEntries: boolean;
+    excluded: boolean;
+    recentMerge: boolean;
+    recentLosingMerge: boolean;
+  },
 ): string | null {
   if (state.openEntries) return 'One of the accounts has entries in a round that is not final yet';
   if (personsDiffer(me, other)) return 'These accounts belong to different verified people';
@@ -175,6 +191,9 @@ function refusal(
   }
   if (state.excluded) return 'A self-excluded account cannot be merged';
   if (state.recentMerge) return 'The kept account already received a merge in the last 30 days';
+  if (state.recentLosingMerge) {
+    return 'The account to be merged away received a merge in the last 30 days';
+  }
   return null;
 }
 
@@ -236,14 +255,15 @@ export async function confirmMerge(
     .prepare(
       `SELECT ${hasOpenEntrySql('?1')} OR ${hasOpenEntrySql('?2')} AS open_entries, ` +
         `${excludedSql('?1', '?3')} OR ${excludedSql('?2', '?3')} AS excluded, ` +
-        "EXISTS (SELECT 1 FROM merges WHERE kept_user_id = ?1 AND status = 'confirmed' AND confirmed_at > ?4) AS recent",
+        `${RECENT_MERGE_INTO('?1', '?4')} AS recent, ${RECENT_MERGE_INTO('?2', '?4')} AS recent_losing`,
     )
     .bind(kept.id, losing.id, t, t - MERGE_LIMIT_MS)
-    .first<{ open_entries: number; excluded: number; recent: number }>();
+    .first<{ open_entries: number; excluded: number; recent: number; recent_losing: number }>();
   const refused = refusal(me, other, {
     openEntries: checks?.open_entries === 1,
     excluded: checks?.excluded === 1,
     recentMerge: checks?.recent === 1,
+    recentLosingMerge: checks?.recent_losing === 1,
   });
   if (refused) {
     if (personsDiffer(me, other)) {
@@ -268,6 +288,33 @@ export async function confirmMerge(
   log.info('merge_confirmed', { mergeId, keptUserId: kept.id, losingUserId: losing.id });
   await enqueueSecurityNotice(env, kept.id, 'merge_completed', t);
   return mergeView({ ...merge, status: 'confirmed', confirmed_at: t }, provider, other.handle);
+}
+
+/** SQL: user `userSql` received a merge confirmed after `sinceSql`. */
+const RECENT_MERGE_INTO = (userSql: string, sinceSql: string) =>
+  `EXISTS (SELECT 1 FROM merges WHERE kept_user_id = ${userSql} AND status = 'confirmed' AND confirmed_at > ${sinceSql})`;
+
+/** A guard: `userId` received no other merge in the 30 days before `t`. */
+function recentMergeGuard(db: D1Database, userId: string, t: number, mergeId: string) {
+  return abortIf(
+    db,
+    "EXISTS (SELECT 1 FROM merges WHERE kept_user_id = ?1 AND status = 'confirmed' AND confirmed_at > ?2 AND id <> ?3)",
+    userId,
+    t - MERGE_LIMIT_MS,
+    mergeId,
+  );
+}
+
+/** Guards: each account still holds the person ID (or none) read before the batch. */
+function personsUnchanged(db: D1Database, ...accounts: AccountRow[]): D1PreparedStatement[] {
+  return accounts.map((a) =>
+    abortIf(
+      db,
+      'NOT EXISTS (SELECT 1 FROM users WHERE id = ?1 AND person_id IS ?2)',
+      a.id,
+      a.person_id,
+    ),
+  );
 }
 
 /** The confirmation batch: guards first, then every transfer, then the losing account's end. */
@@ -311,20 +358,18 @@ async function transferStatements(
       merge.id,
       t,
     ),
-    // Every refusal rule, again inside the transaction.
-    abortIf(
-      db,
-      "EXISTS (SELECT 1 FROM merges WHERE kept_user_id = ?1 AND status = 'confirmed' AND confirmed_at > ?2 AND id <> ?3)",
-      kept.id,
-      t - MERGE_LIMIT_MS,
-      merge.id,
-    ),
+    // Every refusal rule, again inside the transaction: neither account received a merge in the
+    // last 30 days (the losing one included: no chained merges)...
+    recentMergeGuard(db, kept.id, t, merge.id),
+    recentMergeGuard(db, losing.id, t, merge.id),
     abortIf(
       db,
       "(SELECT count(*) FROM users WHERE id IN (?1, ?2) AND status = 'active') <> 2",
       kept.id,
       losing.id,
     ),
+    // ...and each still holds the person ID read before the batch (a bind racing the merge).
+    ...personsUnchanged(db, kept, losing),
     abortIf(
       db,
       `${hasOpenEntrySql('?1')} OR ${hasOpenEntrySql('?2')} OR ${excludedSql('?1', '?3')} OR ${excludedSql('?2', '?3')}`,

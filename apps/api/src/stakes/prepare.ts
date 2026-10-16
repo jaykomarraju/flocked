@@ -17,11 +17,13 @@
 //   6. the person has no Stakes entry in the round yet;
 //   7. the round's stake fits in what is left of the daily cap for the round's game day, counting
 //      indexed stakes, live tickets and unused ones the indexer has not processed past (O2;
-//      src/stakes/cap.ts).
+//      src/stakes/cap.ts). The cap is never more than `limits.stakes.maxDailyCap` (W7-F1 R3), so
+//      an older stored cap above a lowered maximum is held to it.
 // Then issuance, serialised per person by one conditional insert: the row goes in only if the user
-// holds no live ticket on that game day, and the person no live or used ticket in this round (W6-F1
-// R13: a used one means an entry, maybe not indexed yet), so two concurrent requests issue one
-// ticket. The committed row is what the signer checks before it signs; if the signer fails, the row
+// is still active (W7-F1 R11: a suspension or deletion since check 3 issues nothing), holds no live
+// ticket on that game day, and the person no live or used ticket in this round (W6-F1 R13: a used
+// one means an entry, maybe not indexed yet), so two concurrent requests issue one ticket. The
+// committed row is what the signer checks before it signs; if the signer fails, the row
 // is deleted again (no signature exists outside the signer, so nothing can use it; the delete is
 // retried) and the request answers 503, or `stakes_disabled` when the signer saw the kill switch off.
 //
@@ -41,6 +43,7 @@ import type { SessionUser } from '../lib/auth-context.js';
 import { now } from '../lib/clock.js';
 import { HttpError } from '../lib/errors.js';
 import { log } from '../lib/log.js';
+import { readMaxDailyCap } from '../limits/max-cap.js';
 import type { Env } from '../env.js';
 import { readStakesConfig } from '../personhood/config-store.js';
 import { stakesEligibility } from '../personhood/eligibility.js';
@@ -202,7 +205,7 @@ async function requireCapRoom(
   escrow: { chainId: number; address: Address },
 ) {
   const throughSec = await indexedThroughSec(db, escrow.chainId, escrow.address);
-  const [limits, staked] = await Promise.all([
+  const [limits, staked, max] = await Promise.all([
     db
       .prepare(
         'SELECT daily_stake_cap, pending_cap, pending_cap_effective_at FROM limits WHERE user_id = ?1',
@@ -214,16 +217,18 @@ async function requireCapRoom(
         pending_cap_effective_at: number | null;
       }>(),
     stakedOnGameDay(db, userId, gameDay, round.id, Math.floor(t / 1000), throughSec),
+    readMaxDailyCap(db),
   ]);
-  if (staked + stake > effectiveDailyCap(limits, t)) {
+  const cap = effectiveDailyCap(limits, t);
+  if (staked + stake > (cap < max ? cap : max)) {
     throw new HttpError('stake_cap_reached', "This stake would go over today's cap");
   }
 }
 
 /**
- * Records the ticket unless the user already holds a live one on `gameDay`, or the person a live or
- * used one in this round: one statement, so concurrent requests serialise on it. True when inserted.
- * Exported for tests.
+ * Records the ticket unless the user is no longer active, already holds a live one on `gameDay`, or
+ * the person a live or used one in this round: one statement, so concurrent requests serialise on
+ * it. True when inserted. Exported for tests.
  */
 export async function insertTicket(
   db: D1Database,
@@ -242,7 +247,9 @@ export async function insertTicket(
   const res = await db
     .prepare(
       'INSERT INTO stakes_tickets (ticket_hash, round_id, person_tag, user_id, wallet, expiry, issued_at, game_day) ' +
-        'SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8 WHERE NOT EXISTS (SELECT 1 FROM stakes_tickets ' +
+        'SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8 ' +
+        "WHERE EXISTS (SELECT 1 FROM users WHERE id = ?4 AND status = 'active') " +
+        'AND NOT EXISTS (SELECT 1 FROM stakes_tickets ' +
         'WHERE (used_tx IS NULL AND expiry + ?10 > ?9 AND user_id = ?4 AND game_day = ?8) ' +
         'OR (round_id = ?2 AND person_tag = ?3 AND (used_tx IS NOT NULL OR expiry + ?10 > ?9)))',
     )
@@ -360,6 +367,15 @@ export async function prepareStakesTicket(
     nowSec,
   );
   if (!inserted) {
+    // Suspended or deleted since the eligibility check: no ticket.
+    const status = await db
+      .prepare('SELECT status FROM users WHERE id = ?1')
+      .bind(user.id)
+      .first<{ status: string }>();
+    if (status?.status === 'suspended') throw ineligible(['suspended']);
+    if (status?.status !== 'active') {
+      throw new HttpError('account_deleted', 'This account no longer exists');
+    }
     // A used ticket for this round (an entry the indexer may not have seen yet) is an entry.
     await requireNoEntry(db, round.id, user.id, tag);
     throw new HttpError(

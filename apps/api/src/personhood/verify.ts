@@ -3,19 +3,29 @@
 // HMAC), the country and region codes, `kyc_status`, and the coinbase identity (external_id =
 // person_id). Nothing else from Coinbase reaches D1.
 //
+// - A suspended account binds nothing (`account_suspended`; decision B7), and the bind applies only
+//   while the account is active, so a bind racing `DELETE /me` or a suspension changes nothing.
 // - The person ID bound to another account: a pending merge (never a merge inside the callback;
 //   the user confirms it with POST /me/merges/:id/confirm). Nothing is set on the caller's account.
 // - The caller already bound to a different person ID: refused (`person_mismatch`).
 // - A person tombstone for this ID (a deleted account of the same person): its daily cap state is
 //   copied into the account's `limits`, the deleted account's Stakes tickets of today and later game
-//   days move to this account, and the tombstone is deleted, in the same batch as the bind. The
-//   stricter of two caps wins, and an inherited pending increase keeps its original timer.
+//   days move to this account, and the tombstone is deleted, in the same batch as the bind. The cap
+//   state follows the merge rule (`mergedCapState`): the lower cap in force, and only a pending
+//   increase from that side, with its original timer (equal caps: the lower increase; a tie: the
+//   later timer). Guards roll the batch back if the account's cap or the tombstone changed since
+//   they were read.
 // - No personal details: the person ID is still bound (so the Coinbase account cannot verify a
 //   second account), with `kyc_status = 'unverified'` and no country, which is "not verified".
 import { newUlid, type PersonhoodCallbackResponse } from '@flocked/shared';
 import { enqueueSecurityNotice } from '../auth/accounts.js';
-import { createPendingMerge } from '../identity/merge.js';
-import { carryTicketsStatement } from '../identity/sql.js';
+import {
+  capStateUnchanged,
+  createPendingMerge,
+  mergedCapState,
+  type LimitsCapRow,
+} from '../identity/merge.js';
+import { abortIf, carryTicketsStatement, isGuardAbort } from '../identity/sql.js';
 import { log } from '../lib/log.js';
 import type { PersonLocation } from './coinbase.js';
 import type { PersonhoodEnv } from './config.js';
@@ -29,6 +39,7 @@ export const PERSONHOOD_FAILURES = [
   'coinbase_error',
   'not_id_verified',
   'person_mismatch',
+  'account_suspended',
   'account_unavailable',
   'unavailable',
 ] as const;
@@ -80,28 +91,63 @@ async function pendingMerge(
   };
 }
 
-/** SQL: the user (parameter `user`) holds the person ID (parameter `person`). */
+/** SQL: the user (parameter `user`), still active, holds the person ID (parameter `person`). */
 const holds = (user: string, person: string) =>
-  `EXISTS (SELECT 1 FROM users WHERE id = ${user} AND person_id = ${person})`;
+  `EXISTS (SELECT 1 FROM users WHERE id = ${user} AND person_id = ${person} AND status = 'active')`;
+
+interface TombstoneRow extends LimitsCapRow {
+  user_id: string | null;
+}
+
+/** What a first bind inherits from: the account's cap columns and the person's tombstone. */
+interface Inheritance {
+  own: LimitsCapRow | null;
+  tombstone: TombstoneRow | null;
+}
+
+async function readInheritance(
+  db: D1Database,
+  userId: string,
+  personId: string,
+): Promise<Inheritance> {
+  const [own, tombstone] = await db.batch<Record<string, unknown>>([
+    db
+      .prepare(
+        'SELECT daily_stake_cap, pending_cap, pending_cap_effective_at FROM limits WHERE user_id = ?1',
+      )
+      .bind(userId),
+    db
+      .prepare(
+        'SELECT daily_stake_cap, pending_cap, pending_cap_effective_at, user_id FROM person_tombstones WHERE person_id = ?1',
+      )
+      .bind(personId),
+  ]);
+  return {
+    own: (own?.results[0] as LimitsCapRow | undefined) ?? null,
+    tombstone: (tombstone?.results[0] as TombstoneRow | undefined) ?? null,
+  };
+}
 
 /**
- * The bind as one batch: user columns, the coinbase identity, and any tombstone inheritance. The
- * user update applies only while the account holds no other person ID (a concurrent callback may
- * have bound one since our read), and the rest only once the account holds this one.
+ * The bind as one batch: user columns, the coinbase identity, and (on a first bind, `inherit`) any
+ * tombstone inheritance. The user update applies only while the account is active (a suspension or
+ * `DELETE /me` may have landed since our read) and holds no other person ID (a concurrent callback
+ * may have bound one), and the rest only once the active account holds this one.
  */
 function bindStatements(
   db: D1Database,
   userId: string,
   personId: string,
   location: PersonLocation | null,
-  firstBind: boolean,
+  inherit: Inheritance | null,
   t: number,
 ): D1PreparedStatement[] {
   const statements = [
     db
       .prepare(
         'UPDATE users SET person_id = ?2, kyc_status = ?3, person_verified_at = ?4, ' +
-          'coinbase_country = ?5, coinbase_region = ?6 WHERE id = ?1 AND (person_id IS NULL OR person_id = ?2)',
+          'coinbase_country = ?5, coinbase_region = ?6 ' +
+          "WHERE id = ?1 AND status = 'active' AND (person_id IS NULL OR person_id = ?2)",
       )
       .bind(
         userId,
@@ -120,28 +166,41 @@ function bindStatements(
       )
       .bind(newUlid(t), userId, personId, t),
   ];
-  if (firstBind) {
-    // Inherit a deleted account's cap state (no-op without a tombstone). A lower cap always wins;
-    // a cap from either side wins over none; a pending increase is kept with its original timer,
-    // unless the account's own cap is lower than the tombstone's (the raise would undo it).
-    const inheritPending =
-      'limits.pending_cap IS NULL AND ' +
-      '(limits.daily_stake_cap IS NULL OR limits.daily_stake_cap >= excluded.daily_stake_cap)';
+  if (inherit) {
+    const { own, tombstone } = inherit;
+    if (tombstone) {
+      // Inherit the deleted account's cap state by the merge rule, from the rows as read: the
+      // guards roll the whole bind back if either changed since.
+      const cap = mergedCapState(own, tombstone, t);
+      statements.push(
+        capStateUnchanged(db, userId, own),
+        abortIf(
+          db,
+          'NOT EXISTS (SELECT 1 FROM person_tombstones WHERE person_id = ?1 AND daily_stake_cap IS ?2 ' +
+            'AND pending_cap IS ?3 AND pending_cap_effective_at IS ?4 AND user_id IS ?5)',
+          personId,
+          tombstone.daily_stake_cap,
+          tombstone.pending_cap,
+          tombstone.pending_cap_effective_at,
+          tombstone.user_id,
+        ),
+        db
+          .prepare(
+            'INSERT INTO limits (user_id, daily_stake_cap, pending_cap, pending_cap_effective_at) ' +
+              `SELECT ?1, ?3, ?4, ?5 WHERE ${holds('?1', '?2')} ` +
+              'ON CONFLICT (user_id) DO UPDATE SET daily_stake_cap = excluded.daily_stake_cap, ' +
+              'pending_cap = excluded.pending_cap, pending_cap_effective_at = excluded.pending_cap_effective_at',
+          )
+          .bind(
+            userId,
+            personId,
+            cap.daily_stake_cap,
+            cap.pending_cap,
+            cap.pending_cap_effective_at,
+          ),
+      );
+    }
     statements.push(
-      db
-        .prepare(
-          'INSERT INTO limits (user_id, daily_stake_cap, pending_cap, pending_cap_effective_at) ' +
-            'SELECT ?1, daily_stake_cap, pending_cap, pending_cap_effective_at FROM person_tombstones ' +
-            `WHERE person_id = ?2 AND ${holds('?1', '?2')} ` +
-            'ON CONFLICT (user_id) DO UPDATE SET ' +
-            'daily_stake_cap = CASE WHEN limits.daily_stake_cap IS NULL THEN excluded.daily_stake_cap ' +
-            'WHEN excluded.daily_stake_cap IS NULL THEN limits.daily_stake_cap ' +
-            'ELSE min(limits.daily_stake_cap, excluded.daily_stake_cap) END, ' +
-            `pending_cap = CASE WHEN ${inheritPending} THEN excluded.pending_cap ELSE limits.pending_cap END, ` +
-            `pending_cap_effective_at = CASE WHEN ${inheritPending} THEN excluded.pending_cap_effective_at ` +
-            'ELSE limits.pending_cap_effective_at END',
-        )
-        .bind(userId, personId),
       // The deleted account's tickets of today and later game days count for this account, so
       // deleting and verifying again never restarts the day's cap at zero (W6-Z carry-over).
       carryTicketsStatement(
@@ -179,17 +238,30 @@ export async function applyVerification(
   if (!me || (me.status !== 'active' && me.status !== 'suspended')) {
     return failed('account_unavailable');
   }
+  // A suspended account starts no verification and no merge (decision B7).
+  if (me.status === 'suspended') return failed('account_suspended');
   if (me.person_id !== null && me.person_id !== personId) return failed('person_mismatch');
 
   const holder = me.person_id === personId ? me : await account(db, 'person_id', personId);
   if (holder && holder.id !== me.id) return pendingMerge(env, me, holder, personId, t);
 
   const firstBind = me.person_id === null;
+  const inherit = firstBind ? await readInheritance(db, me.id, personId) : null;
   try {
-    const [bound] = await db.batch(bindStatements(db, me.id, personId, location, firstBind, t));
-    // A concurrent callback bound another person to this account since our read.
-    if (bound?.meta.changes === 0) return failed('person_mismatch');
+    const [bound] = await db.batch(bindStatements(db, me.id, personId, location, inherit, t));
+    if (bound?.meta.changes === 0) {
+      // Suspended or deleted since our read, or a concurrent callback bound another person.
+      const now = await account(db, 'id', me.id);
+      if (now?.status === 'suspended') return failed('account_suspended');
+      if (now?.status !== 'active') return failed('account_unavailable');
+      return failed('person_mismatch');
+    }
   } catch (err) {
+    if (isGuardAbort(err)) {
+      // The account's cap or the person's tombstone changed since we read them: nothing bound.
+      log.warn('personhood_bind_raced', { userId: me.id });
+      return failed('unavailable');
+    }
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes('UNIQUE constraint failed: users.person_id')) {
       // Another account bound the same person between our read and the batch.

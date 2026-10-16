@@ -15,6 +15,7 @@ import type { SessionUser } from '../lib/auth-context.js';
 import { now } from '../lib/clock.js';
 import { HttpError } from '../lib/errors.js';
 import type { AgeRequirement } from '../personhood/age.js';
+import { maxDailyCapStatement, parseMaxDailyCap } from '../limits/max-cap.js';
 import { GLOBAL_SCOPE } from '../points/index.js';
 import { tosVersion } from './config.js';
 
@@ -150,7 +151,9 @@ export async function buildMe(
   const db = env.DB;
   const t = now(env);
   const user = await loadMeUser(db, userId);
-  const [identities, prefs, merges, balances, limits] = await db.batch<Record<string, unknown>>([
+  const [identities, prefs, merges, balances, limits, maxCap] = await db.batch<
+    Record<string, unknown>
+  >([
     db
       .prepare(
         'SELECT id, provider, external_id, verified_at FROM identities WHERE user_id = ?1 ORDER BY id',
@@ -179,6 +182,7 @@ export async function buildMe(
       )
       .bind(userId, GLOBAL_SCOPE),
     db.prepare('SELECT * FROM limits WHERE user_id = ?1').bind(userId),
+    maxDailyCapStatement(db),
   ]);
 
   const identityRows = (identities?.results ?? []) as {
@@ -234,7 +238,14 @@ export async function buildMe(
         .filter((b) => b.scope !== GLOBAL_SCOPE)
         .map((b) => ({ roomId: b.scope, balance: String(b.balance) })),
     },
-    limits: limitsState,
+    limits: {
+      ...limitsState,
+      maxDailyCap: String(
+        parseMaxDailyCap(
+          (maxCap?.results[0] as { value_json: string } | undefined)?.value_json ?? null,
+        ),
+      ),
+    },
     flags: {
       /** No handle yet (new accounts): the client asks the user to pick one. */
       needsHandle: user.handle === null,
