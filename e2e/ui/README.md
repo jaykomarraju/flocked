@@ -14,10 +14,10 @@ pnpm stack:down
 `apps/web/.env.e2e` (anvil's chain ID, Cloudflare's public always-pass Turnstile test site key). Build before
 `stack:up` when you can; the stack only writes a placeholder page when `apps/web/dist` is missing.
 
-| Spec                 | What                                                                                                                                                                                                                                  |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Spec                 | What                                                                                                                                                                                                                                   |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `shell.spec.ts`      | Every Components-page sheet and the mascot sheet, light and dark, against their exports; the shell's screens (each tab, the You sheet and avatar menu, loading, error, offline, empty) with axe                                        |
-| `onboarding.spec.ts` | The three onboarding cards at mobile, tablet and desktop against `exports/core/onboarding__card-*`; the real modal on a first visit (cards, keyboard, "Sign in to play") with axe                                                        |
+| `onboarding.spec.ts` | The three onboarding cards at mobile, tablet and desktop against `exports/core/onboarding__card-*`; the real modal on a first visit (cards, keyboard, "Sign in to play") with axe                                                      |
 | `sign-in.spec.ts`    | The sign-in artboards (browser, email code, mini app) at three breakpoints; sign-in end to end on the stack: SIWE with a test EIP-1193 wallet backed by a fresh anvil key, and an email code read from the stack's email log, with axe |
 
 ## Screenshots
