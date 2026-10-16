@@ -48,3 +48,28 @@
     transition-delay: 0s;
   }
 }
+
+/* The option's text and, 8 after it on the player's side, the "Your pick" pill (Paper Core flow
+   reveal): 24 tall, 8 side padding, Inter 600 13/16 in bg on ink (opsz 26 as Paper renders 13px). */
+.option {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  min-width: 0;
+}
+
+.pick {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  height: 24px;
+  padding-inline: var(--spacing-2);
+  border-radius: var(--radius-pill);
+  background: var(--color-ink);
+  color: var(--color-bg);
+  font-family: var(--font-body);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  line-height: 16px;
+  font-variation-settings: 'opsz' 26;
+}

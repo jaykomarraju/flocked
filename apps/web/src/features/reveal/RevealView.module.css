@@ -1,0 +1,250 @@
+/* The reveal fills the shell's content column. Every phase (Paper `unsealing`, `counting`, `win`,
+   `loss`, `refund`, `mode-toggle`) keeps the column's gap between its sections (24 on mobile, 28 from
+   tablet up), as on Today and Sealed. */
+.reveal {
+  display: flex;
+  flex-direction: column;
+  gap: inherit;
+}
+
+/* Paper draws the question smaller once it's answered: Fredoka 700 28/32 on mobile, 32/36 from tablet
+   up (Today's question and display roles are 36/40 and 40/44). */
+.question {
+  color: var(--color-ink);
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 32px;
+  letter-spacing: -0.01em;
+}
+
+.question:not([data-breakpoint='mobile']) {
+  font-size: 32px;
+  line-height: 36px;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.date {
+  color: var(--color-muted);
+}
+
+.toggle {
+  flex-shrink: 0;
+  width: 176px;
+}
+
+/* The unsealing countdown (or "Counting the flock…") over the final count on mobile; one row from
+   tablet up, the count on the bottom line. */
+.status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-1);
+}
+
+.status:not([data-breakpoint='mobile']) {
+  flex-direction: row;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+
+/* Paper draws the counter row 28 tall here. */
+.status .counter {
+  height: 28px;
+}
+
+/* "Counting the flock…": Fredoka 600 28/36, untracked. */
+.counting {
+  color: var(--color-ink);
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 36px;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: inherit;
+}
+
+.note {
+  color: var(--color-ink);
+}
+
+/* A mode the player didn't play (Paper `other-mode`): a read-only box (line border), padded 20 24, the
+   line, the totals and the way back 8 apart. */
+.notPlayed {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-2);
+  padding: var(--spacing-5) var(--spacing-6);
+  border: var(--border-default) solid var(--color-line);
+  border-radius: var(--radius-card);
+}
+
+/* Paper draws the link 4 below the totals, flush left, as tall as its line. */
+.back {
+  height: auto;
+  padding: var(--spacing-1) 0 0;
+}
+
+/* The result card's sheep is 72 wide on mobile (104 from tablet up). */
+.reveal[data-breakpoint='mobile'] .result :global(svg[data-pose]) {
+  width: 72px;
+  height: 63px;
+}
+
+/* The result card springs up from the bottom once the bars have landed (motion.spring). */
+.result {
+  animation: spring-up var(--motion-spring-duration) var(--motion-spring-easing) both;
+}
+
+/* Win: the lone sheep walks off-screen and back into its place; loss: the flock slides in. */
+.result[data-result='unflocked'] :global(svg) {
+  animation: walk-off var(--motion-walk-off-duration) var(--motion-walk-off-easing)
+    var(--motion-spring-duration) both;
+}
+
+.result[data-result='got-flocked'] :global(svg) {
+  animation: flock-in var(--motion-flock-duration) var(--motion-flock-easing)
+    var(--motion-spring-duration) both;
+}
+
+/* The share preview, Share and the next question fade in last. */
+.late,
+.next {
+  animation: fade-in var(--motion-fade-duration) var(--motion-fade-easing) both;
+}
+
+.reveal[data-motion='full'] .late,
+.reveal[data-motion='full'] .next {
+  animation-delay: calc(var(--motion-spring-duration) + 200ms);
+}
+
+/* Without motion (played before, or the sheets) nothing animates. */
+.reveal[data-motion='none'] .result,
+.reveal[data-motion='none'] .result :global(svg),
+.reveal[data-motion='none'] .late,
+.reveal[data-motion='none'] .next {
+  animation: none;
+}
+
+/* Reduced motion: the end state fades in (motion.fade), past the theme's global 1ms clamp. */
+.body[data-fade='true'] {
+  animation: fade-in var(--motion-fade-duration) var(--motion-fade-easing) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .body[data-fade='true'] {
+    animation-duration: var(--motion-fade-duration) !important;
+  }
+
+  .result,
+  .result :global(svg),
+  .late,
+  .next {
+    animation: none;
+  }
+}
+
+/* "The next question is already live" (Paper `next-live`): a line rule, 24 above the title, 12 to the
+   card. */
+.next {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+  padding-top: var(--spacing-6);
+  border-top: var(--border-default) solid var(--color-line);
+}
+
+/* The card: surface, 2px ink border, padded 20 20 20 24; the text column, then the arrow 16 after. */
+.nextCard {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-4);
+  margin: 0;
+  padding: var(--spacing-5) var(--spacing-5) var(--spacing-5) var(--spacing-6);
+  border: var(--border-strong) solid var(--color-ink);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.nextText {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  gap: var(--spacing-1);
+}
+
+.nextCloses {
+  color: var(--color-muted);
+}
+
+/* The next question: Fredoka 700 20/24. */
+.nextQuestion {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 24px;
+}
+
+.arrow {
+  flex-shrink: 0;
+}
+
+@keyframes spring-up {
+  from {
+    opacity: 0;
+    transform: translateY(48px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes walk-off {
+  0% {
+    transform: none;
+  }
+  60% {
+    transform: translateX(150%);
+    opacity: 0;
+  }
+  61% {
+    transform: none;
+    opacity: 0;
+  }
+  100% {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes flock-in {
+  from {
+    transform: translateX(-120%);
+  }
+  to {
+    transform: none;
+  }
+}

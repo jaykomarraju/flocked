@@ -91,13 +91,17 @@
   background: var(--color-bg);
 }
 
-/* Disabled: bg fill, dashed muted border, muted label and ring. */
+/* Disabled: bg fill, dashed muted border, muted label and ring. A disabled pick (sealing, Stakes
+   pending) keeps the selected look; only the other card is drawn disabled. */
 .pick:disabled {
+  cursor: default;
+}
+
+.pick:disabled:not([aria-checked='true']) {
   border-style: dashed;
   border-color: var(--color-muted);
   background: var(--color-bg);
   color: var(--color-muted);
-  cursor: default;
 }
 
 /* At the reveal. The padding keeps two label lines and the pill inside 104px. */

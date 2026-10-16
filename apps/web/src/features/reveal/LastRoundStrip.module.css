@@ -1,0 +1,47 @@
+/* Read-only (Paper `core/reveal/next-live`): a 1.5px line border on the screen's bg, padded 12 16 12
+   20; "Last round" (Inter 500 13/18, muted) over the result (Inter 600 16/24, tabular), and "See the
+   reveal" (Inter 600 14/20, underlined) 12 after it, on the row's centre line. */
+.strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-3);
+  padding: var(--spacing-3) var(--spacing-4) var(--spacing-3) var(--spacing-5);
+  border: var(--border-default) solid var(--color-line);
+  border-radius: var(--radius-card);
+}
+
+.text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.label {
+  color: var(--color-muted);
+  font-family: var(--font-body);
+  font-size: var(--text-caption);
+  font-weight: 500;
+  line-height: 18px;
+  font-variation-settings: 'opsz' 26;
+}
+
+.summary {
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  font-weight: 600;
+  line-height: 24px;
+  font-feature-settings: 'tnum';
+}
+
+/* The text button at the label size, laid out 20 tall as drawn; its hit area reaches 12 above and
+   below (44 tall) without moving anything. */
+.strip .link {
+  height: auto;
+  margin-block: calc(-1 * var(--spacing-3));
+  padding: var(--spacing-3) 0;
+  font-size: var(--text-label);
+  line-height: 20px;
+  font-variation-settings: 'opsz' 28;
+}
