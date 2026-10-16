@@ -10,7 +10,8 @@
     "test": "node --test ui/phases.test.ts",
     "smoke": "vitest run tests/stack-smoke.test.ts",
     "e2e": "playwright test --project=api --project=api-warp",
-    "e2e:ui": "playwright test --project=ui --project=ui-warp"
+    "e2e:ui": "playwright test --project=ui --project=ui-warp",
+    "e2e:screens": "UI_PREVIEW=1 playwright test --project=ui --grep @screenshot"
   },
   "dependencies": {
     "@flocked/abi": "workspace:*",

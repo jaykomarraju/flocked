@@ -5,9 +5,12 @@
 #   outage's rule-8 refund, and the Stakes rounds that later need a warp: claims, a vetoed refund
 #   proposal, the refund timeout); `api-warp` then moves anvil's clock past the challenge window and
 #   the 72 h timeout, which can't be undone.
-# - `ui` (W8-C): the web app's browser specs in e2e/ui/*.spec.ts: screenshots against the Paper
-#   exports, axe, and sign-in end to end. The app is built before the stack starts, so the API Worker
+# - `ui` (W8-C): the web app's browser specs in e2e/ui/*.spec.ts that need the stack: axe on the
+#   app's screens and sign-in end to end. The app is built before the stack starts, so the API Worker
 #   serves it at APP_ORIGIN.
+# - `screens` (W8-C): the @screenshot tests (the web app's design sheets against the Paper exports) on
+#   macOS, with no stack: Paper renders its exports with Chromium on a Mac, and Linux's FreeType text
+#   differs from them by 1.5-2.4% of pixels (W8-C's first run), over the pinned 1%.
 # Like the Stack workflow, it runs on integration branches and main only: the stack takes a minute to
 # start and a round several to settle. Playwright's globalTimeout (40 min) ends a stuck run before the
 # job's 45, so the report is still uploaded.
@@ -89,7 +92,8 @@ jobs:
       # The app first, so the stack's API Worker serves it (and its design sheets) at APP_ORIGIN.
       - run: pnpm --filter @flocked/web build:e2e
       - run: pnpm stack:up
-      - run: pnpm --filter @flocked/e2e e2e:ui
+      # The @screenshot tests run in the screens job, on macOS.
+      - run: pnpm --filter @flocked/e2e exec playwright test --project=ui --project=ui-warp --grep-invert @screenshot
         env:
           CI: 'true'
       - name: Stack status and drand logs
@@ -110,3 +114,29 @@ jobs:
       - name: Stop the stack
         if: always()
         run: pnpm stack:down
+
+  screens:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install Chromium for Playwright
+        run: pnpm --filter @flocked/e2e exec playwright install chromium
+      - run: pnpm e2e:screens
+        env:
+          CI: 'true'
+      - name: Upload the Playwright report
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-screens-report
+          path: |
+            playwright-report
+            test-results
+          if-no-files-found: ignore

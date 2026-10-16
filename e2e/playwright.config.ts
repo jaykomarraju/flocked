@@ -5,8 +5,8 @@
 //   api       API-level lifecycle specs, e2e/tests/*.spec.ts (W7-D). Vitest keeps tests/*.test.ts.
 //   api-warp  the same files' tests tagged @warp, after `api`: the steps that move anvil's clock.
 //   ui        browser specs, e2e/ui/*.spec.ts (W8-C): screenshots of the web app against the Paper
-//             exports, axe, and sign-in end to end. The app is the stack's own (the API Worker serves
-//             apps/web/dist at APP_ORIGIN), so build it first: `pnpm e2e:ui` does.
+//             exports (tagged @screenshot), axe, and sign-in end to end. The app is the stack's own (the
+//             API Worker serves apps/web/dist at APP_ORIGIN), so build it first: `pnpm e2e:ui` does.
 //   ui-warp   the ui specs' tests tagged @warp, after `ui` (none yet).
 //
 // The two-phase rule (W7-D; W7-Z review): anvil's clock only moves forward, and the escrow refuses
@@ -29,8 +29,18 @@ import { readState } from './stack/env.mjs';
 
 const state = readState() as { appOrigin?: string } | null;
 
+/**
+ * `UI_PREVIEW=1` (`pnpm e2e:screens`) serves apps/web/dist with `vite preview` instead of the stack:
+ * enough for the @screenshot tests, which need no API. CI runs them on macOS, where text renders as in
+ * the exports (Paper draws with Chromium on a Mac; Linux's FreeType differs by 1.5-2.4% of pixels).
+ */
+const preview = process.env.UI_PREVIEW === '1';
+const PREVIEW_URL = 'http://localhost:4173';
+
 /** The web app under test: the stack's APP_ORIGIN (SIWE checks the domain), or UI_BASE_URL. */
-const uiBaseUrl = process.env.UI_BASE_URL ?? state?.appOrigin ?? 'http://localhost:8787';
+const uiBaseUrl =
+  process.env.UI_BASE_URL ??
+  (preview ? PREVIEW_URL : (state?.appOrigin ?? 'http://localhost:8787'));
 
 const ui = {
   testDir: './ui',
@@ -68,6 +78,13 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   reporter: [['list'], ['html', { outputFolder: '../playwright-report', open: 'never' }]],
   outputDir: '../test-results',
+  webServer: preview
+    ? {
+        command: 'pnpm --filter @flocked/web exec vite preview --port 4173 --strictPort',
+        url: PREVIEW_URL,
+        reuseExistingServer: !process.env.CI,
+      }
+    : undefined,
   projects: [
     { name: 'api', grepInvert: /@warp/ },
     { name: 'api-warp', grep: /@warp/, dependencies: ['api'] },
