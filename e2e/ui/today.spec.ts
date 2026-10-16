@@ -1,9 +1,34 @@
 // Today (W9-C; spec "Client app" › Today, Entry flow (Free)): the Today artboards against their Paper
 // exports, the entry flow's refusals and receipt checks in the browser (world.ts), axe on Today, and a
 // Free pick sealed in the browser on the stack.
-import { VOICE } from '@flocked/shared';
+import { randomInt } from 'node:crypto';
+import {
+  AuthSessionResponseSchema,
+  RoundMeResponseSchema,
+  SiweNonceResponseSchema,
+  VOICE,
+} from '@flocked/shared';
+import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
+import { createSiweMessage } from 'viem/siwe';
 import { expect, test } from '../fixtures';
+import { enterFree, scheduleRound, waitRound } from '../fixtures/rounds';
+import { expectArtboard } from '../fixtures/screenshot';
+import { TURNSTILE_TOKEN } from '../fixtures/user';
 import { QUESTION, expectAccessible, mockWorld, readStoredPick } from './world';
+
+const TODAY_STATES = ['open-signed-out', 'open-free', 'sealing', 'dst-notice'] as const;
+const BREAKPOINTS = ['mobile', 'tablet', 'desktop'] as const;
+
+test.describe('Today sheets match Paper', () => {
+  for (const state of TODAY_STATES) {
+    for (const breakpoint of BREAKPOINTS) {
+      const artboard = `core/today/${state}/${breakpoint}`;
+      test(artboard, { tag: '@screenshot' }, async ({ page }) => {
+        await expectArtboard(page, artboard);
+      });
+    }
+  }
+});
 
 const RECEIPT_MISMATCH =
   "Your receipt doesn't match what you sent. We kept it on this device as evidence.";
@@ -78,5 +103,102 @@ test.describe('Today in the browser', () => {
     await page.clock.runFor(1500);
     await expect(page.getByText(VOICE.sealed)).toBeVisible();
     expect(world.posted).toHaveLength(1);
+  });
+});
+
+// --- On the stack ------------------------------------------------------------------------------
+
+test.describe('a Free round in the browser on the stack', () => {
+  test('sign in, seal a pick, Sealed, then the reveal (the Worker opens the browser ciphertext)', async ({
+    page,
+    stack,
+    user,
+  }) => {
+    test.setTimeout(6 * 60_000);
+    const prompt = `Browser round ${randomInt(1e9)}: cats or dogs?`;
+    const scheduled = await scheduleRound(stack, { openForMs: 75_000, beaconDelay: 60, prompt });
+    const round = await waitRound(
+      stack,
+      scheduled.roundId,
+      'the round to open',
+      90_000,
+      (r) => r.status === 'open' && r.lockedAt !== null,
+    );
+    // Two players on option 1 through the API, so the browser's option 0 is the smaller side.
+    for (const pick of [1, 1] as const) await enterFree(stack, await user(), round, pick, 10n);
+
+    // The browser: its own IP, the stack's chain and drand, Turnstile stubbed, signed in by cookie.
+    await page
+      .context()
+      .setExtraHTTPHeaders({ 'cf-connecting-ip': `10.77.${randomInt(250)}.${randomInt(250)}` });
+    await page.route('https://challenges.cloudflare.com/turnstile/v0/api.js*', (route) =>
+      route.fulfill({
+        contentType: 'text/javascript',
+        body: `window.turnstile = { render(el, o) { setTimeout(() => o.callback(${JSON.stringify(TURNSTILE_TOKEN)})); return "w"; }, remove() {} };`,
+      }),
+    );
+    await page.addInitScript(
+      (local) => {
+        const g = globalThis as unknown as {
+          __FLOCKED_LOCAL_CHAIN__?: unknown;
+          localStorage: { setItem(k: string, v: string): void };
+        };
+        g.__FLOCKED_LOCAL_CHAIN__ = local;
+        g.localStorage.setItem('flocked.onboarded', '1');
+      },
+      {
+        rpcUrl: stack.rpcUrl,
+        anchor: stack.contracts.anchor,
+        drand: stack.drandChain,
+        skipDailyClose: true,
+      },
+    );
+    const account = privateKeyToAccount(generatePrivateKey());
+    const api = `${stack.appOrigin}/api/v1`;
+    const nonce = SiweNonceResponseSchema.parse(
+      await (await page.request.post(`${api}/auth/siwe/nonce`, { data: {} })).json(),
+    );
+    const origin = new URL(stack.appOrigin);
+    const message = createSiweMessage({
+      address: account.address,
+      chainId: stack.chainId,
+      domain: origin.host,
+      nonce: nonce.nonce,
+      uri: origin.origin,
+      version: '1',
+      issuedAt: new Date(),
+    });
+    const verify = await page.request.post(`${api}/auth/siwe/verify`, {
+      data: {
+        message,
+        signature: await account.signMessage({ message }),
+        turnstileToken: TURNSTILE_TOKEN,
+      },
+    });
+    expect(verify.status()).toBe(200);
+    AuthSessionResponseSchema.parse(await verify.json());
+
+    await page.goto('/');
+    await expect(page.getByRole('heading', { level: 1, name: prompt })).toBeVisible();
+    await page.getByRole('radio').first().click();
+    await page.getByRole('button', { name: 'Seal my pick' }).click();
+    await expect(page.getByText(VOICE.sealed)).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    await expectAccessible(page);
+    const mine = RoundMeResponseSchema.parse(
+      await (await page.request.get(`${api}/rounds/${round.id}/me`)).json(),
+    );
+    expect(mine.modes.free?.entry.stake).toBe('25');
+
+    // Close, the beacon, the reveal: the stack's Worker decrypts the browser's ciphertext.
+    await expect(page.getByRole('timer', { name: 'Unsealing in' })).toBeVisible({
+      timeout: 120_000,
+    });
+    await expectAccessible(page);
+    await expect(page.locator('[data-phase="revealed"]')).toBeVisible({ timeout: 180_000 });
+    await expect(
+      page.getByText('Unflocked. You and 33% of people out-thought everyone.'),
+    ).toBeVisible({ timeout: 15_000 });
+    await expectAccessible(page);
   });
 });

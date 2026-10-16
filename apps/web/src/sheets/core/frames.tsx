@@ -1,14 +1,17 @@
-// Shared drawing for the Core-flow overlay artboards (Paper page `Core flow`): signed-out Today with
-// Paper's example data (`core/today/open-signed-out/*`), drawn by the real TodayView inside the real
-// ShellFrame at an artboard's breakpoint, with an overlay (a scrim and a dialog) over the whole
-// artboard. The onboarding and sign-in sheets draw their dialogs on top of it.
+// Shared drawing for the Core-flow artboards (Paper page `Core flow`): Today with Paper's example
+// data (`core/today/*`), drawn by the real TodayView inside the real ShellFrame at an artboard's
+// breakpoint, optionally with an overlay (a scrim and a dialog) over the whole artboard. The Today
+// sheet draws its states with it; the onboarding and sign-in sheets draw their dialogs on top of
+// signed-out Today.
 //
 // The overlay is any inline dialog (`Modal inline`, `BottomSheet inline`): its scrim fills the
 // artboard. Paper pads a centred modal's scrim by 16 (the Modal's fixed layout does too); an inline
 // Modal gets that from its own `scrimClassName`.
 import type { ReactNode } from 'react';
 import { ShellFrame } from '../../layout/ShellFrame';
-import { TodayView } from '../../features/today/TodayView';
+import { TodayView, type TodayViewProps } from '../../features/today/TodayView';
+import type { Balance } from '../../ui/BalanceSlot';
+import type { HeaderUser } from '../../ui/Header';
 import type { SheetBreakpoint } from '../types';
 
 const noop = () => undefined;
@@ -30,26 +33,42 @@ export const EXAMPLE_TODAY = {
   pool: 30_100n,
 } as const;
 
+/** Paper's signed-in player: avatar "J" (no picture), 640 points in the header. */
+export const EXAMPLE_PLAYER: { user: HeaderUser; balance: Balance } = {
+  user: { handle: 'jay' },
+  balance: { mode: 'free', points: 640 },
+};
+
 export interface CoreArtboardProps {
   breakpoint: SheetBreakpoint;
   /** The dialog over the artboard, drawn inline (scrim and dialog). */
   overlay?: ReactNode;
+  /** The signed-in header (account and balance); signed out ("Sign in") without it. */
+  player?: { user: HeaderUser; balance: Balance } | null;
+  /** TodayView props over signed-out Today's (Paper's example round, nothing picked). */
+  today?: Partial<TodayViewProps>;
 }
 
 /**
- * Signed-out Today at a breakpoint, light, as the Core-flow artboards draw it: 380 wide and 844 tall
- * on mobile (clipped like Paper), 768 or 1120 wide and as tall as the content from tablet up.
+ * Today at a breakpoint, light, as the Core-flow artboards draw it: 380 wide on mobile (844 tall and
+ * clipped like Paper under an overlay, otherwise as tall as the content), 768 or 1120 wide and as tall
+ * as the content from tablet up.
  */
-export function CoreArtboard({ breakpoint, overlay }: CoreArtboardProps) {
+export function CoreArtboard({ breakpoint, overlay, player = null, today }: CoreArtboardProps) {
   const width = breakpoint === 'mobile' ? 380 : breakpoint === 'tablet' ? 768 : 1120;
   return (
     <div data-theme="light" style={{ width }}>
       <ShellFrame
         breakpoint={breakpoint}
-        header={{ user: null, onSignIn: noop, onSignOut: noop }}
+        header={{
+          user: player?.user ?? null,
+          balance: player?.balance ?? null,
+          onSignIn: noop,
+          onSignOut: noop,
+        }}
         active="today"
         overlay={overlay}
-        artboard={breakpoint === 'mobile' ? { height: MOBILE_OVERLAY_HEIGHT } : {}}
+        artboard={breakpoint === 'mobile' && overlay ? { height: MOBILE_OVERLAY_HEIGHT } : {}}
       >
         <TodayView
           breakpoint={breakpoint}
@@ -67,6 +86,7 @@ export function CoreArtboard({ breakpoint, overlay }: CoreArtboardProps) {
           live
           signedIn={false}
           onSignIn={noop}
+          {...today}
         />
       </ShellFrame>
     </div>

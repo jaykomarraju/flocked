@@ -14,7 +14,6 @@ import { Button } from '../../ui/Button';
 import { Countdown } from '../../ui/Countdown';
 import { EntrantCounter } from '../../ui/EntrantCounter';
 import { ErrorBox } from '../../ui/ErrorBox';
-import { ClockIcon } from '../../ui/icons/ClockIcon';
 import { ModeToggle, type Mode } from '../../ui/ModeToggle';
 import { OptionGroup, type OptionGroupOption } from '../../ui/OptionCard';
 import { StakeSelector } from '../../ui/StakeSelector';
@@ -22,6 +21,31 @@ import { SEALING_NOTE, type DstNotice } from './copy';
 import s from './TodayView.module.css';
 
 export const FREE_NOTE = 'Free to play. Points have no cash value.';
+
+/** The DST notice's clock (Paper `notice/dst` › `clock`): 24px on a 24 grid, stroked at 2. */
+function NoticeClockIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      focusable="false"
+      className={className}
+    >
+      <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2" />
+      <path
+        d="M12 7v5l3 2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
 /** The Free stake selector's state (signed in). Points. */
 export interface FreeStakeProps {
@@ -116,8 +140,8 @@ export function TodayView({
       </div>
       {notice ? (
         <div className={s.notice} role="note">
-          <ClockIcon className={s.noticeIcon} />
-          <div>
+          <NoticeClockIcon className={s.noticeIcon} />
+          <div className={s.noticeText}>
             <p className="type-body-strong">{notice.title}</p>
             <p className={s.noticeBody}>{notice.body}</p>
           </div>
@@ -177,7 +201,7 @@ export function TodayView({
       {sealing ? (
         <p className={s.note}>{SEALING_NOTE}</p>
       ) : !signedIn && mode === 'free' ? (
-        <p className={s.note}>{FREE_NOTE}</p>
+        <p className={`${s.note} ${s.freeNote}`}>{FREE_NOTE}</p>
       ) : null}
     </>
   );
