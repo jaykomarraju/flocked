@@ -202,6 +202,10 @@ function reduceMotion(reduce: boolean) {
 
 const revealEl = () => document.querySelector('[data-phase="revealed"]');
 
+/** Whether the app has fetched a URL ending in `path`. */
+const fetched = (fetch: ReturnType<typeof apiFetch>, path: string) =>
+  fetch.mock.calls.some(([u]) => (u instanceof Request ? u.url : u.toString()).endsWith(path));
+
 beforeEach(() => {
   localStorage.setItem(ONBOARDED_KEY, '1');
   FakeSocket.all = [];
@@ -402,9 +406,7 @@ describe('the Free entry flow', () => {
       'GET /me': () => meAnswered.then(() => json(200, ME)),
     });
     renderApp({ fetch });
-    await waitFor(() =>
-      expect(fetch.mock.calls.some(([u]) => String(u).endsWith('/rounds/today'))).toBe(true),
-    );
+    await waitFor(() => expect(fetched(fetch, '/rounds/today')).toBe(true));
     await act(() => new Promise((r) => setTimeout(r, 50)));
     answerMe();
     await userEvent.click(await screen.findByRole('radio', { name: 'No pineapple' }));
@@ -466,9 +468,7 @@ describe('the reveal', () => {
       beaconRound: round.beaconRound,
       beaconTime: round.beaconTime,
     });
-    await waitFor(() =>
-      expect(fetch.mock.calls.some(([u]) => String(u).endsWith(`/rounds/${round.id}`))).toBe(true),
-    );
+    await waitFor(() => expect(fetched(fetch, `/rounds/${round.id}`)).toBe(true));
     const timer = await screen.findByRole('timer', { name: 'Unsealing in' });
     await waitFor(() => expect(timer).toHaveTextContent('1:42'), { timeout: 2500 });
     expect(timer).toBeInTheDocument();
