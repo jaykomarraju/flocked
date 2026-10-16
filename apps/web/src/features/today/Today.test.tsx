@@ -196,9 +196,7 @@ function signedIn(
 function reduceMotion(reduce: boolean) {
   const original = window.matchMedia.bind(window);
   vi.spyOn(window, 'matchMedia').mockImplementation((q: string) =>
-    q.includes('prefers-reduced-motion')
-      ? { ...original(q), matches: reduce }
-      : original(q),
+    q.includes('prefers-reduced-motion') ? { ...original(q), matches: reduce } : original(q),
   );
 }
 
