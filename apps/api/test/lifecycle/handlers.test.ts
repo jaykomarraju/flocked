@@ -56,11 +56,21 @@ describe('registrations', () => {
     expect(names('Entered')).toEqual(['alert-unsent-tx', 'foreign-entry', 'stakes-ingest']);
     expect(names('Locked')).toEqual(['alert-unsent-tx', 'anchor-confirmation']);
     expect(names('Committed')).toEqual(['alert-unsent-tx', 'anchor-confirmation']);
-    expect(names('RoundRefunded')).toEqual(['alert-unsent-tx', 'stakes-void', 'stakes-refunded']);
+    expect(names('RoundRefunded')).toEqual([
+      'alert-unsent-tx',
+      'stakes-void',
+      'stakes-refunded',
+      // W8-D: the post-final hooks, after the outcome handler's commit.
+      'stakes-refunded-hooks',
+    ]);
     // W6-A: the Stakes outcome handlers.
     expect(names('OutcomeProposed')).toEqual(['alert-unsent-tx', 'stakes-proposal']);
     expect(names('ProposalVetoed')).toEqual(['alert-unsent-tx', 'stakes-veto']);
-    expect(names('RoundFinalized')).toEqual(['alert-unsent-tx', 'stakes-finalized']);
+    expect(names('RoundFinalized')).toEqual([
+      'alert-unsent-tx',
+      'stakes-finalized',
+      'stakes-finalized-hooks',
+    ]);
     expect(names('ManifestAnchored')).toEqual(['alert-unsent-tx', 'anchor-confirmation']);
   });
 });

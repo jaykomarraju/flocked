@@ -34,8 +34,9 @@ export type LeaderboardParams = z.infer<typeof LeaderboardParamsSchema>;
 
 /**
  * GET /leaderboards/:board query. `mode` defaults to `free`. `period` is a game day for
- * `strays`, an ISO week for `weekly`, and ignored for `streaks` (live) and `creators` (all time);
- * it defaults to the current one.
+ * `strays`, an ISO week for `weekly` (the other kind is refused with `bad_request`), and
+ * ignored for `streaks` (live) and `creators` (all time). It defaults to the latest game day whose
+ * final results are counted, or that day's ISO week.
  */
 export const LeaderboardQuerySchema = z.object({
   mode: ModeSchema.optional(),
@@ -45,9 +46,12 @@ export type LeaderboardQuery = z.infer<typeof LeaderboardQuerySchema>;
 
 /**
  * One board row. Each board fills the metrics it ranks and breaks ties by:
- * strays: `strayStreak`, `bestStrayStreak`, `enteredAt`; streaks: `strayStreak`,
- * `bestStrayStreak`, `roundsPlayed`; weekly: `wins`, `net`; creators: `splitQuality`,
- * `usedQuestions`.
+ * strays: `strayStreak`, `bestStrayStreak`, `enteredAt`; streaks: `bestStrayStreak`,
+ * `strayStreak`, `roundsPlayed`; weekly: `wins`, `net`; creators: `splitQuality`,
+ * `usedQuestions`. Rows tied on every metric share a rank. The Stakes weekly board omits `net`
+ * unless that user shows their Stakes net (it still breaks the tie). On the streaks board
+ * `topLiveStreak` marks the row whose current streak gets the accent pill: the highest current
+ * streak shown (above 0), the first by rank on a tie (spec "Profiles, leaderboards and rooms").
  */
 export const LeaderboardRowSchema = z.object({
   rank: z.int().min(1),
@@ -60,6 +64,7 @@ export const LeaderboardRowSchema = z.object({
   net: SignedDecimalBigintSchema.optional(),
   splitQuality: SplitQualitySchema.optional(),
   usedQuestions: CountSchema.optional(),
+  topLiveStreak: z.literal(true).optional(),
 });
 export type LeaderboardRow = z.infer<typeof LeaderboardRowSchema>;
 

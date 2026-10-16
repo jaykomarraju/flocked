@@ -1,0 +1,73 @@
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.label {
+  color: var(--color-ink);
+}
+
+.control {
+  position: relative;
+}
+
+/* 52 tall, 2px ink border, 16 radius, surface fill, body text; the placeholder in muted. */
+.input {
+  display: block;
+  width: 100%;
+  height: 52px;
+  margin: 0;
+  padding: 0 var(--spacing-4);
+  border: var(--border-strong) solid var(--color-ink);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  appearance: none;
+}
+
+.input::placeholder {
+  color: var(--color-muted);
+  opacity: 1;
+}
+
+.input[data-force='focus'] {
+  outline: var(--border-strong) solid var(--color-ink);
+  outline-offset: 3px;
+}
+
+/* Error: a 3px border and room on the right for the 20px icon (14 in, 12 from the text). */
+.input[data-error] {
+  border-width: 3px;
+  padding-right: calc(14px + 20px + var(--spacing-3));
+}
+
+.errorIcon {
+  position: absolute;
+  top: 50%;
+  right: calc(3px + 14px);
+  color: var(--color-ink);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.footer {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--spacing-3);
+}
+
+.helper,
+.counter {
+  color: var(--color-muted);
+}
+
+.counter {
+  flex-shrink: 0;
+}
+
+/* The error message: the caption size at 600, in ink. */
+.error {
+  color: var(--color-ink);
+  font-weight: 600;
+}

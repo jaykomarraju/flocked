@@ -12,9 +12,10 @@
 //      the user is active and not self-excluded, and a member for room rounds;
 //   2. dedupe by user: a committed entry answers with its receipt (same stake and commitment) or
 //      `already_entered`; a concurrent request from the same user waits for the first, then re-runs;
-//   3. the daily grant (daily rounds), then the atomic stake batch with the entry insert, which
-//      allocates `receipt_seq` inside D1's transaction (src/rounds/entry.ts `entryInsert`): seqs
-//      are gap-free by construction and a rolled-back batch consumes none. On any batch failure
+//   3. the daily grant (daily rounds) or the room grant (room rounds, room scope; W8-D), then the
+//      atomic stake batch with the entry insert, which allocates `receipt_seq` inside D1's
+//      transaction (src/rounds/entry.ts `entryInsert`): seqs are gap-free by construction and a
+//      rolled-back batch consumes none. On any batch failure
 //      the user's entry is looked up first: a retried stake that already committed fails the
 //      balance CHECK before it reaches the unique keys;
 //   4. only after commit: record the leaf, update the counters, sign and return the receipt.
@@ -69,7 +70,7 @@ import {
   type CommittedEntry,
   type EntryRejection,
 } from '../rounds/entry.js';
-import { applyDailyGrant } from '../rounds/grant.js';
+import { applyDailyGrant, applyRoomGrant } from '../rounds/grant.js';
 import { broadcast, enqueueNotifications, type HookRound } from '../rounds/hooks.js';
 import { refundedMessage } from '../ws/messages.js';
 import {
@@ -559,6 +560,20 @@ export class RoundDO extends DurableObject<Env> implements RoundDORpc {
         await applyDailyGrant(db, { userId: req.userId, roundId: l.roundId, now: t });
       } catch (err) {
         log.warn('daily_grant_failed', { roundId: l.roundId, error: String(err) });
+      }
+    } else if (l.roomId !== null) {
+      // +100 room points per room round on the member's first visit or entry after it opens, below
+      // 1,000 (spec "Profiles, leaderboards and rooms" › Room points); a skip is final for the round.
+      // Membership was checked above; a failure never blocks the entry, as for the daily grant.
+      try {
+        await applyRoomGrant(db, {
+          userId: req.userId,
+          roomId: l.roomId,
+          roundId: l.roundId,
+          now: t,
+        });
+      } catch (err) {
+        log.warn('room_grant_failed', { roundId: l.roundId, error: String(err) });
       }
     }
 

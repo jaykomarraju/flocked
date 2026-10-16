@@ -35,6 +35,8 @@
 //   COINBASE_LOGIN_ORIGIN, COINBASE_API_ORIGIN  Coinbase OAuth and API mock (e2e/mocks/coinbase; W5-B)
 //   ATTESTATION_RPC_URL   the EAS mock (e2e/mocks/eas; W5-B)
 //   TURNSTILE_SITEVERIFY_URL  the siteverify mock (e2e/mocks/turnstile; W7-D)
+//   ANTHROPIC_BASE_URL    the moderation mock (e2e/mocks/anthropic; W8-A); ANTHROPIC_API_KEY is the
+//                         mock's placeholder there
 //   DRAND_RELAYS          the stack's drand HTTP endpoint (W5-A)
 //   FLOCKED_TEST_CLOCK    fixed game clock, epoch ms (src/lib/clock.ts)
 {

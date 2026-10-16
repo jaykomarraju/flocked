@@ -100,11 +100,22 @@ the chunk's VOID count.
 | `voidReason` | string \| null        | One of `@flocked/settle`'s `VOID_REASONS`; null when valid                             |
 | `commitment` | hex                  | Free only: keccak256(ciphertext), the receipt's commitment                             |
 | `ciphertext` | string \| null        | Free only: the ciphertext, base64url (unpadded). Stakes ciphertexts are onchain        |
-| `qualifies`  | boolean              | Room rounds only: counts toward the room minimum (not written yet; W8)                 |
+| `qualifies`  | boolean              | Room rounds only (every room entry): counts toward the room minimum (below)            |
 
 The receipt fields of a Free entry are (`roundId`, mode 0, `account` = userIdHash, `stake`, `commitment`,
 `seq`): exactly the commitment leaf. The receipt's EIP-712 signature is not stored server-side, so it is not
 in the bundle; the player keeps it.
+
+**Room minimum** (spec "Profiles, leaderboards and rooms" › Rooms, Anti-farming). A room round refunds under
+rule 1 unless it has at least `minEntrants` (locked as 3 in every mode of a room round) qualifying entrants.
+The API decides `qualifies` from facts the bundle doesn't hold (account ages), so a verifier takes the flag as
+given and checks only that no VOID entry has it:
+
+- Free: `qualifies` is true when the entry is valid, its user's account was created at least 24 hours before
+  `closesAt`, and it is that user's first qualifying entry in seq order (distinct users; a person ID binds to
+  one account, so distinct verified users are distinct people).
+- Stakes: `qualifies` = `valid`. Tickets go only to members whose accounts meet the age rule at close, and
+  onchain every entry counts toward `minEntrants`.
 
 ## VOID reasons and their order
 
@@ -126,7 +137,9 @@ Stakes entries go straight to `classify`, with the round reference the onchain r
    OpenZeppelin StandardMerkleTree) and compare with `commitment.root` and the anchored root.
 4. Recompute each entry's reason and option (the order above), then `settle(entries, params)` with params
    from `config`: Free `{feeBps, creatorBps, capMultiple, minEntrants, creatorAwardBps}` (creatorAwardBps 0
-   when `awardRecipient` is null); Stakes `{feeBps, creatorBps, capMultiple, minEntrants}`. Compare `record`.
+   when `awardRecipient` is null); Stakes `{feeBps, creatorBps, capMultiple, minEntrants}`. For a room round
+   (`kind` = `room`), pass each entry's `qualifies` and `countQualifyingOnly: true`, so rule 1 counts only
+   qualifying entries. Compare `record`.
 5. Rebuild the payout tree from `settle`'s payouts and compare `payoutRoot`:
    - Free: `freePayoutTree(roundId, [(account, amount)])`, one leaf per payout (every account has at most one;
      zero rebates are omitted), any outcome;

@@ -1,0 +1,17 @@
+/* Paper's sign-in sheet (`core/sign-in/<state>/mobile`): 20 between the handle and the panel and
+   32 below it (the kit's bottom sheet: 16 and 28), plus the home indicator's inset on phones. */
+.sheet.sheet {
+  gap: var(--spacing-5);
+  padding-bottom: calc(var(--spacing-8) + env(safe-area-inset-bottom, 0px));
+}
+
+/* Paper's sign-in modal (tablet and desktop): 32 above and below, 20 at the sides (the kit's modal:
+   24, 28 and 28). */
+.modal.modal {
+  padding: var(--spacing-8) var(--spacing-5);
+}
+
+/* Drawn in place over an artboard, the modal's scrim keeps the 16 the page's fixed scrim has. */
+.inlineScrim {
+  padding: var(--spacing-4);
+}

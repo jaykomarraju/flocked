@@ -9,14 +9,16 @@
 // (the scheduler tick, RoundDO and SettlementDO alarms), each in its own isolate, so two of them can
 // read the same `pending` count and sign two transactions at one nonce, one of which then replaces or
 // blocks the other. A new nonce is therefore the lowest one at or past the chain's pending count that
-// no `pending` row in `operator_txs` holds for the key, and it is claimed in D1 by a conditional write
+// no row in `operator_txs` holds for the key (below), and it is claimed in D1 by a conditional write
 // that fails if another pending row holds it; the loser discards its signature (never broadcast) and
 // takes the next one. Replacements (a stuck bump, a cancellation) keep their nonce and claim nothing.
-// Only pending rows hold a nonce (W6-F1 R1): a finished row (mined, reverted, cancelled) at or past
-// the chain's pending count is one a reorg dropped, and its nonce is free again, or every later
-// operator send would wait behind a gap nothing fills. A stored nonce no node holds leaves a gap
-// below later ones until it is rebroadcast: `check` does that on the row's next call, and the
-// allocator does it for every pending row at or past the chain's count.
+// A finished row (mined, reverted, cancelled) at or past the chain's pending count holds its nonce
+// while its transaction's receipt is served (W7-F1 R14): the count came from a node behind our own
+// mined transaction. Once the receipt is gone, a reorg dropped it and its nonce is free again (W6-F1
+// R1), or every later operator send would wait behind a gap nothing fills; the claim itself checks
+// pending rows only, so a send can fill that gap. A stored nonce no node holds leaves a gap below
+// later ones until it is rebroadcast: `check` does that on the row's next call, and the allocator
+// does it for every pending row at or past the chain's count.
 //
 // An abandoned purpose (a `createRound` still pending at opensAt, a `voidRound` abandoned at close)
 // is cancelled (W4-F1 T4): its pending transaction is replaced by a 0-value send to the operator
@@ -24,6 +26,7 @@
 // tick drives every cancellation until it is mined (`driveCancellations`).
 import { flockedEscrowAbi } from '@flocked/abi';
 import {
+  TransactionReceiptNotFoundError,
   encodeFunctionData,
   parseEventLogs,
   type Address,
@@ -115,7 +118,10 @@ const NONCE_ATTEMPTS = 5;
 /** SQL: an `operator_txs` row's key and nonce (`tx_json` is its SentTx). */
 const ROW_FROM = "lower(json_extract(tx_json, '$.from'))";
 const ROW_NONCE = "CAST(json_extract(tx_json, '$.nonce') AS INTEGER)";
-/** SQL: no pending row but purpose `?1`'s holds nonce `?n` for the key `?k` (R1: finished rows hold none). */
+/**
+ * SQL: no pending row but purpose `?1`'s holds nonce `?n` for the key `?k`. Finished rows are
+ * newNonce's to judge (R14), so a claim can fill a nonce a reorg freed (R1).
+ */
 const nonceFree = (k: number, n: number) =>
   `NOT EXISTS (SELECT 1 FROM operator_txs WHERE purpose <> ?1 AND status = 'pending' AND ${ROW_FROM} = lower(?${k}) AND ${ROW_NONCE} = ?${n})`;
 
@@ -233,25 +239,46 @@ async function swapToNewNonce(
     : 'changed';
 }
 
+/** Whether `hash` has a receipt (a provider failure throws: no answer either way). */
+async function hasReceipt(op: Operator, hash: Hex): Promise<boolean> {
+  try {
+    await op.client.getTransactionReceipt({ hash });
+    return true;
+  } catch (err) {
+    if (err instanceof TransactionReceiptNotFoundError) return false;
+    throw err;
+  }
+}
+
 /**
- * A new nonce for the operator key: the lowest one at or past the chain's pending count that no
- * pending row holds (another send signed and not yet seen by this node holds its own). A finished row
- * holds nothing (R1): one at or past the chain's count was dropped by a reorg, and its nonce is the
- * gap to fill. The pending rows are rebroadcast first, so a gap left by one no node holds doesn't hold
- * up the new one (an abandoned call is left to its cancellation).
+ * A new nonce for the operator key: the lowest one at or past the chain's pending count that no row
+ * holds. A pending row holds its own (another send signed and not yet seen by this node). A finished
+ * row at or past the count holds it while its receipt is served (R14: the count lags our mined
+ * transaction); without one, a reorg dropped it and its nonce is the gap to fill (R1). The pending
+ * rows are rebroadcast first, so a gap left by one no node holds doesn't hold up the new one (an
+ * abandoned call is left to its cancellation).
  */
 async function newNonce(op: Operator, db: D1Database): Promise<number> {
   const pending = await op.sender.nextNonce();
   const { results } = await db
     .prepare(
-      `SELECT purpose, tx_json FROM operator_txs
-       WHERE status = 'pending' AND ${ROW_FROM} = lower(?1) AND ${ROW_NONCE} >= ?2`,
+      `SELECT purpose, status, tx_json, tx_hash FROM operator_txs
+       WHERE ${ROW_FROM} = lower(?1) AND ${ROW_NONCE} >= ?2`,
     )
     .bind(op.sender.address, pending)
-    .all<{ purpose: string; tx_json: string }>();
+    .all<{
+      purpose: string;
+      status: OperatorTxRow['status'];
+      tx_json: string;
+      tx_hash: string | null;
+    }>();
   const held = new Set<number>();
   for (const r of results) {
     const tx = JSON.parse(r.tx_json) as StoredTx;
+    if (r.status !== 'pending') {
+      if (r.tx_hash !== null && (await hasReceipt(op, r.tx_hash as Hex))) held.add(tx.nonce);
+      continue;
+    }
     held.add(tx.nonce);
     if (!isAbandoned(tx) || isCancel(tx)) {
       await broadcastQuietly(op, tx, labelOf(r.purpose), r.purpose);

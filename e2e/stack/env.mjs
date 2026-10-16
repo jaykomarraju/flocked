@@ -44,6 +44,7 @@ export const PORTS = Object.freeze({
   coinbase: port('STACK_COINBASE_PORT', 8790),
   eas: port('STACK_EAS_PORT', 8791),
   turnstile: port('STACK_TURNSTILE_PORT', 8792),
+  anthropic: port('STACK_ANTHROPIC_PORT', 8793),
   inspector: port('STACK_INSPECTOR_PORT', 19229),
 });
 
@@ -61,6 +62,11 @@ export const DRAND = Object.freeze({
  * accepts any token with it, as Cloudflare's does.
  */
 export const TURNSTILE_TEST_SECRET = '1x0000000000000000000000000000000AA';
+/**
+ * The moderation mock's API key (e2e/mocks/anthropic checks only that one is sent). Not a secret: the
+ * API sends it only to `ANTHROPIC_BASE_URL`, which is honoured only locally.
+ */
+export const ANTHROPIC_MOCK_KEY = 'mock-anthropic-key';
 export const TOS_VERSION = '2026-10-01';
 
 export const rel = (p) => relative(ROOT, p);

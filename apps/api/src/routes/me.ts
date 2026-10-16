@@ -4,7 +4,8 @@
 //
 // Suspended accounts sign in read-only (spec "Identity and personhood" › Identities): every write
 // here refuses `account_suspended`, except notification preferences, which are private and only
-// quieten the account. The personhood routes are W5-B's and accept suspended accounts.
+// quieten the account. The personhood routes refuse them too (decision B7; the callback answers
+// `account_suspended` from src/personhood/verify.ts).
 import {
   AcceptTosRequestSchema,
   AddEmailRequestSchema,
@@ -49,6 +50,7 @@ import { validate } from '../lib/validate.js';
 import { personhoodReturnUrl } from '../personhood/config.js';
 import { stakesAgeRequirement, stakesEligibility } from '../personhood/eligibility.js';
 import { completePersonhood, startPersonhood } from '../personhood/flow.js';
+import { readReferrals } from '../referrals/read.js';
 
 type Ctx = Context<AppEnv>;
 
@@ -282,9 +284,10 @@ me.post(
 
 // Coinbase personhood (W5-B; src/personhood/). The callback is authenticated by its single-use
 // OAuth state, never by the session; a session of another user than the state's is refused.
-me.post('/me/personhood', requireUser, limitUser('writes'), async (c) =>
-  c.json(await startPersonhood(c.env, getUser(c).id)),
-);
+me.post('/me/personhood', requireUser, limitUser('writes'), async (c) => {
+  const caller = await writableCaller(c);
+  return c.json(await startPersonhood(c.env, caller.id));
+});
 
 me.get(
   '/me/personhood/callback',
@@ -303,10 +306,11 @@ me.get(
   },
 );
 
-// Referrals land in W8-B; until then the caller has none.
+// Referrals (W8-B, src/referrals/): the caller's code, invitees and referral points.
 me.get('/me/referrals', requireUser, async (c) => {
-  const { ref_code } = await loadMeUser(c.env.DB, getUser(c).id);
-  return c.json({ refCode: ref_code, referrals: [], rewardTotal: '0' } satisfies ReferralsResponse);
+  const userId = getUser(c).id;
+  const { ref_code } = await loadMeUser(c.env.DB, userId);
+  return c.json((await readReferrals(c.env, userId, ref_code)) satisfies ReferralsResponse);
 });
 
 me.delete('/me', requireUser, limitUser('writes'), async (c) => {

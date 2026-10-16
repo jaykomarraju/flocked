@@ -1,0 +1,194 @@
+/* Free (Paper): the head row, the presets and the slider, 16px apart. */
+.free {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+  color: var(--color-ink);
+}
+
+/* "Stake" on the same baseline as the value. */
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+/* The amount (numberXL) and its unit, 6px apart on one baseline. */
+.value {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.presets {
+  display: flex;
+  gap: var(--spacing-2);
+}
+
+/* A 40px preset chip: surface fill, 2px ink border, the number role. */
+.preset {
+  display: flex;
+  flex: 1 1 0%;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  height: 40px;
+  padding: 0;
+  border: var(--border-strong) solid var(--color-ink);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  transition: transform var(--motion-press-duration) var(--motion-press-easing);
+}
+
+/* Hover: the fill changes to line. Pressed: scale 0.97 (motion.press). */
+.preset:not(:disabled):not([aria-checked='true']):hover {
+  background: var(--color-line);
+}
+
+.preset:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+/* Picked: ink fill, bg label at 600. */
+.preset[aria-checked='true'] {
+  background: var(--color-ink);
+  color: var(--color-bg);
+  font-weight: 600;
+}
+
+/* Disabled: bg fill, 2px dashed muted border, muted label. */
+.preset:disabled {
+  border-style: dashed;
+  border-color: var(--color-muted);
+  background: var(--color-bg);
+  color: var(--color-muted);
+  cursor: default;
+}
+
+/* The slider and its end labels, 6px apart. */
+.range {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* The drawn slider: a 4px ink fill up to the 24px thumb, then the 4px line track. `--frac` is the
+   value's place in the range; the thumb travels the row's width less its own. */
+.slider {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  height: 24px;
+}
+
+.fill {
+  flex-shrink: 0;
+  width: calc((100% - 24px) * var(--frac));
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--color-ink);
+}
+
+.thumb {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border: 3px solid var(--color-surface);
+  border-radius: var(--radius-pill);
+  background: var(--color-ink);
+}
+
+.rest {
+  flex: 1 1 0%;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--color-line);
+}
+
+/* The real range input lies over the drawn one, invisible, 44px tall: the whole row is the target. Its
+   thumb is the drawn thumb's size, so pointer positions map to the same values. */
+.input {
+  position: absolute;
+  top: -10px;
+  left: 0;
+  width: 100%;
+  height: 44px;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+  appearance: none;
+  background: transparent;
+}
+
+.input:disabled {
+  cursor: default;
+}
+
+.input::-webkit-slider-thumb {
+  width: 24px;
+  height: 24px;
+  appearance: none;
+}
+
+.input::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  border: 0;
+}
+
+/* The focus ring goes on the drawn thumb. */
+.slider:has(.input:focus-visible) .thumb {
+  outline: var(--border-strong) solid var(--color-ink);
+  outline-offset: 3px;
+}
+
+/* The end labels: the caption role, tabular. */
+.ends {
+  display: flex;
+  justify-content: space-between;
+  color: var(--color-muted);
+}
+
+/* Stakes (Paper): a read-only box, so a line border on surface; 20px padding, rows 8px apart. */
+.fixed {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+  padding: var(--spacing-5);
+  border: var(--border-default) solid var(--color-line);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  color: var(--color-ink);
+}
+
+.fixedHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.same {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.icon {
+  flex-shrink: 0;
+}
+
+/* Over the daily cap the amount goes muted. */
+.value [data-muted='true'] {
+  color: var(--color-muted);
+}
+
+/* The cap line: Inter 400 at the label size, on a 20px line (opsz as the label role). */
+.capLine {
+  font-family: var(--font-body);
+  font-size: var(--text-label);
+  font-weight: 400;
+  line-height: 20px;
+  font-variation-settings: 'opsz' 28;
+}

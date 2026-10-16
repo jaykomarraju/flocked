@@ -17,6 +17,8 @@
     "stack:down": "node e2e/stack/down.mjs",
     "stack:status": "node e2e/stack/status.mjs",
     "e2e": "pnpm --filter @flocked/e2e --fail-if-no-match e2e",
+    "e2e:ui": "pnpm --filter @flocked/web --fail-if-no-match build:e2e && pnpm --filter @flocked/e2e --fail-if-no-match e2e:ui",
+    "e2e:screens": "pnpm --filter @flocked/web --fail-if-no-match build:e2e && pnpm --filter @flocked/e2e --fail-if-no-match e2e:screens",
     "spec": "node scripts/spec-section.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

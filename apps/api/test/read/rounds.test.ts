@@ -160,10 +160,14 @@ afterEach(() => {
 describe('GET /rounds/today', () => {
   it('is null in a schedule gap, with the round that just closed as previousRoundId while it settles', async () => {
     setClock(Date.UTC(2026, 5, 1, 12));
-    expect(await getToday()).toEqual({ round: null, previousRoundId: null });
+    expect(await getToday()).toEqual({ round: null, previousRoundId: null, crowdHint: null });
     // The day after today's round has no round: a gap, and today's round is still pending.
     setClock(CLOSES + HOUR);
-    expect(await getToday()).toEqual({ round: null, previousRoundId: today.id });
+    expect(await getToday()).toEqual({
+      round: null,
+      previousRoundId: today.id,
+      crowdHint: null,
+    });
   });
 
   it('serves the open daily round: question, author, times, beacon, the RoundDO’s counts, the locked config', async () => {

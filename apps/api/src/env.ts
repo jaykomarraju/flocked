@@ -90,6 +90,11 @@ export interface Env {
    * 'local'. Staging and production always call Cloudflare's (src/lib/turnstile.ts).
    */
   TURNSTILE_SITEVERIFY_URL?: string;
+  /**
+   * Anthropic API origin for moderation, the e2e mock's (e2e/mocks/anthropic), honoured only when
+   * ENVIRONMENT is 'local'. Staging and production always call Anthropic's (src/moderation/claude.ts).
+   */
+  ANTHROPIC_BASE_URL?: string;
 
   // Identity and real-time vars (W7-A, W7-B).
   /** Viewer shards per round, an integer 1–256; 16 when unset (src/ws/shards.ts). */

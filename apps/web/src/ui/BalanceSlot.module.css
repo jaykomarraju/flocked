@@ -1,0 +1,10 @@
+.balance {
+  flex-shrink: 0;
+  color: var(--color-ink);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+a.balance:hover {
+  text-decoration: underline;
+}

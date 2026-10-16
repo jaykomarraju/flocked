@@ -1,0 +1,77 @@
+.row {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--spacing-3);
+  min-height: 32px;
+  color: var(--color-ink);
+  cursor: pointer;
+}
+
+.row[data-disabled] {
+  cursor: default;
+}
+
+/* The native input sits over the box, invisible, so taps and the keyboard reach it. */
+.input {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  opacity: 0;
+  transform: translateY(-50%);
+  cursor: inherit;
+}
+
+.box {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: var(--border-strong) solid var(--color-ink);
+  border-radius: 6px;
+  color: var(--color-bg);
+}
+
+.check {
+  visibility: hidden;
+}
+
+.input:checked + .box {
+  background: var(--color-ink);
+}
+
+.input:checked + .box .check {
+  visibility: visible;
+}
+
+.input:disabled + .box {
+  border-style: dashed;
+  border-color: var(--color-muted);
+  background: var(--color-bg);
+  color: var(--color-muted);
+}
+
+.input:focus-visible {
+  outline: none;
+}
+
+.input:focus-visible + .box,
+.input[data-force='focus'] + .box {
+  outline: var(--border-strong) solid var(--color-ink);
+  outline-offset: 3px;
+}
+
+/* The label: Inter 500 16/24. */
+.label {
+  font-weight: 500;
+}
+
+.row[data-disabled] .label {
+  color: var(--color-muted);
+}

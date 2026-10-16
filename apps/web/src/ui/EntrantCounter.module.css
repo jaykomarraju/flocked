@@ -1,0 +1,17 @@
+/* Paper: a 40px row, the 8px dot 10px before the text. */
+.counter {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 10px;
+  height: 40px;
+  color: var(--color-ink);
+}
+
+.dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--color-ink);
+}

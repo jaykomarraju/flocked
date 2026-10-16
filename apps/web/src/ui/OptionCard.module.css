@@ -1,0 +1,133 @@
+/* The option card (Paper Components › Option card): surface fill, 2px ink border, 16px radius, 24px
+   side padding, label left and radio (or share) right. 80px tall before the pick, 104px at the reveal;
+   both grow if the label wraps. */
+.card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-4);
+  width: 100%;
+  margin: 0;
+  padding: var(--spacing-3) var(--spacing-6);
+  border: var(--border-strong) solid var(--color-ink);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  text-align: start;
+}
+
+.label {
+  min-width: 0;
+}
+
+/* Before the pick. */
+.pick {
+  appearance: none;
+  min-height: 80px;
+  transition:
+    background-color var(--motion-micro-duration) var(--motion-micro-easing),
+    transform var(--motion-press-duration) var(--motion-press-easing);
+}
+
+/* The radio: a 24px ring in the label colour; picked, it fills with bg and carries an ink check. */
+.radio {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: var(--border-strong) solid currentColor;
+  border-radius: var(--radius-pill);
+}
+
+.check {
+  color: var(--color-ink);
+}
+
+/* Hover (pointer devices only): the fill changes to line; border and label stay. */
+@media (hover: hover) {
+  .pick:enabled:not([aria-checked='true']):hover {
+    background: var(--color-line);
+  }
+}
+
+.pick[data-force='hover'] {
+  background: var(--color-line);
+}
+
+/* Pressed: line fill, scale 0.97 (motion.press). */
+.pick:enabled:not([aria-checked='true']):active {
+  background: var(--color-line);
+}
+
+.pick:enabled:active {
+  transform: scale(0.97);
+}
+
+/* Paper can't draw a transform, so the sheets draw the press as a box 3% smaller, with the label
+   19px in and its size unchanged; the forced state reproduces that drawing. */
+.pick[data-force='pressed'] {
+  align-self: center;
+  width: round(97%, 1px);
+  min-height: 78px;
+  padding-inline: 19px;
+  background: var(--color-line);
+}
+
+.pick[data-force='focus'] {
+  outline: var(--border-strong) solid var(--color-ink);
+  outline-offset: 3px;
+}
+
+/* Selected: ink fill, label turns bg; the radio fills with bg and gets the check. */
+.pick[aria-checked='true'] {
+  background: var(--color-ink);
+  color: var(--color-bg);
+}
+
+.pick[aria-checked='true'] .radio {
+  border: none;
+  background: var(--color-bg);
+}
+
+/* Disabled: bg fill, dashed muted border, muted label and ring. */
+.pick:disabled {
+  border-style: dashed;
+  border-color: var(--color-muted);
+  background: var(--color-bg);
+  color: var(--color-muted);
+  cursor: default;
+}
+
+/* At the reveal. The padding keeps two label lines and the pill inside 104px. */
+.revealed {
+  min-height: 104px;
+  padding-block: var(--spacing-2);
+}
+
+.revealed[data-result='win'] {
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+}
+
+.text {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-2);
+  min-width: 0;
+}
+
+/* "Your pick": an ink pill with a bg label, on either side. */
+.yourPick {
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--color-ink);
+  color: var(--color-bg);
+}
+
+.share {
+  flex-shrink: 0;
+}

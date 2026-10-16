@@ -13,3 +13,4 @@ export * from './queues';
 export * from './api';
 export * from './tokens';
 export * from './reserved-handles';
+export * from './mascot';

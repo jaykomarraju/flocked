@@ -1,0 +1,58 @@
+/* The mode toggle (Paper Components › Actions › Mode toggle): a 48px surface pill with a 2px ink
+   border, 4px inset; two equal segments. */
+.toggle {
+  display: flex;
+  gap: var(--spacing-1);
+  height: 48px;
+  padding: var(--spacing-1);
+  border: var(--border-strong) solid var(--color-ink);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+}
+
+.segment {
+  appearance: none;
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-ink);
+  transition: background-color var(--motion-micro-duration) var(--motion-micro-easing);
+}
+
+/* The rest segment's label: body size at 500 (Paper: Inter 500 16/24). */
+.restLabel {
+  font-weight: 500;
+}
+
+/* Selected: ink fill, bg label and check. */
+.segment[aria-checked='true'] {
+  background: var(--color-ink);
+  color: var(--color-bg);
+}
+
+@media (hover: hover) {
+  .segment[aria-checked='false']:hover {
+    background: var(--color-line);
+  }
+}
+
+/* Stakes hidden: a plain label, not a control, so a line border. */
+.static {
+  display: flex;
+  align-self: flex-start;
+  align-items: center;
+  width: fit-content;
+  height: 48px;
+  padding-inline: var(--spacing-5);
+  border: var(--border-default) solid var(--color-line);
+  border-radius: var(--radius-pill);
+  color: var(--color-ink);
+}

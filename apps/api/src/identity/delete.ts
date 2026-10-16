@@ -1,20 +1,26 @@
 // Account deletion, `DELETE /me` (spec "Identity and personhood" › Identities › Account deletion).
 // Refused while the user is suspended or self-excluded, and while any of the user's rounds is still
-// waiting to become final (an entry in a mode that isn't settled, refunded or voided, or a live
-// Stakes ticket an entry may still come from).
+// waiting to become final (an entry in a mode that isn't settled, refunded or voided, or an unused
+// Stakes ticket an entry may still come from: live, or not yet processed past by the indexer).
 //
 // One D1 batch: the person ID moves into a `person_tombstones` row with the daily cap state and the
 // account's ID (so the same person's next verification inherits the cap and the day's stakes; see
-// src/personhood/verify.ts); the profile is anonymized (handle, display name, avatar, prefs, and the
-// verification data) and `status = deleted`; every account merged into it is anonymized too;
-// identities, sessions, notification prefs and push subscriptions are removed; pending merges
-// expire; an `audit_log` row records it. Ledger, entries, payouts and stats stay under the opaque
-// user ID. Afterwards the user's share cards are queued for a re-render without handle and avatar.
+// src/personhood/verify.ts), read from `users` inside the batch so a bind since our read is not
+// lost; the profile is anonymized (handle, display name, avatar, prefs, and the verification data)
+// and `status = deleted`; every account merged into it is anonymized too (a guard rolls the batch
+// back if that set changed since our read; W7-F1 R7); identities, sessions, notification prefs and
+// push subscriptions are removed; pending merges expire; the rooms the user owns pass to the oldest
+// remaining member or close (src/rooms/handover.ts); an `audit_log` row records it. Ledger,
+// entries, payouts and stats stay under the opaque user ID. Afterwards the user's share cards are
+// queued for a re-render without handle and avatar.
 import { CARD_VARIANTS, type CardsMessage } from '@flocked/shared';
+import { chainIdOf, deploymentOf } from '../chain/client.js';
 import type { Env } from '../env.js';
 import { HttpError } from '../lib/errors.js';
 import { log } from '../lib/log.js';
 import { excludedSql } from '../limits/rules.js';
+import { ownedRoomStatements } from '../rooms/handover.js';
+import { indexedThroughSec } from '../stakes/cap.js';
 import { loadCaller } from './accounts.js';
 import { expireMergesStatement } from './merge.js';
 import { abortIf, auditStatement, hasLiveTicketSql, hasOpenEntrySql, isGuardAbort } from './sql.js';
@@ -22,16 +28,63 @@ import { abortIf, auditStatement, hasLiveTicketSql, hasOpenEntrySql, isGuardAbor
 /** Cards messages per `sendBatch` (the Queues limit is 100). */
 const CARDS_BATCH = 100;
 
+/** SQL: the CTE `m(id)` of the accounts merged into `userSql`, directly or through another one. */
+const MERGED_INTO = (userSql: string) =>
+  `WITH RECURSIVE m(id) AS (SELECT id FROM users WHERE merged_into = ${userSql} ` +
+  'UNION SELECT u.id FROM users u JOIN m ON u.merged_into = m.id)';
+
 /** Accounts merged into `userId`, directly or through another merged account. */
 async function mergedInto(db: D1Database, userId: string): Promise<string[]> {
   const { results } = await db
-    .prepare(
-      'WITH RECURSIVE m(id) AS (SELECT id FROM users WHERE merged_into = ?1 ' +
-        'UNION SELECT u.id FROM users u JOIN m ON u.merged_into = m.id) SELECT id FROM m',
-    )
+    .prepare(`${MERGED_INTO('?1')} SELECT id FROM m`)
     .bind(userId)
     .all<{ id: string }>();
   return results.map((r) => r.id);
+}
+
+/** A guard: the accounts merged into `userId` are still exactly `merged`. */
+function mergedSetUnchanged(db: D1Database, userId: string, merged: string[]): D1PreparedStatement {
+  return abortIf(
+    db,
+    `(${MERGED_INTO('?1')} SELECT count(*) FROM m) <> ?3 OR EXISTS (${MERGED_INTO('?1')} ` +
+      'SELECT 1 FROM m WHERE id NOT IN (SELECT value FROM json_each(?2)))',
+    userId,
+    JSON.stringify(merged),
+    merged.length,
+  );
+}
+
+/**
+ * The person tombstone with the cap state, from the user's row as the batch sees it (nothing
+ * without a person ID); a stricter earlier tombstone's cap wins.
+ */
+function tombstoneStatement(db: D1Database, userId: string, t: number): D1PreparedStatement {
+  return db
+    .prepare(
+      'INSERT INTO person_tombstones (person_id, daily_stake_cap, pending_cap, pending_cap_effective_at, created_at, user_id) ' +
+        'SELECT u.person_id, l.daily_stake_cap, l.pending_cap, l.pending_cap_effective_at, ?2, u.id ' +
+        'FROM users u LEFT JOIN limits l ON l.user_id = u.id WHERE u.id = ?1 AND u.person_id IS NOT NULL ' +
+        'ON CONFLICT (person_id) DO UPDATE SET daily_stake_cap = CASE ' +
+        'WHEN person_tombstones.daily_stake_cap IS NULL THEN excluded.daily_stake_cap ' +
+        'WHEN excluded.daily_stake_cap IS NULL THEN person_tombstones.daily_stake_cap ' +
+        'ELSE min(person_tombstones.daily_stake_cap, excluded.daily_stake_cap) END, ' +
+        'pending_cap = excluded.pending_cap, pending_cap_effective_at = excluded.pending_cap_effective_at, ' +
+        'created_at = excluded.created_at, user_id = excluded.user_id',
+    )
+    .bind(userId, t);
+}
+
+/** How far the indexer has processed the escrow's logs (null when unknown or not deployed). */
+async function ticketsIndexedThrough(env: Env): Promise<number | null> {
+  let chainId: number;
+  let escrow: string;
+  try {
+    chainId = chainIdOf(env);
+    escrow = deploymentOf(env).escrow;
+  } catch {
+    return null;
+  }
+  return indexedThroughSec(env.DB, chainId, escrow);
 }
 
 export async function deleteAccount(env: Env, userId: string, t: number): Promise<void> {
@@ -46,14 +99,15 @@ export async function deleteAccount(env: Env, userId: string, t: number): Promis
   const ids = JSON.stringify([userId, ...merged]);
   const inIds = 'IN (SELECT value FROM json_each(?1))';
   const nowSec = Math.floor(t / 1000);
+  const throughSec = await ticketsIndexedThrough(env);
 
   const blocked = await db
     .prepare(
       `SELECT ${excludedSql('?2', '?3')} AS excluded, ` +
         `EXISTS (SELECT 1 FROM json_each(?1) j WHERE ${hasOpenEntrySql('j.value')} OR ` +
-        `${hasLiveTicketSql('j.value', '?4')}) AS open`,
+        `${hasLiveTicketSql('j.value', '?4', '?5')}) AS open`,
     )
-    .bind(ids, userId, t, nowSec)
+    .bind(ids, userId, t, nowSec, throughSec)
     .first<{ excluded: number; open: number }>();
   if (blocked?.excluded === 1) {
     throw new HttpError('self_excluded', 'A self-excluded account cannot be deleted');
@@ -71,31 +125,18 @@ export async function deleteAccount(env: Env, userId: string, t: number): Promis
     abortIf(
       db,
       `${excludedSql('?2', '?3')} OR EXISTS (SELECT 1 FROM json_each(?1) j WHERE ` +
-        `${hasOpenEntrySql('j.value')} OR ${hasLiveTicketSql('j.value', '?4')})`,
+        `${hasOpenEntrySql('j.value')} OR ${hasLiveTicketSql('j.value', '?4', '?5')})`,
       ids,
       userId,
       t,
       nowSec,
+      throughSec,
     ),
+    // The accounts anonymized below are still all those merged into the user.
+    mergedSetUnchanged(db, userId, merged),
   ];
-  if (me.person_id !== null) {
-    // The cap state for the same person's next verification; a stricter earlier tombstone wins.
-    statements.push(
-      db
-        .prepare(
-          'INSERT INTO person_tombstones (person_id, daily_stake_cap, pending_cap, pending_cap_effective_at, created_at, user_id) ' +
-            'SELECT ?1, l.daily_stake_cap, l.pending_cap, l.pending_cap_effective_at, ?3, ?2 ' +
-            'FROM (SELECT 1) LEFT JOIN limits l ON l.user_id = ?2 WHERE true ' +
-            'ON CONFLICT (person_id) DO UPDATE SET daily_stake_cap = CASE ' +
-            'WHEN person_tombstones.daily_stake_cap IS NULL THEN excluded.daily_stake_cap ' +
-            'WHEN excluded.daily_stake_cap IS NULL THEN person_tombstones.daily_stake_cap ' +
-            'ELSE min(person_tombstones.daily_stake_cap, excluded.daily_stake_cap) END, ' +
-            'pending_cap = excluded.pending_cap, pending_cap_effective_at = excluded.pending_cap_effective_at, ' +
-            'created_at = excluded.created_at, user_id = excluded.user_id',
-        )
-        .bind(me.person_id, userId, t),
-    );
-  }
+  // The cap state for the same person's next verification, before the person ID is cleared.
+  statements.push(tombstoneStatement(db, userId, t));
   statements.push(
     db
       .prepare(
@@ -115,6 +156,8 @@ export async function deleteAccount(env: Env, userId: string, t: number): Promis
     db.prepare(`DELETE FROM notification_prefs WHERE user_id ${inIds}`).bind(ids),
     db.prepare(`DELETE FROM push_subscriptions WHERE user_id ${inIds}`).bind(ids),
     ...[userId, ...merged].map((id) => expireMergesStatement(db, id)),
+    // Rooms the user owns: handed over or closed (after the status above).
+    ...ownedRoomStatements(db, userId, t),
     auditStatement(db, {
       actor: 'user',
       actorUserId: userId,

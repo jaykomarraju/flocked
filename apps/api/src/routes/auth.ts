@@ -31,6 +31,7 @@ import {
   silentSender,
 } from '../auth/email.js';
 import { verifyQuickAuth } from '../auth/farcaster.js';
+import { refreshFarcasterOffers } from '../identity/offers.js';
 import { clientIp, emailCodeBucket, enforce, limitAuthIp } from '../auth/rate-limit.js';
 import {
   clearSessionCookie,
@@ -141,7 +142,13 @@ auth.post(
     const body = c.req.valid('json');
     const fid = await verifyQuickAuth(c.env, authDeps(c.env), body.token);
     const { user, created } = await signInOrCreate(c, 'farcaster', fid, body);
-    return respondWithSession(c, user, created, body.transport ?? 'bearer');
+    const response = await respondWithSession(c, user, created, body.transport ?? 'bearer');
+    // Wallets verified on the Farcaster account are offered, at most once a day, as GET /me does;
+    // best effort: a failure only logs, and never fails the sign-in.
+    await inBackground(c, 'farcaster_offers', () =>
+      refreshFarcasterOffers(c.env, user.id, now(c.env)),
+    );
+    return response;
   },
 );
 

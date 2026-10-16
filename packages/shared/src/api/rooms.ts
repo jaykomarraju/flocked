@@ -16,6 +16,19 @@ export type RoomQuestionSource = (typeof ROOM_QUESTION_SOURCES)[number];
 export const ROOM_ROLES = ['owner', 'member'] as const;
 export type RoomRole = (typeof ROOM_ROLES)[number];
 
+/** Members per room by default (spec "Profiles, leaderboards and rooms" › Rooms). */
+export const ROOM_MAX_MEMBERS = 50;
+
+/**
+ * The room minimum: a room round refunds (rule 1) unless it has at least this many qualifying
+ * entrants (valid entries from distinct users whose accounts were at least 24 hours old at
+ * `closesAt`). Locked as the room round's `minEntrants` in every mode.
+ */
+export const ROOM_MIN_QUALIFYING_ENTRANTS = 3;
+
+/** A qualifying entrant's account is at least this old at `closesAt`. */
+export const ROOM_QUALIFYING_ACCOUNT_AGE_MS = 24 * 60 * 60 * 1000;
+
 /** An invite code. */
 export const InviteCodeSchema = z
   .string()
@@ -63,15 +76,42 @@ export const RoomMemberSchema = z.object({
 });
 export type RoomMember = z.infer<typeof RoomMemberSchema>;
 
+/**
+ * One row of the room leaderboard: members ranked by room-points balance (equal balances share a
+ * rank), with their room-round wins this week (ISO week of the game day) and their current room
+ * streak (consecutive settled room rounds won; refunded and voided rounds are neutral).
+ */
+export const RoomLeaderboardRowSchema = z.object({
+  rank: z.int().min(1),
+  user: PublicUserSchema,
+  balance: DecimalBigintSchema,
+  winsThisWeek: z.int().min(0),
+  streak: z.int().min(0),
+});
+export type RoomLeaderboardRow = z.infer<typeof RoomLeaderboardRowSchema>;
+
+/**
+ * Member picks for one room round, served only once the round's Free mode has revealed (reveal
+ * gating). `option` is null for an invalid (VOID) entry.
+ */
+export const RoomPicksSchema = z.object({
+  roundId: UlidSchema,
+  picks: z.array(
+    z.object({ user: PublicUserSchema, option: z.union([z.literal(0), z.literal(1)]).nullable() }),
+  ),
+});
+export type RoomPicks = z.infer<typeof RoomPicksSchema>;
+
 /** GET /rooms/:id: room detail, members, current round and the room leaderboard. */
 export const RoomDetailResponseSchema = z.object({
   room: RoomSchema,
   members: z.array(RoomMemberSchema),
+  /** The room round open now, else the latest one that has opened; null before the first. */
   currentRound: RoundViewSchema.nullable(),
   /** Members ranked by room-points balance. */
-  leaderboard: z.array(
-    z.object({ rank: z.int().min(1), user: PublicUserSchema, balance: DecimalBigintSchema }),
-  ),
+  leaderboard: z.array(RoomLeaderboardRowSchema),
+  /** The picks of the latest room round whose Free mode has revealed; null before the first reveal. */
+  memberPicks: RoomPicksSchema.nullable(),
 });
 export type RoomDetailResponse = z.infer<typeof RoomDetailResponseSchema>;
 

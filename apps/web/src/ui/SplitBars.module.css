@@ -1,0 +1,50 @@
+/* Paper: bars 16px apart; each is the head (option, share) 8px over a 24px track in line. */
+.bars {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+  color: var(--color-ink);
+}
+
+.bar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.head {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--spacing-4);
+}
+
+.track {
+  display: flex;
+  flex-shrink: 0;
+  height: 24px;
+  border-radius: var(--radius-pill);
+  background: var(--color-line);
+}
+
+/* The width (from the counts) grows over motion.reveal; the winner's accent fills in after it. */
+.fill {
+  flex-shrink: 0;
+  width: var(--fill);
+  height: 24px;
+  border-radius: var(--radius-pill);
+  background: var(--color-ink);
+  transition:
+    width var(--motion-reveal-duration) var(--motion-reveal-easing),
+    background-color var(--motion-fade-duration) var(--motion-fade-easing)
+      var(--motion-reveal-duration);
+}
+
+.fill[data-winner='true'] {
+  background: var(--color-accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fill {
+    transition-delay: 0s;
+  }
+}

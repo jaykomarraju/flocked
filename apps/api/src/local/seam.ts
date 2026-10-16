@@ -7,7 +7,9 @@
 // shows a round's settlement and serves its R2 bundle objects (W5-D, e2e/tests/free-settle.test.ts);
 // and, for Stakes (W6-A, e2e/tests/stakes-settle.test.ts), schedules rounds with a Stakes mode, records
 // the test's entry tickets, and shows the Stakes mode, its proposals, payouts and entries; and it
-// releases a settlement hold as the guardian's admin action would (W6-F1 O1, for E2E-6).
+// releases a settlement hold as the guardian's admin action would (W6-F1 O1, for E2E-6). For rooms
+// (W8-D, e2e/tests/rooms.spec.ts) it schedules a room round in a room and backdates an account, so
+// a fresh stack account can meet the room minimum's 24-hour age rule.
 //
 // It answers 404, exactly like an unknown path, unless ENVIRONMENT is 'local', FLOCKED_TEST_SEAM_KEY
 // is set (only `pnpm stack:up` sets it, per run) and the request carries that key as a Bearer token,
@@ -108,6 +110,8 @@ const ScheduledRoundSchema = z
     /** False: no Free mode (a Stakes-only round). */
     free: z.boolean().default(true),
     stakes: StakesOptionsSchema.optional(),
+    /** A room round of this room (W8-D): kind 'room', and its question is the room's own. */
+    roomId: UlidSchema.optional(),
   })
   .refine((r) => r.closesAt > r.opensAt, 'closesAt must be after opensAt')
   .refine((r) => r.free || r.stakes !== undefined, 'at least one mode');
@@ -125,6 +129,9 @@ const TicketSchema = z.strictObject({
   expiry: z.int().positive(),
   ticketHash: z.string().regex(/^0x[0-9a-f]{64}$/),
 });
+
+/** POST /__test/users/age: an account's `users.created_at` (epoch ms). */
+const UserAgeSchema = z.strictObject({ userId: UlidSchema, createdAt: EpochMsSchema });
 
 const CronSchema = z.strictObject({
   cron: z.string().refine((c) => c in CRON_JOBS, 'not a configured cron expression'),
@@ -238,9 +245,22 @@ app.post('/rounds', validate('json', CreateRoundSchema), async (c) => {
  * default; `stakes` adds a Stakes mode (W6-A) and `free: false` drops Free. The scheduler's tick
  * locks it once opensAt − 6 h has passed (Stakes: `createRound` onchain; Free: its lock leaf) and
  * inits its RoundDO; nothing else is done here.
+ *
+ * `roomId` (W8-D) makes it a room round of that room (404 for an unknown room): kind 'room', that
+ * `room_id`, and its question carries the `room_id`, as a custom room's question set through POST
+ * /rooms/:id/questions does. The lock treats it as any room round (src/scheduler/lock.ts): a custom
+ * room's takes this question, a mirror room's waits for the daily round with the same close; Free
+ * locks with the room minimum, and Stakes is kept only behind `rooms.stakes.enabled`.
  */
 app.post('/rounds/scheduled', validate('json', ScheduledRoundSchema), async (c) => {
   const body = c.req.valid('json');
+  const roomId = body.roomId ?? null;
+  if (roomId !== null) {
+    const room = await c.env.DB.prepare('SELECT 1 AS ok FROM rooms WHERE id = ?1')
+      .bind(roomId)
+      .first<{ ok: number }>();
+    if (!room) throw new HttpError('not_found', 'no such room');
+  }
   const config = LockedConfigSchema.parse({
     beaconDelay: body.beaconDelay,
     ...(body.free ? { free: { ...LOCKED_CONFIG_DEFAULTS.free, awardRecipient: null } } : {}),
@@ -259,8 +279,8 @@ app.post('/rounds/scheduled', validate('json', ScheduledRoundSchema), async (c) 
   const questionId = newUlid();
   await c.env.DB.batch([
     c.env.DB.prepare(
-      'INSERT INTO questions (id, author_user_id, prompt, options_json, category, status, created_at) ' +
-        "VALUES (?1, NULL, ?2, ?3, 'other', 'scheduled', ?4)",
+      'INSERT INTO questions (id, author_user_id, prompt, options_json, category, status, created_at, room_id) ' +
+        "VALUES (?1, NULL, ?2, ?3, 'other', 'scheduled', ?4, ?5)",
     ).bind(
       questionId,
       body.prompt,
@@ -269,13 +289,27 @@ app.post('/rounds/scheduled', validate('json', ScheduledRoundSchema), async (c) 
         { label: 'Goats', emoji: '🐐' },
       ]),
       t,
+      roomId,
     ),
     c.env.DB.prepare(
       'INSERT INTO rounds (id, kind, room_id, question_id, opens_at, closes_at, status, config_json) ' +
-        "VALUES (?1, 'daily', NULL, ?2, ?3, ?4, 'scheduled', ?5)",
-    ).bind(roundId, questionId, body.opensAt, body.closesAt, JSON.stringify(config)),
+        "VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'scheduled', ?7)",
+    ).bind(
+      roundId,
+      roomId === null ? 'daily' : 'room',
+      roomId,
+      questionId,
+      body.opensAt,
+      body.closesAt,
+      JSON.stringify(config),
+    ),
   ]);
-  log.warn('test_round_scheduled', { roundId, opensAt: body.opensAt, closesAt: body.closesAt });
+  log.warn('test_round_scheduled', {
+    roundId,
+    roomId,
+    opensAt: body.opensAt,
+    closesAt: body.closesAt,
+  });
   return c.json({ roundId, questionId }, 201);
 });
 
@@ -302,6 +336,23 @@ app.post('/stakes/tickets', validate('json', TicketSchema), async (c) => {
     )
     .run();
   return c.json({ userId }, 201);
+});
+
+/**
+ * POST /__test/users/age {userId, createdAt}: sets the account's `users.created_at` (W8-D). Every
+ * stack account is new, and the room minimum counts only accounts created at least 24 hours before
+ * the room round's close (src/settlement/reduce.ts), so a spec backdates the ones that should
+ * qualify. Anything else that reads the account's age (the daily grant's 24-hour rule, say) sees
+ * the new time too. 404 for an unknown user.
+ */
+app.post('/users/age', validate('json', UserAgeSchema), async (c) => {
+  const { userId, createdAt } = c.req.valid('json');
+  const res = await c.env.DB.prepare('UPDATE users SET created_at = ?2 WHERE id = ?1')
+    .bind(userId, createdAt)
+    .run();
+  if (res.meta.changes !== 1) throw new HttpError('not_found', 'no such user');
+  log.warn('test_user_age_set', { userId, createdAt });
+  return c.json({ userId, createdAt });
 });
 
 /**

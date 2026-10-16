@@ -59,6 +59,37 @@
 - **Required tests.** Non-member entry and view rejected. Room minimum refund. Room rounds never touch global stats. A room round settles on the local stack.
 - **Emits.** W8-Z prompt.
 
+## W8-F1: Wave-8 review fixes (added by W8-Z, Oct 16, 2026; alongside W9-A/B/C, merged by W9-D)
+
+- **Why.** Wave 8 was green, but W8-Z's three adversarial reviews found 1 high, 3 medium and 6 low defects no test catches, and five owner decisions (Oct 16) need code. Wave 9's A, B and C don't edit these files, so the owner chose the Oct 11 option (plan.md 2.6): W8-Z merged wave 8, and W8-F1 runs alongside W9-A/B/C from the tag `wave-8`. W9-D merges it as a fourth branch.
+- **Role / size:** fix, M. Branch `w8-f1-review-fixes` from the tag `wave-8`, worktree `../flocked-w8-f1`. No migration. No change to `contracts/src` (the audit candidate).
+- **Owns.** `apps/api/src/scheduler/{tick,lock,create}.ts`, `src/rooms/**`, `src/routes/rooms.ts`, `src/questions/{admin,submit}.ts` (in `submit.ts`, only exporting `refuseOverQuota`), `src/boards/read.ts`, `src/stats/{profile,apply}.ts`, `src/read/rounds.ts` (only the `revealing` rule), `src/stakes/prepare.ts` (only the room flag), `packages/shared` only where a decision needs a constant (for example `ROOM_MAX_OWNED`), and their tests. Not W9-A's `src/notify/**`, `src/routes/push.ts`, `src/rounds/notifications.ts`, `src/lifecycle/void.ts`, `src/settlement/apply/free.ts`, `src/settlement/hooks.ts` (W9-A may register a handler there), `src/indexer/handlers/stakes.ts` (W9-A adds its Stakes outcome enqueue there this wave) or migration `0021`; not W9-B's `packages/verify/**`; not W9-C's `apps/web/**`; not the registry files.
+- **Fixes** (each with a test that fails without it):
+  - H1 (high): every tick re-runs `questionOf` + `modesOf` + a RoundDO `init` for every locked `scheduled` or `open` round (every room round), and the 15:00 lock adds about 4 queries per room round (`scheduler/tick.ts` ~200–201, 239–254; `routes/rooms.ts` 40–52; `rooms/create.ts`). About 250 open rooms pass D1's 1,000 queries per invocation: later D1 calls throw, later room rounds never get their lock leaf or `init`, and step 5 (`driveCancellations`) never runs. About 500 rooms starve the daily round (the live loop is ordered `opens_at, id`, not daily first). One account can create about 1,800 rooms an hour. Fix: the daily round first in the live loop; step 5 before the per-round loops; skip re-initialising rounds already open (or page them); the cap of 10 open rooms per owner (decision below).
+  - M1: `store`'s "lock still ahead" guard uses a `t` read before moderation (up to ~31 s earlier), and the lock and `closeRoomRound` trust `r.question_id` from the tick's `due` read (`rooms/questions.ts` 130–132, 201, 218–220 with `scheduler/lock.ts` 376–386, 327–331, 488–492). A question committed after that read gets 201 "queued", but the round closes `no_question` or locks the old question. Fix: a fresh `now()` for the guard; `AND question_id IS ?` (the value read) on the lock `UPDATE` and in `closeRoomRound`, with a retry when nothing matches.
+  - M2: `POST /rooms/:id/questions` has no `limitUser('writes')` (the other room writes do) and no Turnstile, and the allowance is read before moderation, so N concurrent requests make N Sonnet calls (`routes/rooms.ts` 79–91, `rooms/questions.ts` 210–218). Fix: `limitUser('writes')`, or reserve the slot before moderation. Also export `refuseOverQuota` from `questions/submit.ts` instead of the copy in `rooms/questions.ts`.
+  - M3: the +100 visit grant is paid to suspended members (`rooms/detail.ts` 72, from `routes/rooms.ts` 74), while the daily grant requires `status = 'active'` (`routes/rounds.ts` 55). Fix: grant only to active accounts.
+  - L1: an Assign that commits after the lock read the round is overwritten, so the assigned question stays `scheduled` on no round; the assign guard doesn't require the round to be `scheduled`, so it can land on a closed no-round day; a Reject of the top house question while the lock uses it is overwritten by `status = 'used'` (`scheduler/lock.ts` 488–503, `questions/admin.ts` 353–358). Fix: M1's guard, plus `AND EXISTS` (the question still in the status read).
+  - L2: `editQuestion` doesn't refuse room questions and re-indexes them in Vectorize, though room questions are never indexed (decision, Oct 16) (`questions/admin.ts` 406–413, 505–511). Fix: refuse them, or skip the index.
+  - L3: account status is checked only from the session snapshot, never in SQL (`rooms/join.ts` 26–31, `rooms/create.ts` 73–83, `rooms/handover.ts` 22). A join committing just after the joiner's merge leaves a `merged` member who can inherit; a `POST /rooms` committing just after the owner's `DELETE /me` leaves a room owned by a deleted account, never handed over. Fix: require an active user in the member and room inserts (W7-F1 R11's pattern).
+  - L4: the hand-over successor can be suspended (`rooms/handover.ts` 22). Fix: prefer an active member (the hand-over decision below).
+  - L5: a Stakes final runs up to 7 days of stats inside the IndexerDO poll (`indexer/handlers/stakes.ts` 690 calls `runModeFinal`; `stats/apply.ts` 33, `STATS_SIZES` `days: 7`, `chunk: 1000`), past W4-F1's `POLL_BUDGET` (500 calls, 800 statements) at about 5k entrants a day; `test/indexer/budget.test.ts` has no final event. Fix inside `stats/apply.ts` (the handler is W9-A's this wave): bound the stats work per call for Stakes events, for example a smaller per-call day or chunk cap when `mode === 'stakes'`, with any remaining days applied by a later call.
+  - L6: split quality counts refunded modes with a revealed tally (`boards/read.ts` 311, `stats/profile.ts` 93). Fix: settled modes only (decision, Oct 16), on the Creators board and on profiles; `test/boards/boards.test.ts:95` asserts the old behaviour and changes.
+- **Owner decisions that need code** (Oct 16, 2026):
+  - the 50-member cap counts only members whose account is not deleted (`rooms/join.ts`);
+  - hand-over (B5 refined): a deleted owner's room passes to the oldest remaining active member (by join time), else the oldest remaining non-deleted member, else the room closes with its unlocked rounds (`rooms/handover.ts`; covers L4);
+  - at most 10 open rooms owned per account; `POST /rooms` answers 409 `conflict` past it (`rooms/create.ts`, with a constant such as `ROOM_MAX_OWNED` in `packages/shared`);
+  - `rooms.stakes.enabled` is a kill switch: the lock reads it, and `/prepare` also refuses Stakes tickets for room rounds while it is off (`stakes/prepare.ts`);
+  - `GET /rounds/:id` shows `revealing` for a closed round's pending mode past beacon time, like the WebSocket `state` (`read/rounds.ts`; W7-F1's open issue).
+- **Required tests.** One per item above (H1, M1–M3, L1–L6 and each decision), each mutation-checked: it passes unmutated and fails with the fix undone. H1's runs many rooms and proves the daily round still opens and the query count per tick is bounded; L5's is a budget test with a Stakes final event. Also re-run these mutation candidates, which the reviewers believe covered, on W8-F1's tree (one run each, reverted after; they don't widen the Owns list):
+  - R7, merged set: in `identity/delete.ts`, drop `mergedSetUnchanged(db, userId, merged),`; `test/identity/delete.test.ts` -t "an account merged into the user since the read rolls the deletion back";
+  - R8: `const throughSec = await ticketsIndexedThrough(env);` (`identity/delete.ts`) → `Number.MAX_SAFE_INTEGER`; `test/identity/cap.test.ts` -t "past expiry + 30 s it still blocks";
+  - R16: `if (payoutRoot !== (p.payoutRoot ?? ZERO_ROOT)) {` → `if (payoutRoot !== payoutRoot) {` (`indexer/handlers/stakes.ts`); `test/settlement/stakes-review-w7.test.ts` -t "W7-F1 R16";
+  - R13: `unsupersedeVetoed(db, roundId, audit.seq, t),` → `unsupersededAt(db, roundId, t),` (`indexer/handlers/stakes.ts`); -t "W7-F1 R13";
+  - the room picks' reveal gate: in `rooms/picks.ts`, drop `AND m.revealed_at IS NOT NULL` from the `round_modes` join; `test/rooms/detail.test.ts` -t "are hidden before the Free reveal".
+
+  `pnpm check`, `pnpm format:check` and `pnpm e2e` (with `rooms.spec.ts`) on a fresh stack stay green. The handoff lists each item's test and mutation, and W9-D re-runs a sample on the merged tree.
+
 ## W8-Z checklist
 
 - Moderation and boards tests named; UI screenshot suite green in CI.
@@ -66,6 +97,7 @@
 - Raise the OA-D3 review (Social, Settings) with the owner. Apply its Paper fixes and the W7-Z design items (the Streaks pill wraps the row's current streak, decision E3; the share sheets' viewer avatar "J" becomes "W", F5) through a design subagent, re-exporting what changes, before W11.
 - OA-D2 is already frozen (Oct 12), so W9-C needs no check.
 - Migrations for wave 9: W9-A `0021`, W9-B none, W9-D `0022`.
+- W8-F1 (above; added by W8-Z, Oct 16) reported to W9-D: its prompt emitted, and W9-D's prompt names it as a fourth branch.
 
 ## Carry-over from W2-Z (Oct 8, 2026)
 

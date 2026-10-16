@@ -4,13 +4,14 @@
 import { env } from 'cloudflare:test';
 import { newUlid } from '@flocked/shared';
 import { firstRoundAtOrAfter } from '@flocked/tlock';
-import { custom, type Hex } from 'viem';
+import { custom, toHex, type Hex, type Transport } from 'viem';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createRound,
   propose,
   voidRound,
   type EscrowRoundConfig,
+  type OperatorDeps,
 } from '../../src/chain/operator.js';
 import { log } from '../../src/lib/log.js';
 import type { FakeChain } from '../anchor-do/fake-chain.js';
@@ -230,5 +231,63 @@ describe('W6-F1 R1: a nonce a reorg freed is used again', () => {
       'mined',
       'mined',
     ]);
+  });
+});
+
+/** A node behind our own mined sends: its pending count is `count` whatever has been mined since. */
+function laggingPendingCount(fake: FakeChain, count: number): Transport {
+  const inner = fake.transport({}).request as unknown as (a: {
+    method: string;
+    params: unknown[];
+  }) => Promise<unknown>;
+  return custom(
+    {
+      request: ({ method, params }: { method: string; params?: unknown }) => {
+        const p = (params ?? []) as unknown[];
+        if (method === 'eth_getTransactionCount' && p[1] === 'pending') {
+          return Promise.resolve(toHex(count));
+        }
+        return inner({ method, params: p });
+      },
+    },
+    { retryCount: 0 },
+  );
+}
+
+describe('W7-F1 R14: a pending count that lags our own mined send', () => {
+  it('a mined row at or past the count holds its nonce while its receipt is served: the next send takes the one after', async () => {
+    const t = Date.UTC(2027, 7, 6, 12, 0, 0);
+    const { fake, deps } = await chainHarness(t);
+    setClock(t);
+    const [x, y] = [newUlid(), newUlid()];
+    expect((await createRound(env, deps.operator, { roundId: x, cfg: cfg(t) })).status).toBe(
+      'mined',
+    );
+    expect(await nonceOf(`createRound:${x}`)).toBe(0);
+
+    // The next send reads the pending count from a node that hasn't seen x's block: 0.
+    const d = { ...deps.operator, transport: laggingPendingCount(fake, 0) };
+    const r = await createRound(env, d, { roundId: y, cfg: cfg(t) });
+    expect(await nonceOf(`createRound:${y}`)).toBe(1);
+    expect(r.status).toBe('mined');
+    expect(fake.sent.map((s) => s.nonce)).toEqual([0, 1]);
+  });
+
+  it('a finished row whose receipt is gone (a reorg) still frees its nonce, though the count lags', async () => {
+    const t = Date.UTC(2027, 7, 7, 12, 0, 0);
+    const { fake, deps } = await chainHarness(t);
+    setClock(t);
+    const [x, y, z] = [newUlid(), newUlid(), newUlid()];
+    const send = (id: string, d: OperatorDeps = deps.operator) =>
+      createRound(env, d, { roundId: id, cfg: cfg(t) });
+    expect((await send(x)).status).toBe('mined');
+    expect((await send(y)).status).toBe('mined');
+    expect([await nonceOf(`createRound:${x}`), await nonceOf(`createRound:${y}`)]).toEqual([0, 1]);
+
+    // y's block leaves the chain; a node behind x's block answers 0: x holds 0, y's 1 is free.
+    reorgOut(fake, fake.sent[1]!.hash);
+    const r = await send(z, { ...deps.operator, transport: laggingPendingCount(fake, 0) });
+    expect(await nonceOf(`createRound:${z}`)).toBe(1);
+    expect(r.status).toBe('mined');
   });
 });

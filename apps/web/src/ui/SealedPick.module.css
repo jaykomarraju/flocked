@@ -1,0 +1,25 @@
+/* Paper: the selected option card, 80 tall, ink fill and 2px ink border, 24px side padding; the
+   option (option role) over the stake (numberSmall) in bg, the 22×26 padlock at the end. */
+.pick {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-4);
+  height: 80px;
+  padding-inline: var(--spacing-6);
+  border: var(--border-strong) solid var(--color-ink);
+  border-radius: var(--radius-card);
+  background: var(--color-ink);
+  color: var(--color-bg);
+}
+
+.text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.icon {
+  flex-shrink: 0;
+}

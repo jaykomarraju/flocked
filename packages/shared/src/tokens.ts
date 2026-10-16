@@ -47,6 +47,11 @@ export const DesignTokensSchema = z.strictObject({
     display: FontFamily,
     body: FontFamily,
     numeric: z.strictObject({ family: z.string().min(1), features: z.array(z.string()).min(1) }),
+    /**
+     * Hashes and JSON in Admin and Verify: the system monospace stack, in CSS `font-family` order
+     * (Design_Language.md "Typography"; decision E8, Oct 12, 2026). Not self-hosted.
+     */
+    mono: z.strictObject({ stack: z.array(z.string().min(1)).min(1) }),
   }),
   type: z.record(z.string().regex(/^[a-z][A-Za-z]*$/), TypeRoleTokenSchema),
   space: z.array(z.number().int().nonnegative()).min(1),

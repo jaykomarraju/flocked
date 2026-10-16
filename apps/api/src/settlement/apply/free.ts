@@ -18,14 +18,17 @@
 //   6. the manifest anchor through AnchorDO.submitManifest (write-once onchain; the AnchorDO retries
 //      a manifest that reverts before beacon time);
 //   7. ciphertext archival: each bundle chunk's entries lose their D1 ciphertext once the manifest
-//      in R2 hashes to bundleHash and the chunk object exists.
+//      in R2 hashes to bundleHash and the chunk object exists;
+//   8. the post-final hooks (`runModeFinal`, src/settlement/hooks.ts: stats, referrals, creator
+//      credit), last, so none of them can hold back the reveal; each is idempotent.
 // Every step is idempotent, so SettlementDO may call applyFree again after any failure.
 //
 // refundFree(env, roundId, 7 | 8): rule 7 (the commitment was not anchored before the beacon;
 // SettlementDO) or rule 8 (the beacon is still unavailable 24 h after its round time; the settle
 // consumer). The conditional pending → refunded update comes first and is the claim: only after it
 // are the stakes refunded, so a mode that went on to reveal is never refunded. These modes have no
-// bundle yet (W5-D handoff, spec issue), so their ciphertexts stay in D1.
+// bundle yet (W5-D handoff, spec issue), so their ciphertexts stay in D1. The post-final hooks run
+// after the refunds.
 //
 // Rule 4 (void) refunds are written at void confirmation (src/lifecycle/void.ts); a voided mode never
 // reaches either function: SettlementDO stops at a non-pending mode, applyFree refuses anything but
@@ -41,6 +44,7 @@ import { raiseAlert } from '../../lib/alert.js';
 import { now } from '../../lib/clock.js';
 import { log } from '../../lib/log.js';
 import { GLOBAL_SCOPE, scopeForRound, type CreditReason } from '../../points/index.js';
+import { runModeFinal } from '../hooks.js';
 import { manifestKey } from '../keys.js';
 import { IntegrityError } from '../prepare.js';
 import type { TallyResult } from '../types.js';
@@ -419,6 +423,8 @@ export async function applyFree(
   });
 
   await archiveCiphertexts(env, result);
+
+  await runModeFinal(env, { roundId, mode: 'free', kind: mode.kind, outcome });
 }
 
 /**
@@ -516,4 +522,5 @@ export async function refundFree(
     reason: mode.refund_reason as RefundReason,
     provisional: false,
   });
+  await runModeFinal(env, { roundId, mode: 'free', kind: mode.kind, outcome: 'refunded' });
 }

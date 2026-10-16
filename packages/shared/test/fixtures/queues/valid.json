@@ -143,6 +143,15 @@
       }
     },
     {
+      "event": "question_rejected",
+      "userId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+      "dedupeKey": "question_rejected:01K6Z8Y4N2R7VQ3M5T9W1XB0CG",
+      "payload": {
+        "questionId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CG",
+        "reason": "It asks for a fact, not a preference."
+      }
+    },
+    {
       "event": "security_notice",
       "userId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
       "dedupeKey": "security_notice:n-1",

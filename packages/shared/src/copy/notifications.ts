@@ -2,6 +2,7 @@
 // lines for every event in NOTIFICATION_EVENTS on every channel in NOTIFICATION_CHANNELS, designed in Paper (page
 // "Cards and notifications", W6-C.2). Voice: short, dry, deadpan; never explain the joke; never use exclamation
 // points. Templates hold `{placeholder}`s from NOTIFICATION_PLACEHOLDERS; the notify consumer formats the values.
+// `question_rejected` (added Oct 12, 2026; drafted by W8-A) was approved by the owner on Oct 16, 2026 (W8-Z): push only.
 
 import type { NotificationChannel } from '../api/me';
 import { VOICE } from '../copy';
@@ -21,6 +22,7 @@ export const NOTIFICATION_EVENT_CHANNELS = {
   question_used: ['farcaster', 'webpush'],
   streak_at_risk: ['farcaster', 'webpush'],
   question_edited: ['farcaster', 'webpush'],
+  question_rejected: ['farcaster', 'webpush'],
   security_notice: ['farcaster', 'webpush', 'email'],
 } as const satisfies Record<NotificationEvent, readonly NotificationChannel[]>;
 
@@ -37,7 +39,9 @@ export function isGameNotification(event: NotificationEvent): boolean {
  * - `question`: the round's prompt (1–120 characters);
  * - `streak`: the stray streak, "3";
  * - `refundLine`: `REFUND_LINES[refundReason]`;
- * - `mode`: "Free" or "Stakes".
+ * - `mode`: "Free" or "Stakes";
+ * - `reason`: the admin's rejection reason (question_rejected `reason`, 1–500 characters). The push
+ *   body is the reason alone, so a reason over `PUSH_LIMITS.body` is cut to it, ending in "…".
  */
 export const NOTIFICATION_PLACEHOLDERS = [
   'amount',
@@ -47,6 +51,7 @@ export const NOTIFICATION_PLACEHOLDERS = [
   'streak',
   'refundLine',
   'mode',
+  'reason',
 ] as const;
 export type NotificationPlaceholder = (typeof NOTIFICATION_PLACEHOLDERS)[number];
 export type NotificationValues = Partial<Record<NotificationPlaceholder, string>>;
@@ -81,6 +86,7 @@ export type NotificationVariant = AllEvents<{
   question_used: 'scheduled' | 'settled';
   streak_at_risk: 'default';
   question_edited: 'default';
+  question_rejected: 'default';
   security_notice: SecurityNoticeKind;
 }>;
 
@@ -166,6 +172,8 @@ const STREAK_AT_RISK = {
 const QUESTION_EDITED = {
   default: push('Your question was edited', 'We changed its wording. See the new version.'),
 };
+/** Approved Oct 16, 2026 (W8-Z): the admin's reason is the whole body. */
+const QUESTION_REJECTED = { default: push('Your question was rejected', '{reason}') };
 const SECURITY_PUSH = {
   email_sign_in: push(
     'New sign-in with email',
@@ -266,6 +274,7 @@ export const NOTIFICATION_COPY: NotificationCopyTable = {
   question_used: { farcaster: QUESTION_USED, webpush: QUESTION_USED, email: null },
   streak_at_risk: { farcaster: STREAK_AT_RISK, webpush: STREAK_AT_RISK, email: null },
   question_edited: { farcaster: QUESTION_EDITED, webpush: QUESTION_EDITED, email: null },
+  question_rejected: { farcaster: QUESTION_REJECTED, webpush: QUESTION_REJECTED, email: null },
   security_notice: {
     farcaster: SECURITY_PUSH,
     webpush: SECURITY_PUSH,

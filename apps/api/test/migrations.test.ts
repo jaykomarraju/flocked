@@ -39,8 +39,15 @@ const SPEC_COLUMNS: Record<string, readonly string[]> = {
     'moderation_json',
     'score',
     'created_at',
+    // 0017 (W8-A): admin review, and the rejection the author sees (not yet in the spec's data model).
+    'needs_review',
+    'rejection_reason',
+    'rejected_at',
+    // 0019 (W8-D): a room's custom question, private to the room.
+    'room_id',
   ],
-  question_votes: ['question_id', 'user_id', 'value', 'created_at'],
+  // 0017 (W8-A): each vote's decay weight, fixed when it is cast.
+  question_votes: ['question_id', 'user_id', 'value', 'created_at', 'weight'],
   rounds: [
     'id',
     'kind',
@@ -136,7 +143,16 @@ const SPEC_COLUMNS: Record<string, readonly string[]> = {
     'net',
     'updated_at',
   ],
-  rooms: ['id', 'name', 'owner_user_id', 'invite_code', 'question_source', 'created_at'],
+  rooms: [
+    'id',
+    'name',
+    'owner_user_id',
+    'invite_code',
+    'question_source',
+    'created_at',
+    // 0019 (W8-D, decision B5): when the room closed (its owner deleted their account, alone).
+    'closed_at',
+  ],
   room_members: ['room_id', 'user_id', 'role', 'joined_at'],
   share_cards: ['share_id', 'round_id', 'mode', 'user_id', 'kind', 'r2_prefix', 'created_at'],
   merges: [
@@ -156,6 +172,9 @@ const SPEC_COLUMNS: Record<string, readonly string[]> = {
     'qualified_round_id',
     'rewarded_at',
     'created_at',
+    // 0018 (W8-B): the cap's week and the reward attempt rotation (W8-B spec issue).
+    'reward_week',
+    'checked_at',
   ],
   sessions: ['id_hash', 'user_id', 'expires_at', 'created_at', 'user_agent'],
   notification_prefs: ['user_id', 'channel', 'event', 'enabled'],
@@ -172,7 +191,15 @@ const SPEC_COLUMNS: Record<string, readonly string[]> = {
     'exclusion_lift_effective_at',
     'question_block_until',
   ],
-  indexer_state: ['chain_id', 'contract', 'last_block_number', 'last_block_hash', 'updated_at'],
+  indexer_state: [
+    'chain_id',
+    'contract',
+    'last_block_number',
+    'last_block_hash',
+    // 0020 (W7-F1 R18, owner decision C4): the position's block timestamp, Unix seconds.
+    'last_block_timestamp',
+    'updated_at',
+  ],
   // 0006_indexer (W4-B): the wave-4 pinned chain_events and sent_txs, plus dispatch bookkeeping and
   // settlement holds; not yet rows in the spec's data model.
   chain_events: [
@@ -228,6 +255,21 @@ const SPEC_COLUMNS: Record<string, readonly string[]> = {
   audit_log: ['id', 'actor', 'actor_user_id', 'action', 'target', 'data_json', 'created_at'],
   // 0003_round_do (W3-B): the final skip of a daily grant; not yet a row in the spec's data model.
   daily_grant_skips: ['user_id', 'round_id', 'balance', 'skipped_at'],
+  // 0018_stats (W8-B): the days user_stats has absorbed, the Strays board's winners and the Weekly
+  // board's weeks; not yet rows in the spec's data model (W8-B spec issue).
+  stats_days: [
+    'round_id',
+    'mode',
+    'closes_at',
+    'game_day',
+    'outcome',
+    'winner',
+    'after_user',
+    'started_at',
+    'done_at',
+  ],
+  stats_wins: ['round_id', 'mode', 'user_id', 'stray_streak', 'best_stray_streak', 'entered_at'],
+  stats_weeks: ['user_id', 'mode', 'iso_week', 'wins', 'net', 'updated_at'],
   // 0005_scheduler (W4-A): at-most-once operator transactions; not yet a row in the spec's data model.
   operator_txs: ['purpose', 'status', 'tx_json', 'tx_hash', 'created_at', 'updated_at'],
   // 0009_personhood (W5-B): admin flags and config, and deleted people's cap state; neither is a
@@ -242,6 +284,9 @@ const SPEC_COLUMNS: Record<string, readonly string[]> = {
     // 0015 (W7-B): the deleted account, so re-verification carries its tickets (W7-B spec issue).
     'user_id',
   ],
+  // 0017 (W8-A): split quality per settled mode of a daily round ("Question pipeline" step 5); not
+  // yet a row in the spec's data model.
+  question_splits: ['round_id', 'mode', 'question_id', 'split_quality', 'entrants', 'created_at'],
 };
 
 /** Primary keys the spec names ("PK (...)", or "(PK)" on a column). */
@@ -260,6 +305,7 @@ const SPEC_PRIMARY_KEYS: Record<string, readonly string[]> = {
   share_cards: ['share_id'],
   config: ['key'],
   person_tombstones: ['person_id'],
+  question_splits: ['round_id', 'mode'],
 };
 
 interface KeySpec {
@@ -836,6 +882,361 @@ describe('0016 (W6-F1 O1)', () => {
     await env.DB.batch(m.queries.map((q) => env.DB.prepare(q)));
     expect(await rows()).toEqual(before);
     expect(before).toHaveLength(4);
+  });
+});
+
+describe('0017 (W8-A)', () => {
+  const q = (id: string, cols: Record<string, unknown> = {}) => {
+    const row: Record<string, unknown> = {
+      id,
+      prompt: 'Tea or coffee?',
+      options_json: '[{"label":"Tea"},{"label":"Coffee"}]',
+      category: 'food',
+      created_at: 0,
+      ...cols,
+    };
+    const names = Object.keys(row);
+    return [
+      `INSERT INTO questions (${names.join(', ')}) VALUES (${names.map((_, i) => `?${i + 1}`).join(', ')})`,
+      ...Object.values(row),
+    ] as const;
+  };
+  const insert = async (id: string, cols: Record<string, unknown> = {}) => {
+    const [sql, ...params] = q(id, cols);
+    await env.DB.prepare(sql)
+      .bind(...params)
+      .run();
+  };
+
+  it('records the migration', async () => {
+    const { results } = await env.DB.prepare('SELECT name FROM d1_migrations').all<{
+      name: string;
+    }>();
+    expect(results.map((r) => r.name)).toContain('0017_question_pipeline.sql');
+  });
+
+  it('category is one of the fixed list ("Core game rules" › Question format)', async () => {
+    for (const c of ['food', 'life', 'tech', 'money', 'pop', 'hypothetical', 'other']) {
+      await insert(`q17-cat-${c}`, { category: c });
+    }
+    for (const c of ['test', 'animals', 'Food', '']) {
+      expect(await rejects(...q(`q17-bad-${c}`, { category: c }))).toContain(
+        'CHECK constraint failed',
+      );
+    }
+  });
+
+  it('rejected_at and rejection_reason are set together, exactly when the status is rejected', async () => {
+    await insert('q17-rej', {
+      status: 'rejected',
+      rejected_at: 5,
+      rejection_reason: 'Not two-sided',
+    });
+    for (const [id, cols] of [
+      ['q17-r1', { status: 'rejected' }],
+      ['q17-r2', { status: 'rejected', rejected_at: 5 }],
+      ['q17-r3', { status: 'rejected', rejection_reason: 'x' }],
+      ['q17-r4', { status: 'queued', rejected_at: 5, rejection_reason: 'x' }],
+      ['q17-r5', { status: 'submitted', rejection_reason: 'x' }],
+    ] as const) {
+      expect(await rejects(...q(id, cols))).toContain(
+        'CHECK constraint failed: questions_rejection',
+      );
+    }
+    // Un-rejecting clears both, or fails.
+    expect(await rejects("UPDATE questions SET status = 'queued' WHERE id = 'q17-rej'")).toContain(
+      'questions_rejection',
+    );
+    await env.DB.prepare(
+      "UPDATE questions SET status = 'queued', rejected_at = NULL, rejection_reason = NULL WHERE id = 'q17-rej'",
+    ).run();
+  });
+
+  it('needs_review is 0 or 1, and 1 only while submitted', async () => {
+    await insert('q17-nr', { status: 'submitted', needs_review: 1 });
+    await insert('q17-new');
+    const row = await env.DB.prepare(
+      "SELECT status, needs_review FROM questions WHERE id = 'q17-new'",
+    ).first<{ status: string; needs_review: number }>();
+    expect(row).toEqual({ status: 'submitted', needs_review: 0 });
+    expect(await rejects(...q('q17-nr2', { status: 'queued', needs_review: 1 }))).toContain(
+      'CHECK constraint failed: questions_review',
+    );
+    expect(await rejects(...q('q17-nr3', { status: 'submitted', needs_review: 2 }))).toContain(
+      'CHECK constraint failed',
+    );
+    // Approving clears the flag in the same update, or fails.
+    expect(await rejects("UPDATE questions SET status = 'queued' WHERE id = 'q17-nr'")).toContain(
+      'questions_review',
+    );
+  });
+
+  it('question_splits: mode, split_quality in [0, 1], entrants > 0, one row per (round, mode)', async () => {
+    const split =
+      'INSERT INTO question_splits (round_id, mode, question_id, split_quality, entrants, created_at) VALUES (?1, ?2, ?3, ?4, ?5, 0)';
+    await env.DB.prepare(split).bind('r17', 'free', 'q', 0, 1).run();
+    await env.DB.prepare(split).bind('r17', 'stakes', 'q', 1, 3).run();
+    expect(await rejects(split, 'r17', 'free', 'q', 0.5, 2)).toContain('UNIQUE');
+    expect(await rejects(split, 'r17b', 'rooms', 'q', 0.5, 2)).toContain('CHECK constraint failed');
+    expect(await rejects(split, 'r17b', 'free', 'q', -0.01, 2)).toContain(
+      'CHECK constraint failed',
+    );
+    expect(await rejects(split, 'r17b', 'free', 'q', 1.01, 2)).toContain('CHECK constraint failed');
+    expect(await rejects(split, 'r17b', 'free', 'q', 0.5, 0)).toContain('CHECK constraint failed');
+    expect((await indexesOf('question_splits')).map((i) => i.columns)).toContainEqual([
+      'question_id',
+    ]);
+  });
+
+  // The rebuild against the table it replaced: 0001's `questions` (unchanged until 0017) on a
+  // renamed copy, with rows, then 0017's questions statements on it.
+  it('the rebuild copies every row: a bad category becomes other, a rejected row gets its time and a reason', async () => {
+    const rename = (sql: string) =>
+      sql
+        .replace(/\bquestions_(\w+)/g, 'mig_questions_$1')
+        .replace(/\bquestions\b/g, 'mig_questions');
+    const statement = (sql: string) => sql.replace(/^(\s*--[^\n]*\n)*\s*/, '');
+    const queriesOf = (name: string) => {
+      const m = env.TEST_MIGRATIONS.find((x) => x.name === name);
+      if (!m) throw new Error(`no migration ${name}`);
+      return m.queries;
+    };
+    const v1 = queriesOf('0001_init.sql').filter((x) =>
+      /^CREATE (TABLE|INDEX \w+ ON) questions\b/.test(statement(x)),
+    );
+    expect(v1).toHaveLength(3);
+    for (const x of v1) await env.DB.prepare(rename(x)).run();
+    const opts = '[{"label":"Tea","emoji":"🍵"},{"label":"Coffee","emoji":"☕"}]';
+    await env.DB.batch(
+      [
+        ['M1', null, 'animals', 'queued', null, 2.5, 10],
+        ['M2', 'U1', 'food', 'rejected', '{"safe":false}', -1, 20],
+        ['M3', 'U2', 'tech', 'used', null, 0, 30],
+        ['M4', 'U3', 'test', 'submitted', null, 1, 40],
+      ].map((r) =>
+        env.DB.prepare(
+          'INSERT INTO mig_questions (id, author_user_id, prompt, options_json, category, status, moderation_json, score, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)',
+        ).bind(r[0], r[1], `p ${String(r[0])}`, opts, r[2], r[3], r[4], r[5], r[6]),
+      ),
+    );
+
+    const v17 = queriesOf('0017_question_pipeline.sql').filter((x) =>
+      /^(CREATE TABLE questions_new|INSERT INTO questions_new|DROP TABLE questions\b|ALTER TABLE questions_new|CREATE INDEX \w+ ON questions\b)/.test(
+        statement(x),
+      ),
+    );
+    expect(v17).toHaveLength(8);
+    for (const x of v17) await env.DB.prepare(rename(x)).run();
+
+    const { results } = await env.DB.prepare(
+      'SELECT id, author_user_id, category, status, moderation_json, score, created_at, needs_review, rejection_reason, rejected_at FROM mig_questions ORDER BY id',
+    ).all();
+    const common = { needs_review: 0, moderation_json: null };
+    expect(results).toEqual([
+      {
+        ...common,
+        id: 'M1',
+        author_user_id: null,
+        category: 'other',
+        status: 'queued',
+        score: 2.5,
+        created_at: 10,
+        rejection_reason: null,
+        rejected_at: null,
+      },
+      {
+        ...common,
+        id: 'M2',
+        author_user_id: 'U1',
+        category: 'food',
+        status: 'rejected',
+        moderation_json: '{"safe":false}',
+        score: -1,
+        created_at: 20,
+        rejection_reason: 'Rejected',
+        rejected_at: 20,
+      },
+      {
+        ...common,
+        id: 'M3',
+        author_user_id: 'U2',
+        category: 'tech',
+        status: 'used',
+        score: 0,
+        created_at: 30,
+        rejection_reason: null,
+        rejected_at: null,
+      },
+      {
+        ...common,
+        id: 'M4',
+        author_user_id: 'U3',
+        category: 'other',
+        status: 'submitted',
+        score: 1,
+        created_at: 40,
+        rejection_reason: null,
+        rejected_at: null,
+      },
+    ]);
+    // The rebuilt table has the new CHECKs.
+    await expect(
+      env.DB.prepare(
+        "INSERT INTO mig_questions (id, prompt, options_json, category, created_at) VALUES ('M5', 'p', '[1,2]', 'test', 0)",
+      ).run(),
+    ).rejects.toThrow(/CHECK constraint failed/);
+    await env.DB.prepare('DROP TABLE mig_questions').run();
+  });
+});
+
+describe('0018 (W8-B)', () => {
+  it('stats_days: one day in progress per mode, one row per (mode, closes_at), a winner iff settled', async () => {
+    const { results } = await env.DB.prepare('SELECT name FROM d1_migrations').all<{
+      name: string;
+    }>();
+    expect(results.map((r) => r.name)).toContain('0018_stats.sql');
+    const insert = `INSERT INTO stats_days (round_id, mode, closes_at, game_day, outcome, winner,
+      started_at, done_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7)`;
+    const run = (...p: unknown[]) =>
+      env.DB.prepare(insert)
+        .bind(...p)
+        .run();
+    await run('d18-a', 'free', 100, '2026-10-01', 'settled', 0, 5);
+    await run('d18-b', 'free', 200, '2026-10-02', 'refunded', null, null);
+    expect(await rejects(insert, 'd18-c', 'free', 300, '2026-10-03', 'voided', null, null)).toMatch(
+      /UNIQUE constraint failed/,
+    );
+    expect(await rejects(insert, 'd18-c', 'free', 200, '2026-10-03', 'voided', null, 6)).toMatch(
+      /UNIQUE constraint failed/,
+    );
+    await run('d18-c', 'stakes', 300, '2026-10-03', 'voided', null, null);
+    expect(await rejects(insert, 'd18-d', 'free', 400, '2026-10-04', 'settled', null, 7)).toMatch(
+      /CHECK constraint failed/,
+    );
+    expect(await rejects(insert, 'd18-d', 'free', 400, '2026-10-04', 'refunded', 1, 7)).toMatch(
+      /CHECK constraint failed/,
+    );
+    expect(await rejects(insert, 'd18-d', 'free', 400, '2026/10/04', 'voided', null, 7)).toMatch(
+      /CHECK constraint failed/,
+    );
+  });
+
+  it('stats_wins and stats_weeks check their values; referrals.reward_week is an ISO week', async () => {
+    expect(
+      await rejects(
+        "INSERT INTO stats_wins (round_id, mode, user_id, stray_streak, best_stray_streak, entered_at) VALUES ('r', 'free', 'u', 3, 2, 1)",
+      ),
+    ).toMatch(/CHECK constraint failed/);
+    expect(
+      await rejects(
+        "INSERT INTO stats_weeks (user_id, mode, iso_week, wins, net, updated_at) VALUES ('u', 'free', '2026-41', 1, 0, 1)",
+      ),
+    ).toMatch(/CHECK constraint failed/);
+    expect(
+      await rejects(
+        "INSERT INTO referrals (referrer_user_id, referee_user_id, status, created_at, reward_week) VALUES ('a', 'b', 'pending', 1, 'W41')",
+      ),
+    ).toMatch(/CHECK constraint failed/);
+    const plan = await env.DB.prepare(
+      "EXPLAIN QUERY PLAN SELECT user_id FROM user_stats WHERE mode = 'free' ORDER BY best_stray_streak DESC, stray_streak DESC, rounds_played DESC LIMIT 10",
+    ).all<{ detail: string }>();
+    expect(plan.results.map((r) => r.detail).join('\n')).toContain('user_stats_streaks_idx');
+  });
+});
+
+describe('0019 (W8-D)', () => {
+  it('rooms.closed_at, questions.room_id, and one room round per room and slot', async () => {
+    const { results } = await env.DB.prepare('SELECT name FROM d1_migrations').all<{
+      name: string;
+    }>();
+    expect(results.map((r) => r.name)).toContain('0019_rooms.sql');
+    const col = (table: string, name: string) =>
+      env.DB.prepare(
+        `SELECT type, "notnull" AS nn, dflt_value FROM pragma_table_info('${table}') WHERE name = ?1`,
+      )
+        .bind(name)
+        .first();
+    expect(await col('rooms', 'closed_at')).toEqual({ type: 'INTEGER', nn: 0, dflt_value: null });
+    expect(await col('questions', 'room_id')).toEqual({ type: 'TEXT', nn: 0, dflt_value: null });
+    expect(
+      await rejects(
+        "INSERT INTO rooms (id, name, owner_user_id, invite_code, created_at, closed_at) VALUES ('r19', 'R', 'u', 'CODE19X', 1, -1)",
+      ),
+    ).toContain('CHECK constraint failed');
+
+    const roomIx = (await indexesOf('questions')).find((ix) => ix.name === 'questions_room_idx');
+    expect(roomIx).toMatchObject({
+      unique: false,
+      partial: true,
+      columns: ['room_id', 'created_at'],
+    });
+
+    const slot = (await indexesOf('rounds')).find((ix) => ix.name === 'rounds_room_slot');
+    expect(slot).toMatchObject({ unique: true, partial: true, columns: ['room_id', 'closes_at'] });
+    expect(slot?.sql).toContain("WHERE kind = 'room'");
+    const round = (id: string, room: string, closesAt: number) =>
+      env.DB.prepare(
+        "INSERT INTO rounds (id, kind, room_id, opens_at, closes_at, status) VALUES (?1, 'room', ?2, 1000, ?3, 'scheduled')",
+      )
+        .bind(id, room, closesAt)
+        .run();
+    await round('r19-a', 'room19', 2000);
+    await round('r19-b', 'room19b', 2000);
+    await round('r19-c', 'room19', 3000);
+    expect(
+      await rejects(
+        "INSERT INTO rounds (id, kind, room_id, opens_at, closes_at, status) VALUES ('r19-d', 'room', 'room19', 1000, 2000, 'scheduled')",
+      ),
+    ).toMatch(/UNIQUE constraint failed/);
+    await env.DB.prepare("DELETE FROM rounds WHERE id LIKE 'r19-%'").run();
+  });
+});
+
+describe('0020 (W7-F1 R18)', () => {
+  it('indexer_state.last_block_timestamp: nullable Unix seconds; a row stored before it keeps NULL', async () => {
+    const { results } = await env.DB.prepare('SELECT name FROM d1_migrations').all<{
+      name: string;
+    }>();
+    expect(results.map((r) => r.name)).toContain('0020_indexer_block_timestamp.sql');
+    const col = await env.DB.prepare(
+      "SELECT type, \"notnull\" AS nn, dflt_value FROM pragma_table_info('indexer_state') WHERE name = 'last_block_timestamp'",
+    ).first();
+    expect(col).toEqual({ type: 'INTEGER', nn: 0, dflt_value: null });
+
+    // 0020 on a copy of 0001's indexer_state holding a row: the row stays, with no timestamp.
+    const rename = (sql: string) => sql.replace(/\bindexer_state\b/g, 'mig_indexer_state');
+    const queriesOf = (name: string) => {
+      const m = env.TEST_MIGRATIONS.find((x) => x.name === name);
+      if (!m) throw new Error(`no migration ${name}`);
+      return m.queries;
+    };
+    const v1 = queriesOf('0001_init.sql').filter((q) => /CREATE TABLE indexer_state\b/.test(q));
+    expect(v1).toHaveLength(1);
+    for (const q of v1) await env.DB.prepare(rename(q)).run();
+    await env.DB.prepare(
+      "INSERT INTO mig_indexer_state (chain_id, contract, last_block_number, last_block_hash, updated_at) VALUES (1, '0xe', 7, '0xh', 9)",
+    ).run();
+    for (const q of queriesOf('0020_indexer_block_timestamp.sql')) {
+      await env.DB.prepare(rename(q)).run();
+    }
+    expect(await env.DB.prepare('SELECT * FROM mig_indexer_state').all()).toMatchObject({
+      results: [
+        {
+          chain_id: 1,
+          contract: '0xe',
+          last_block_number: 7,
+          last_block_hash: '0xh',
+          last_block_timestamp: null,
+          updated_at: 9,
+        },
+      ],
+    });
+    expect(
+      await rejects(
+        "INSERT INTO mig_indexer_state (chain_id, contract, last_block_number, last_block_hash, last_block_timestamp, updated_at) VALUES (2, '0xe', 7, '0xh', -1, 9)",
+      ),
+    ).toContain('CHECK constraint failed');
+    await env.DB.prepare('DROP TABLE mig_indexer_state').run();
   });
 });
 

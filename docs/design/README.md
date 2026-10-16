@@ -74,7 +74,9 @@ From the `Components` page. Code follows these unless a sheet says otherwise.
   the sheet's main action (claim all) (Oct 12 decision).
 - Disabled: `bg` fill, 2px dashed `muted` border, `muted` label, not focusable.
 - Focus: the foundation ring (2px ink outline, 3px offset), on focus-visible only.
-- Errors are ink, never a color: an error icon, a 600-weight message, and (on fields) a 3px border.
+- Errors are ink, never a color: an error icon and an ink message. The error box's message is Inter 500 (the label
+  role, as drawn; owner, Oct 16); a field's error message is the caption size at 600, and the field gets a 3px
+  border.
 - Controls get an ink border; read-only boxes (fixed stake, empty state, final-at chip) get a `line` border.
 - The accent appears only on: the primary CTA, the winning option card, the winning split bar and mini split, the
   UNFLOCKED result line, the live stray-streak pill (on a board, only the board's top live streak), and the smug
@@ -83,6 +85,24 @@ From the `Components` page. Code follows these unless a sheet says otherwise.
   flat, never a blur. In the JSON it's 8-digit hex (`#14141466`, `#00000099`).
 - Percentages follow the Decision log rounding: winner rounds down, loser rounds up, "<1%" and ">99%" at the ends.
   A split-bar fill never drops below 24px.
+
+## Kit conventions confirmed (W8-Z, Oct 16, 2026)
+
+W8-C found these places where the drawing and the written rules differed; the owner confirmed the drawing. Paper is
+the source of truth and the code matches it.
+
+- **Error box message:** Inter 500, not 600 (see "Component conventions").
+- **"Refunded":** the result card's "Refunded" title is drawn at 0 tracking (the result role is 0.02em).
+- **Split-bar ceiling:** the ">99%" side's fill stops at the track width − 24, mirroring the 24px floor of the
+  "<1%" side.
+- **Avatar ring at 32:** 1.5px, as the lists sheet's `avatar/32` swatch and note ("1.5px below 40"), the
+  navigation sheet's headers, the screen headers and the app draw it. The feedback sheet's offline-banner header is
+  the one 2px outlier (fix it in the next design pass).
+- **Sign-in dialog** (`core/sign-in/*`): titles Fredoka 700 22/28 (the title role is 600). The sheet is padded 12
+  (with the handle) 20 32, the 400-wide modal 32 20, with 20 between the heading, the controls and the note.
+- **"Not now":** none on the sign-in choose (browser), code and mini-app artboards. The email-address step ends in
+  "Not now" and the Farcaster wait step in "Cancel", both text buttons.
+- **Onboarding cards:** no Back button; ArrowLeft goes back a card.
 
 ## Screen conventions (Core flow)
 
@@ -154,8 +174,10 @@ is light only. Exports are at `exports/admin/<screen>__<state>__<breakpoint>.png
   - After the action, a toast gives the audit ID.
 - **Refusals** the spec names (no void after close, no config change after question lock) use the refusal notice:
   a 2px ink border, the error icon, a 600 message, and what the admin can do instead.
-- **Code-like values** (moderation JSON, hashes, `CC-RR` codes) are Inter: JSON is 13/18 with `white-space: pre` in a
-  read-only box. The design language has no monospace face.
+- **Code-like values** (moderation JSON, hashes, `CC-RR` codes): the Admin artboards draw them in Inter, JSON at
+  13/18 with `white-space: pre` in a read-only box. Since decision E8 (Oct 12) the design language has a `mono` face
+  for hashes and JSON in Admin and Verify: `font.mono` in `design-tokens.json`, `--font-mono` in Paper
+  (`ui-monospace, SFMono-Regular, Menlo, monospace`). No artboard uses it yet.
 - **Charts** (Analytics) are monochrome: ink marks, `line` gridlines and caption-role axis labels. Two series are
   told apart by line style and a direct label, never by colour, and charts never use the accent.
 - **Example data** is shared across the console: Mon, Oct 12, 2026; today's question and counts from Core flow;
@@ -195,3 +217,13 @@ is light only. Exports are at `exports/admin/<screen>__<state>__<breakpoint>.png
   (`sips -Z 300 card.png`) and look at that (W6-C).
 - `create_artboard` and `duplicate_nodes` can drop a new artboard into any free spot on the page, including another
   builder's band. Set `left`/`top` right after each one, and check positions before finishing (W6-C.2).
+- **Keep artboards whole-pixel tall.** A `fit-content` artboard whose content ends on a half pixel (1.5px borders do
+  it) is, say, 995.5 tall, and its export comes out 0.25px low with a half-transparent first row (W8-C). Give new
+  artboards a whole-pixel height (the W8-Z checkbox sheets are a fixed 462). Some older sheets are half-pixel tall
+  (their 2x exports have an odd height: option-card, stake-selector, round-status, forms-overlays, navigation, and
+  Foundations' color and type); they were left so, since their exports are screenshot baselines.
+- **Inter's optical size in exports:** Paper's exports render Inter below 16px at opsz 26 (13px) and 28 (14px), not
+  at the automatic optical size, so the app pins those values (W8-C). It may be a Chromium font-cache effect inside
+  Paper, so a future re-export could render differently; re-run the screenshot suite after re-exporting.
+- `export` takes `nodes` as a map, `{ "<nodeId>": [{ "format": "png", "scale": "2x" }] }`. If a file of the same name
+  is already in `~/Downloads`, it writes `<name>@2x (1).png` (W8-Z).

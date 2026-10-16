@@ -1,0 +1,28 @@
+.box {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  padding: 14px var(--spacing-4);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  border: var(--border-strong) solid var(--color-ink);
+  border-radius: var(--radius-card);
+}
+
+.icon {
+  flex-shrink: 0;
+}
+
+.message {
+  flex: 1 1 0%;
+}
+
+/* "Retry" is a text button: the label role at 600, no box of its own. */
+.retry {
+  flex-shrink: 0;
+  padding: 0;
+  font-weight: 600;
+  color: var(--color-ink);
+  background: none;
+  border: 0;
+}

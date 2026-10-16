@@ -16,6 +16,7 @@
     "wrangler": "4.148.0"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "0.135.0",
     "@flocked/abi": "workspace:*",
     "@flocked/settle": "workspace:*",
     "@flocked/shared": "workspace:*",

@@ -73,3 +73,10 @@
 - **W14-D:**
   - e2e run time: `pnpm e2e` takes about 23 minutes locally (W7-D), since each Stakes round waits for its beacon and the safe head. If CI time matters, run the warp specs' rounds concurrently;
   - real WebSocket hibernation (eviction and wake) under load: the Workers test runtime doesn't exercise it (W7-A). Check it in the staging load test.
+
+## Carry-over from W8-Z (Oct 16, 2026)
+
+- **W14-A:** W7-F1 R8 on a fresh deployment: with no indexer position, `indexedThroughSec` is null, so every unused ticket blocks account deletion until the indexer has a stamped position.
+- **W14-B:**
+  - the header shows "Sign in" while `/me` loads;
+  - the web's main chunk is 581 KB (179 KB gzip: wagmi, viem, React, the router, the schemas): lazy-load the wallets.

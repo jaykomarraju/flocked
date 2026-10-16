@@ -114,3 +114,18 @@
   - a refund state restored after the SettlementDO is `done` has no driver (W7-Z review);
   - a reorg that drops a mined operator transaction (`propose`, `finalize`, …): its purpose keeps answering from its `mined` row and is never sent again (W6-F1 open issue). W6-F1 R1 and W7-F1 R14 only free the nonce; today the removal's alert is the only signal.
 - **W13-C:** WebSocket upgrade abuse limits (W7-A): there is no per-IP limit on upgrades and no cap on sockets per shard yet. Cloudflare allows about 32k sockets per object; 50k viewers over 16 shards is about 3.1k each. Claimed foreign entries are already listed above (W6-Z).
+
+## Carry-over from W8-Z (Oct 16, 2026)
+
+- **W13-A:**
+  - `question_used` is sent at most once: it goes out after the lock commits, so a crash in between loses it;
+  - log prompt-cache usage (`usage.cache_read_input_tokens`; usage isn't logged yet) and check the cache hits in staging;
+  - a veto re-mined within one poll raises a noisy `stakes_veto_unexpected` when it is re-added (W7-F1);
+  - later items, for W13-A or the first session that touches them: rebase the question score's epoch before about 2035; consider an index on `rounds.question_id` (`GET /questions?status=used` scans for it).
+- **W13-B:**
+  - a reorged-out Stakes `RoundFinalized` or `RoundRefunded` (W6-F1 R3's undo) doesn't undo applied stats or referral points; re-derive the mode's day;
+  - voided modes never call `runModeFinal`, so a voided day is applied when a later day's hook runs (`lifecycle/void.ts`);
+  - the `RoundRefunded` handler still calls the RoundDO before its D1 commit (W7-F1 R6's pattern applies);
+  - a reorged-out Stakes proposal reaches connected viewers only when they reconnect;
+  - measure the hourly room-round insert (it pages through every open room) and the scheduler tick under load.
+- **W13-C:** W7-F1 R12's timing: the personhood callback refuses a suspended account only after the Coinbase token exchange; refusing before it needs a change in `personhood/flow.ts`.

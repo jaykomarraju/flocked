@@ -21,6 +21,7 @@ import {
 } from '@flocked/tlock';
 import { bytesToHex, type Hex, type TransactionReceipt } from 'viem';
 import type { Clock } from './clock';
+import type { HttpResult } from './http';
 import { poll, type Stack } from './stack';
 import { TURNSTILE_TOKEN, auth, type User } from './user';
 import { fundStake, mined } from './wallet';
@@ -47,7 +48,8 @@ export interface Scheduled {
  * A daily-shaped round, unlocked, through `POST /__test/rounds/scheduled`: it opens `opensInMs`
  * from now (whole seconds), stays open `openForMs`, and its beacon is `beaconDelay` s after close.
  * The scheduler's next tick (the cron driver, every 5 s) locks it: Free's lock leaf onchain and the
- * Stakes `createRound`, which must confirm before opensAt.
+ * Stakes `createRound`, which must confirm before opensAt. `roomId` makes it a room round of that
+ * room (W8-D), its question the room's own, so a custom room's round locks with it.
  */
 export async function scheduleRound(
   stack: Stack,
@@ -58,6 +60,7 @@ export async function scheduleRound(
     free?: boolean;
     stakes?: StakesOptions;
     prompt?: string;
+    roomId?: string;
   } = {},
 ): Promise<Scheduled> {
   const opensAt = Math.ceil(Date.now() / 1000) * 1000 + (opts.opensInMs ?? 25_000);
@@ -69,6 +72,7 @@ export async function scheduleRound(
     ...(opts.free === false ? { free: false } : {}),
     ...(opts.stakes ? { stakes: opts.stakes } : {}),
     ...(opts.prompt ? { prompt: opts.prompt } : {}),
+    ...(opts.roomId ? { roomId: opts.roomId } : {}),
   });
   if (res.status !== 201)
     throw new Error(`schedule a round: ${res.status} ${JSON.stringify(res.body)}`);
@@ -128,9 +132,27 @@ export async function seal(
 }
 
 /**
- * A Free entry: `POST /rounds/:id/entries` with a sealed pick. Retried if `wrangler dev` drops it
- * (an entry is one per user and mode); a retry that finds the first attempt landed reads the entry
- * back from `/rounds/:id/me`.
+ * `POST /rounds/:id/entries` with a sealed pick, answered as it is (a refusal included). Retried if
+ * `wrangler dev` drops it: an entry is one per user and mode.
+ */
+export async function postFreeEntry(
+  stack: Stack,
+  user: User,
+  round: RoundView,
+  pick: Pick,
+  stake = 10n,
+): Promise<HttpResult> {
+  const ct = await seal(stack, roundRefFromUlid(round.id), round.beaconRound, pick);
+  return stack.api(`/rounds/${round.id}/entries`, {
+    ...auth(user),
+    idempotent: true,
+    body: { stake: String(stake), ciphertext: toBase64Url(ct), turnstileToken: TURNSTILE_TOKEN },
+  });
+}
+
+/**
+ * A Free entry (`postFreeEntry`); a retry that finds the first attempt landed reads the entry back
+ * from `/rounds/:id/me`.
  */
 export async function enterFree(
   stack: Stack,
@@ -139,12 +161,7 @@ export async function enterFree(
   pick: Pick,
   stake = 10n,
 ): Promise<CreateEntryResponse | RoundMeResponse> {
-  const ct = await seal(stack, roundRefFromUlid(round.id), round.beaconRound, pick);
-  const res = await stack.api(`/rounds/${round.id}/entries`, {
-    ...auth(user),
-    idempotent: true,
-    body: { stake: String(stake), ciphertext: toBase64Url(ct), turnstileToken: TURNSTILE_TOKEN },
-  });
+  const res = await postFreeEntry(stack, user, round, pick, stake);
   if (res.status === 201) return CreateEntryResponseSchema.parse(res.body);
   const code = (res.body as { error?: { code?: string } } | null)?.error?.code;
   if (res.attempts > 1 && code === 'already_entered') return myRound(stack, round.id, user);

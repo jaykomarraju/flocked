@@ -1,0 +1,59 @@
+/* Drawn in place (design sheets): the scrim keeps the fixed modal's 16px inset. */
+.inlineScrim {
+  padding: var(--spacing-4);
+}
+
+/* "1 of 3" and the close button. */
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Paper: the sheep in a 120 × 105 frame. */
+.sheep {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 120px;
+  height: 105px;
+}
+
+.text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+/* Fredoka 700 28/32, untracked (the result role's size and weight). */
+.title {
+  font-family: var(--font-display);
+  font-size: var(--text-result);
+  font-weight: 700;
+  line-height: 32px;
+}
+
+/* The pager: an 8px line dot per card, the current one an ink pill 20 wide. */
+.pager {
+  display: flex;
+  gap: 6px;
+}
+
+.dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--color-line);
+}
+
+.dot[data-current] {
+  width: 20px;
+  background: var(--color-ink);
+}
+
+.cta {
+  flex-shrink: 0;
+  width: 100%;
+}

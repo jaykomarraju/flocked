@@ -78,9 +78,11 @@ describe('accepting a Free entry', () => {
     });
     expect(await recoverReceiptSigner(res.receipt)).toBe(signer);
 
-    expect(await balance(u, scope)).toBe(475);
+    // The room grant (+100 below 1,000; W8-D) comes first, then the stake.
+    expect(await balance(u, scope)).toBe(575);
     expect(await ledgerRows(u)).toEqual([
       { reason: 'admin', delta: 500 },
+      { reason: 'room_grant', delta: 100 },
       { reason: 'stake', delta: -25 },
     ]);
     const row = await env.DB.prepare(
@@ -132,7 +134,7 @@ describe('DO-1: entry after close rejected; duplicate entry rejected', () => {
     okValue(await enter(r, u, '25'));
     expect(errCode(await enter(r, u, '25'))).toBe('already_entered');
     expect(errCode(await enter(r, u, '50'))).toBe('already_entered');
-    expect(await balance(u, scope)).toBe(475);
+    expect(await balance(u, scope)).toBe(575); // 500 + the room grant − 25, once
     expect(await entryCount(r.locked.roundId)).toBe(1);
   });
 
@@ -144,7 +146,7 @@ describe('DO-1: entry after close rejected; duplicate entry rejected', () => {
     const first = okValue(await enter(r, u, '25', ct));
     const again = okValue(await enter(r, u, '25', ct));
     expect(again).toEqual(first);
-    expect(await balance(u, scope)).toBe(475);
+    expect(await balance(u, scope)).toBe(575); // 500 + the room grant − 25, once
   });
 
   it('serializes concurrent requests from one user: one entry, one debit', async () => {
@@ -155,22 +157,23 @@ describe('DO-1: entry after close rejected; duplicate entry rejected', () => {
     const results = await Promise.all([enter(r, u, '25', ct), enter(r, u, '25', ct)]);
     expect(results.map((x) => x.ok)).toEqual([true, true]);
     expect(okValue(results[0] as never)).toEqual(okValue(results[1] as never));
-    expect(await balance(u, scope)).toBe(475);
+    expect(await balance(u, scope)).toBe(575); // 500 + the room grant − 25, once
     expect(await entryCount(r.locked.roundId)).toBe(1);
   });
 
   it('a retried stake that already committed (reply lost) gets its receipt, not insufficient_balance', async () => {
-    const r = await openRound();
+    // The stake takes the whole balance, the room grant included (50 + 100).
+    const r = await openRound({ free: { stakeMax: '150' } });
     const scope = r.locked.roomId as string;
     const u = await createUser(50, scope);
     const ct = await sealedPick(r.locked);
-    const first = okValue(await enter(r, u, '50', ct));
+    const first = okValue(await enter(r, u, '150', ct));
     // Simulate a DO that committed to D1 but lost the reply and its leaf.
     await runInDurableObject(r.stub, (_i, state) => {
       state.storage.sql.exec('DELETE FROM leaves');
     });
     // The retry's debit now fails the balance CHECK before the entry's unique key.
-    const retry = okValue(await enter(r, u, '50', ct));
+    const retry = okValue(await enter(r, u, '150', ct));
     expect(retry).toEqual(first);
     expect(await balance(u, scope)).toBe(0);
     expect(await entryCount(r.locked.roundId)).toBe(1);
@@ -197,34 +200,41 @@ describe('DO-1: entry after close rejected; duplicate entry rejected', () => {
 
 describe('DO-2: missing or insufficient balance rejected atomically; non-member room entry rejected', () => {
   it('insufficient balance leaves no entry, no ledger row and no seq gap', async () => {
-    const r = await openRound();
+    // A stake above the balance with the room grant (20 + 100), so a wider range than the default.
+    const r = await openRound({ free: { stakeMax: '500' } });
     const scope = r.locked.roomId as string;
     const a = await createUser(100, scope);
     const poor = await createUser(20, scope);
     const b = await createUser(100, scope);
     expect(okValue(await enter(r, a, '25')).receipt.seq).toBe(0);
-    expect(errCode(await enter(r, poor, '25'))).toBe('insufficient_balance');
-    expect(await balance(poor, scope)).toBe(20);
-    expect(await ledgerRows(poor)).toEqual([{ reason: 'admin', delta: 20 }]);
+    expect(errCode(await enter(r, poor, '125'))).toBe('insufficient_balance');
+    // The grant (its own batch, before the stake) stands; the stake left no row.
+    expect(await balance(poor, scope)).toBe(120);
+    expect(await ledgerRows(poor)).toEqual([
+      { reason: 'admin', delta: 20 },
+      { reason: 'room_grant', delta: 100 },
+    ]);
     expect(okValue(await enter(r, b, '25')).receipt.seq).toBe(1);
     expect(await seqs(r.locked.roundId)).toEqual([0, 1]);
     expect((await r.stub.getState()).modes.free).toMatchObject({ entrantCount: 2, pool: '50' });
   });
 
   it('a member with no balance row in the room is rejected the same way', async () => {
-    const r = await openRound();
+    // The room grant creates the row with 100, which the stake exceeds.
+    const r = await openRound({ free: { stakeMax: '500' } });
     const scope = r.locked.roomId as string;
     const u = await createUser(null, scope);
-    expect(errCode(await enter(r, u, '10'))).toBe('insufficient_balance');
+    expect(errCode(await enter(r, u, '150'))).toBe('insufficient_balance');
     expect(await entryCount(r.locked.roundId)).toBe(0);
-    expect(await ledgerRows(u)).toEqual([]);
+    expect(await ledgerRows(u)).toEqual([{ reason: 'room_grant', delta: 100 }]);
   });
 
   it('rejects a room entry from a non-member, even with points in that scope', async () => {
     const r = await openRound();
     const scope = r.locked.roomId as string;
     const outsider = await createUser(500, scope, { member: false });
-    expect(errCode(await enter(r, outsider, '25'))).toBe('not_member');
+    // The unknown round's answer, never `not_member` (Reveal gating; W7-F1).
+    expect(errCode(await enter(r, outsider, '25'))).toBe('not_found');
     expect(await balance(outsider, scope)).toBe(500);
     expect(await entryCount(r.locked.roundId)).toBe(0);
   });
@@ -388,12 +398,13 @@ describe('daily grant on first entry (daily rounds)', () => {
     expect((await ledgerRows(u)).map((x) => x.reason)).toEqual(['admin', 'stake']);
   });
 
-  it('room rounds do not pay the daily grant', async () => {
+  it('room rounds do not pay the daily grant (they pay the room grant, in the room scope)', async () => {
     const r = await openRound();
     const scope = r.locked.roomId as string;
     const u = await createUser(500, scope);
     okValue(await enter(r, u, '25'));
-    expect((await ledgerRows(u)).map((x) => x.reason)).toEqual(['admin', 'stake']);
+    expect((await ledgerRows(u)).map((x) => x.reason)).toEqual(['admin', 'room_grant', 'stake']);
+    expect(await balance(u)).toBeNull();
   });
 });
 
@@ -417,9 +428,10 @@ describe('the D1 seal', () => {
       (e: unknown) => e,
     );
     expect(isRoundSealedError(err)).toBe(true);
-    // And the DO refuses with round_closed rather than an internal error.
-    const u = await createUser(500, r.locked.roomId as string);
+    // And the DO refuses with round_closed rather than an internal error. (At 1,000 the room grant
+    // is skipped, so the balance shows the stake alone.)
+    const u = await createUser(1000, r.locked.roomId as string);
     expect(errCode(await enter(r, u, '25'))).toBe('round_closed');
-    expect(await balance(u, r.locked.roomId as string)).toBe(500);
+    expect(await balance(u, r.locked.roomId as string)).toBe(1000);
   });
 });

@@ -11,6 +11,7 @@ import { mergedCapState } from '../../src/identity/merge.js';
 import { applyVerification } from '../../src/personhood/verify.js';
 import { seedFixture } from '../helpers/index.js';
 import { call, errorCode } from '../auth/fixtures.js';
+import { raceBefore } from './race.js';
 import {
   DAY,
   account,
@@ -94,14 +95,14 @@ describe('POST /me/merges/:id/confirm: the transfer', () => {
       env.DB.prepare(
         "INSERT INTO identities (id, user_id, provider, external_id, verified_at) VALUES (?1, ?2, 'coinbase', ?3, 7)",
       ).bind(newUlid(now), losing.id, personId),
-      // L: cap 50 USDC. K: the default cap, with a raise to 200 USDC waiting 10 more hours.
-      env.DB.prepare('INSERT INTO limits (user_id, daily_stake_cap) VALUES (?1, ?2)').bind(
-        losing.id,
-        50 * USDC,
-      ),
+      // L: cap 50 USDC, with a raise to 200 USDC waiting 10 more hours. K: the default cap, with a
+      // raise to 300 USDC waiting 5 more hours.
+      env.DB.prepare(
+        'INSERT INTO limits (user_id, daily_stake_cap, pending_cap, pending_cap_effective_at) VALUES (?1, ?2, ?3, ?4)',
+      ).bind(losing.id, 50 * USDC, 200 * USDC, now + 10 * 3600_000),
       env.DB.prepare(
         'INSERT INTO limits (user_id, pending_cap, pending_cap_effective_at) VALUES (?1, ?2, ?3)',
-      ).bind(kept.id, 200 * USDC, now + 10 * 3600_000),
+      ).bind(kept.id, 300 * USDC, now + 5 * 3600_000),
     ]);
     const owned = await room(losing.id, [[losing.id, 'owner', 40]]);
     const both = await room(kept.id, [
@@ -172,7 +173,8 @@ describe('POST /me/merges/:id/confirm: the transfer', () => {
     expect(
       await env.DB.prepare('SELECT owner_user_id FROM rooms WHERE id = ?1').bind(owned).first(),
     ).toEqual({ owner_user_id: kept.id });
-    // The lower cap (50) and the pending raise with its original timer.
+    // The lower cap (50, L's) and L's pending raise with its original timer; K's raise is dropped
+    // (only the side whose cap is in force keeps its raise: owner decision B3b, Oct 12).
     expect(
       await env.DB.prepare(
         'SELECT daily_stake_cap, pending_cap, pending_cap_effective_at FROM limits WHERE user_id = ?1',
@@ -372,6 +374,72 @@ describe('POST /me/merges/:id/confirm: refusals', () => {
   });
 });
 
+// W7-F1: no chained merges (R10), and a confirmation that races a change the guards must see
+// rolls back (R9, R10). The race seam runs the change after every read, just before the batch.
+describe('POST /me/merges/:id/confirm: W7-F1 races and chained merges', () => {
+  const confirmedInto = (keptId: string, losingId: string, at: number) =>
+    env.DB.prepare(
+      "INSERT INTO merges (id, kept_user_id, losing_user_id, identity_id, status, expires_at, created_at, confirmed_at) VALUES (?1, ?2, ?3, 'x', 'confirmed', ?4, ?4, ?4)",
+    )
+      .bind(newUlid(at), keptId, losingId, at)
+      .run();
+
+  it('R10: refused while the account to be merged away received a merge in the last 30 days', async () => {
+    const t = await identityEnv();
+    const { kept, losing, merge } = await pair(t);
+    const earlier = await account(t);
+    await confirmedInto(losing.id, earlier.id, Date.now() - 29 * DAY);
+    expect(await blocked(t, losing, merge.id, await walletProof(t.env, kept.wallet))).toMatch(
+      /merged away received a merge in the last 30 days/,
+    );
+    // A transient refusal: the merge stays pending.
+    expect((await mergeRow(merge.id))?.status).toBe('pending');
+    await env.DB.prepare("DELETE FROM merges WHERE kept_user_id = ?1 AND status = 'confirmed'")
+      .bind(losing.id)
+      .run();
+    await confirmedInto(losing.id, earlier.id, Date.now() - 31 * DAY);
+    expect((await confirm(t, losing, merge.id, await walletProof(t.env, kept.wallet))).status).toBe(
+      200,
+    );
+  });
+
+  it('R10: a merge into the losing account confirmed meanwhile rolls the confirmation back', async () => {
+    const t = await identityEnv();
+    const { kept, losing, merge } = await pair(t);
+    const other = await account(t);
+    const proof = await walletProof(t.env, kept.wallet);
+    const race = raceBefore(t.env, { batchOf: 10 }, () =>
+      confirmedInto(losing.id, other.id, Date.now()),
+    );
+    const res = await confirm(t, losing, merge.id, proof);
+    race.restore();
+    expect(race.fired()).toBe(true);
+    expect([res.status, await errorCode(res)]).toEqual([409, 'conflict']);
+    expect((await mergeRow(merge.id))?.status).toBe('pending');
+    expect((await userRow(losing.id))?.status).toBe('active');
+  });
+
+  it('R9: a person ID bound to either account meanwhile rolls the confirmation back', async () => {
+    for (const side of ['losing', 'kept'] as const) {
+      const t = await identityEnv();
+      const p = await pair(t);
+      const personId = `0x${(side === 'losing' ? '6a' : '6b').repeat(32)}`;
+      const proof = await walletProof(t.env, p.kept.wallet);
+      const race = raceBefore(t.env, { batchOf: 10 }, () =>
+        env.DB.prepare("UPDATE users SET person_id = ?2, kyc_status = 'verified' WHERE id = ?1")
+          .bind(p[side].id, personId)
+          .run(),
+      );
+      const res = await confirm(t, p.losing, p.merge.id, proof);
+      race.restore();
+      expect(race.fired()).toBe(true);
+      expect([side, res.status, await errorCode(res)]).toEqual([side, 409, 'conflict']);
+      expect(await userRow(p.losing.id)).toMatchObject({ status: 'active', merged_into: null });
+      expect((await mergeRow(p.merge.id))?.status).toBe('pending');
+    }
+  });
+});
+
 // W5-Z carry-over: the personhood callback creates pending merges (never merges); they are
 // confirmed like any other.
 describe('a pending merge from the personhood callback', () => {
@@ -434,18 +502,49 @@ describe('mergedCapState', () => {
     // A raise past its 24 hours is the cap in force.
     expect(mergedCapState(row(10, 80, t - 1), row(60), t).daily_stake_cap).toBe(60);
   });
-  it('keeps a waiting raise above the new cap with its own timer; the lower amount wins', () => {
+  it('keeps only the waiting raise of the side whose cap is in force, with its own timer (B3b)', () => {
     expect(mergedCapState(row(10, 80, t + 5), row(20, 90, t + 9), t)).toMatchObject({
       daily_stake_cap: 10,
       pending_cap: 80,
       pending_cap_effective_at: t + 5,
     });
-    // A raise no higher than the merged cap is dropped.
     expect(mergedCapState(row(50, 60, t + 5), row(70), t)).toMatchObject({ pending_cap: 60 });
-    expect(mergedCapState(row(5), row(50, 40, t + 5), t)).toMatchObject({
+    // The other side's raise is dropped, even when the side in force has none.
+    expect(mergedCapState(row(5), row(50, 80, t + 5), t)).toEqual({
       daily_stake_cap: 5,
-      pending_cap: 40,
+      pending_cap: null,
+      pending_cap_effective_at: null,
+      question_block_until: null,
     });
+    expect(mergedCapState(row(20, 90, t + 9), row(10, 30, t + 5), t)).toMatchObject({
+      daily_stake_cap: 10,
+      pending_cap: 30,
+      pending_cap_effective_at: t + 5,
+    });
+    // A raise past its 24 hours is that side's cap in force.
+    expect(mergedCapState(row(10, 80, t - 1), row(60, 90, t + 5), t)).toMatchObject({
+      daily_stake_cap: 60,
+      pending_cap: 90,
+      pending_cap_effective_at: t + 5,
+    });
+    // A raise no higher than the merged cap is dropped.
     expect(mergedCapState(row(50), row(50, 40, t + 5), t)).toMatchObject({ pending_cap: null });
+  });
+  it('equal caps: the lower waiting raise with its own timer; on a tie the later timer', () => {
+    expect(mergedCapState(row(20, 80, t + 5), row(20, 60, t + 9), t)).toMatchObject({
+      daily_stake_cap: 20,
+      pending_cap: 60,
+      pending_cap_effective_at: t + 9,
+    });
+    expect(mergedCapState(row(20, 60, t + 9), row(20, 60, t + 5), t)).toMatchObject({
+      pending_cap: 60,
+      pending_cap_effective_at: t + 9,
+    });
+    // Both at the default cap (none set): either raise may survive.
+    expect(mergedCapState(null, row(null, 150 * USDC, t + 5), t)).toMatchObject({
+      daily_stake_cap: 100 * USDC,
+      pending_cap: 150 * USDC,
+      pending_cap_effective_at: t + 5,
+    });
   });
 });

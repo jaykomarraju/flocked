@@ -103,6 +103,65 @@ export function applyDailyGrant(
   return applyMovement(db, dailyGrantMovement(db, i));
 }
 
+// The room-round grant (spec "Profiles, leaderboards and rooms" › Room points; owner decision Oct 9,
+// 2026, W3-Z carry-over): +100 room points per room round, on the member's first visit or entry after
+// the round opens, if the room balance is below 1,000; ledger reason `room_grant`, scope = the room
+// ID, ref = the room round's ID. A skip is final for that round and recorded in `daily_grant_skips`,
+// keyed by the room round. The daily grant's anti-farming rule doesn't apply (room points pay
+// nothing outside the room). The join grant (500, ref = the room ID) is `grantMovement`'s.
+// ?1 user, ?2 room (scope), ?3 room round, ?4 now, ?5 threshold, ?6 ledger ID, ?7 amount.
+const ROOM_RECORD_SKIP =
+  'INSERT INTO daily_grant_skips (user_id, round_id, balance, skipped_at) ' +
+  'SELECT ?1, ?3, b.balance, ?4 FROM point_balances b ' +
+  'WHERE b.user_id = ?1 AND b.scope = ?2 AND b.balance >= ?5 ' +
+  "AND NOT EXISTS (SELECT 1 FROM points_ledger WHERE user_id = ?1 AND scope = ?2 AND reason = 'room_grant' AND ref_id = ?3) " +
+  'ON CONFLICT DO NOTHING';
+const ROOM_INSERT_LEDGER =
+  'INSERT INTO points_ledger (id, user_id, scope, delta, reason, ref_id, created_at) ' +
+  "SELECT ?6, ?1, ?2, ?7, 'room_grant', ?3, ?4 " +
+  'WHERE (SELECT balance FROM point_balances WHERE user_id = ?1 AND scope = ?2) < ?5 ' +
+  'AND NOT EXISTS (SELECT 1 FROM daily_grant_skips WHERE user_id = ?1 AND round_id = ?3)';
+
+/** The batch for one room-round grant decision (see above). */
+export function roomGrantMovement(
+  db: D1Database,
+  i: { userId: string; roomId: string; roundId: string; now: number; ledgerId?: string },
+): PointsMovement {
+  const id = i.ledgerId ?? newUlid(i.now);
+  const args = [
+    i.userId,
+    i.roomId,
+    i.roundId,
+    i.now,
+    POINTS.roundGrantBelow,
+    id,
+    POINTS.roundGrant,
+  ];
+  const bind = (sql: string, n: number) => db.prepare(sql).bind(...args.slice(0, n));
+  return {
+    statements: [
+      db.prepare(ENSURE_BALANCE_ROW).bind(i.userId, i.roomId, i.now),
+      bind(ROOM_RECORD_SKIP, 5),
+      bind(ROOM_INSERT_LEDGER, 7),
+      bind(CREDIT_IF_LEDGER_ROW, 7),
+    ],
+    ledgerIndexes: [2],
+    ledgerIds: [id],
+  };
+}
+
+/**
+ * Grants or skips the room grant for (member, room round): `applied` = credited now; `skipped` = the
+ * room balance is ≥ 1,000 now or was earlier for this round; `duplicate` = credited before. The
+ * caller checks membership and that the round is open.
+ */
+export function applyRoomGrant(
+  db: D1Database,
+  i: { userId: string; roomId: string; roundId: string; now: number },
+): Promise<MovementOutcome> {
+  return applyMovement(db, roomGrantMovement(db, i));
+}
+
 /** True when the user passes the anti-farming rule now (D1 facts only; see the header). */
 export async function dailyGrantEligible(
   db: D1Database,

@@ -8,6 +8,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { personIdFor } from '../../src/personhood/coinbase.js';
 import { MERGE_PENDING_TTL_MS, applyVerification } from '../../src/personhood/verify.js';
 import { realSession, seedFixture } from '../helpers/index.js';
+import { raceBefore, setStatus } from '../identity/race.js';
 import { call } from '../auth/fixtures.js';
 import {
   TEST_PERSON_ID_KEY,
@@ -228,6 +229,39 @@ describe('person ID', () => {
   });
 });
 
+// W7-F1 R9: the bind applies only to an active account, so one racing a suspension or DELETE /me
+// changes nothing. The race seam changes the account after every read, just before the bind batch.
+describe('the bind races a suspension or a deletion', () => {
+  it('nothing is bound to an account suspended or deleted since the read', async () => {
+    for (const [status, reason] of [
+      ['suspended', 'account_suspended'],
+      ['deleted', 'account_unavailable'],
+    ] as const) {
+      const t = personhoodEnv();
+      const a = await account(t);
+      const personId = `0x${(status === 'suspended' ? '9a' : '9d').repeat(32)}`;
+      const race = raceBefore(t.env, { batchOf: 3 }, () => setStatus(a.id, status));
+      const out = await applyVerification(
+        t.env,
+        a.id,
+        personId,
+        { country: 'US', region: 'NJ' },
+        Date.now(),
+      );
+      race.restore();
+      expect(race.fired()).toBe(true);
+      expect(out).toEqual({ status: 'failed', reason });
+      expect(await personIdOf(a.id)).toBeNull();
+      const identities = await env.DB.prepare(
+        "SELECT COUNT(*) AS n FROM identities WHERE user_id = ?1 AND provider = 'coinbase'",
+      )
+        .bind(a.id)
+        .first<{ n: number }>();
+      expect(identities?.n).toBe(0);
+    }
+  });
+});
+
 describe('person tombstone', () => {
   it('a new account of a deleted person inherits the daily cap state, and the tombstone is consumed', async () => {
     const t = personhoodEnv();
@@ -311,6 +345,52 @@ describe('person tombstone', () => {
       pending_cap: 500_000_000,
       pending_cap_effective_at: effectiveAt,
     });
+  });
+
+  it('W7-F1 R2: only a pending increase from the side whose cap is in force survives (B3b)', async () => {
+    const t = personhoodEnv();
+    const at = Date.now() + 3_600_000;
+    type Cap = [number | null, number | null, number | null];
+    const limitsAfter = async (n: number, tombstone: Cap, own: Cap) => {
+      const p = person(n);
+      await env.DB.prepare(
+        'INSERT INTO person_tombstones (person_id, daily_stake_cap, pending_cap, pending_cap_effective_at, created_at) VALUES (?1, ?2, ?3, ?4, ?5)',
+      )
+        .bind(await personIdFor(t.env, p.id), ...tombstone, Date.now())
+        .run();
+      const a = await account(t);
+      await env.DB.prepare(
+        'INSERT INTO limits (user_id, daily_stake_cap, pending_cap, pending_cap_effective_at) VALUES (?1, ?2, ?3, ?4)',
+      )
+        .bind(a.id, ...own)
+        .run();
+      expect((await verifyAs(t, a.headers, p)).status).toBe('verified');
+      return env.DB.prepare(
+        'SELECT daily_stake_cap, pending_cap, pending_cap_effective_at FROM limits WHERE user_id = ?1',
+      )
+        .bind(a.id)
+        .first();
+    };
+    const state = (cap: number, pending: number | null, effectiveAt: number | null) => ({
+      daily_stake_cap: cap,
+      pending_cap: pending,
+      pending_cap_effective_at: effectiveAt,
+    });
+    // The tombstone's 20 is in force: the account's own raise (30 → 40) is dropped.
+    expect(await limitsAfter(120, [20e6, null, null], [30e6, 40e6, at])).toEqual(
+      state(20e6, null, null),
+    );
+    // The account's 10 is in force: its raise survives, the tombstone's is dropped.
+    expect(await limitsAfter(121, [20e6, 500e6, at], [10e6, 15e6, at + 5])).toEqual(
+      state(10e6, 15e6, at + 5),
+    );
+    // Equal caps: the lower raise with its own timer; on a tie, the later timer.
+    expect(await limitsAfter(122, [20e6, 40e6, at + 9], [20e6, 60e6, at])).toEqual(
+      state(20e6, 40e6, at + 9),
+    );
+    expect(await limitsAfter(123, [20e6, 40e6, at], [20e6, 40e6, at + 9])).toEqual(
+      state(20e6, 40e6, at + 9),
+    );
   });
 
   it('no tombstone: no limits row is created', async () => {
