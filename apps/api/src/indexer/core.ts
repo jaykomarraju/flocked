@@ -7,8 +7,9 @@
 // blocks back that is still canonical, or to the deploy block when none is. Then scan forward in
 // chunks the provider accepts, applying each chunk as it arrives: one D1 batch writes the chunk's
 // diff against chain_events (a stored log the scan no longer has becomes removed = 1; a new, returning
-// or changed log is upserted; an unchanged one is left alone) together with indexer_state and a
-// checkpoint at the chunk's end, so a crash keeps every chunk already applied and nothing past it.
+// or changed log is upserted; an unchanged one is left alone) together with indexer_state (the
+// chunk's end block: number, hash and timestamp, W7-F1 R18) and a checkpoint there, so a crash keeps
+// every chunk already applied and nothing past it.
 //
 // Consistency: a chunk's end hash is read before its logs, and every block that has a log is read
 // and must match the log's blockHash (a provider behind a load balancer can serve logs from a stale
@@ -58,6 +59,8 @@ export class ReorgDuringScanError extends Error {
 export interface IndexState {
   lastBlockNumber: number;
   lastBlockHash: Hex;
+  /** Unix seconds; null for a position stored before migration 0020 (R18). */
+  lastBlockTimestamp: number | null;
   updatedAt: number;
 }
 
@@ -114,14 +117,21 @@ export async function readIndexState(
 ): Promise<IndexState | null> {
   const row = await db
     .prepare(
-      'SELECT last_block_number, last_block_hash, updated_at FROM indexer_state WHERE chain_id = ?1 AND contract = ?2',
+      `SELECT last_block_number, last_block_hash, last_block_timestamp, updated_at FROM indexer_state
+       WHERE chain_id = ?1 AND contract = ?2`,
     )
     .bind(chainId, contract)
-    .first<{ last_block_number: number; last_block_hash: string; updated_at: number }>();
+    .first<{
+      last_block_number: number;
+      last_block_hash: string;
+      last_block_timestamp: number | null;
+      updated_at: number;
+    }>();
   return row
     ? {
         lastBlockNumber: row.last_block_number,
         lastBlockHash: row.last_block_hash as Hex,
+        lastBlockTimestamp: row.last_block_timestamp,
         updatedAt: row.updated_at,
       }
     : null;
@@ -515,7 +525,7 @@ async function scanChunk(
     );
   }
   stmts.push(
-    db.prepare(UPSERT_STATE).bind(chainId, t.address, end.number, end.hash, nowMs),
+    db.prepare(UPSERT_STATE).bind(chainId, t.address, end.number, end.hash, end.timestamp, nowMs),
     db.prepare(UPSERT_CHECKPOINT).bind(chainId, t.address, end.number, end.hash, nowMs),
     db.prepare(PRUNE_CHECKPOINTS).bind(chainId, t.address, end.number),
   );
@@ -557,10 +567,14 @@ const MARK_REMOVED = `UPDATE chain_events SET removed = 1, revision = revision +
   dispatch_alerted_at = NULL, updated_at = ?4
 WHERE chain_id = ?1 AND tx_hash = ?2 AND log_index = ?3 AND removed = 0`;
 
-const UPSERT_STATE = `INSERT INTO indexer_state (chain_id, contract, last_block_number, last_block_hash, updated_at)
-VALUES (?1, ?2, ?3, ?4, ?5)
+// R18: the position's block timestamp moves with its number and hash (the end block is already read
+// for its hash, so it costs no RPC call).
+const UPSERT_STATE = `INSERT INTO indexer_state
+  (chain_id, contract, last_block_number, last_block_hash, last_block_timestamp, updated_at)
+VALUES (?1, ?2, ?3, ?4, ?5, ?6)
 ON CONFLICT (chain_id, contract) DO UPDATE SET last_block_number = excluded.last_block_number,
-  last_block_hash = excluded.last_block_hash, updated_at = excluded.updated_at`;
+  last_block_hash = excluded.last_block_hash, last_block_timestamp = excluded.last_block_timestamp,
+  updated_at = excluded.updated_at`;
 
 const UPSERT_CHECKPOINT = `INSERT INTO indexer_checkpoints (chain_id, contract, block_number, block_hash, created_at)
 VALUES (?1, ?2, ?3, ?4, ?5)
