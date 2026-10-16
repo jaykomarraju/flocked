@@ -9,7 +9,8 @@
 // lost; the profile is anonymized (handle, display name, avatar, prefs, and the verification data)
 // and `status = deleted`; every account merged into it is anonymized too (a guard rolls the batch
 // back if that set changed since our read; W7-F1 R7); identities, sessions, notification prefs and
-// push subscriptions are removed; pending merges expire; an `audit_log` row records it. Ledger,
+// push subscriptions are removed; pending merges expire; the rooms the user owns pass to the oldest
+// remaining member or close (src/rooms/handover.ts); an `audit_log` row records it. Ledger,
 // entries, payouts and stats stay under the opaque user ID. Afterwards the user's share cards are
 // queued for a re-render without handle and avatar.
 import { CARD_VARIANTS, type CardsMessage } from '@flocked/shared';
@@ -18,6 +19,7 @@ import type { Env } from '../env.js';
 import { HttpError } from '../lib/errors.js';
 import { log } from '../lib/log.js';
 import { excludedSql } from '../limits/rules.js';
+import { ownedRoomStatements } from '../rooms/handover.js';
 import { indexedThroughSec } from '../stakes/cap.js';
 import { loadCaller } from './accounts.js';
 import { expireMergesStatement } from './merge.js';
@@ -154,6 +156,8 @@ export async function deleteAccount(env: Env, userId: string, t: number): Promis
     db.prepare(`DELETE FROM notification_prefs WHERE user_id ${inIds}`).bind(ids),
     db.prepare(`DELETE FROM push_subscriptions WHERE user_id ${inIds}`).bind(ids),
     ...[userId, ...merged].map((id) => expireMergesStatement(db, id)),
+    // Rooms the user owns: handed over or closed (after the status above).
+    ...ownedRoomStatements(db, userId, t),
     auditStatement(db, {
       actor: 'user',
       actorUserId: userId,

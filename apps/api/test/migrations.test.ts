@@ -43,6 +43,8 @@ const SPEC_COLUMNS: Record<string, readonly string[]> = {
     'needs_review',
     'rejection_reason',
     'rejected_at',
+    // 0019 (W8-D): a room's custom question, private to the room.
+    'room_id',
   ],
   // 0017 (W8-A): each vote's decay weight, fixed when it is cast.
   question_votes: ['question_id', 'user_id', 'value', 'created_at', 'weight'],
@@ -141,7 +143,16 @@ const SPEC_COLUMNS: Record<string, readonly string[]> = {
     'net',
     'updated_at',
   ],
-  rooms: ['id', 'name', 'owner_user_id', 'invite_code', 'question_source', 'created_at'],
+  rooms: [
+    'id',
+    'name',
+    'owner_user_id',
+    'invite_code',
+    'question_source',
+    'created_at',
+    // 0019 (W8-D, decision B5): when the room closed (its owner deleted their account, alone).
+    'closed_at',
+  ],
   room_members: ['room_id', 'user_id', 'role', 'joined_at'],
   share_cards: ['share_id', 'round_id', 'mode', 'user_id', 'kind', 'r2_prefix', 'created_at'],
   merges: [
@@ -1130,6 +1141,54 @@ describe('0018 (W8-B)', () => {
       "EXPLAIN QUERY PLAN SELECT user_id FROM user_stats WHERE mode = 'free' ORDER BY best_stray_streak DESC, stray_streak DESC, rounds_played DESC LIMIT 10",
     ).all<{ detail: string }>();
     expect(plan.results.map((r) => r.detail).join('\n')).toContain('user_stats_streaks_idx');
+  });
+});
+
+describe('0019 (W8-D)', () => {
+  it('rooms.closed_at, questions.room_id, and one room round per room and slot', async () => {
+    const { results } = await env.DB.prepare('SELECT name FROM d1_migrations').all<{
+      name: string;
+    }>();
+    expect(results.map((r) => r.name)).toContain('0019_rooms.sql');
+    const col = (table: string, name: string) =>
+      env.DB.prepare(
+        `SELECT type, "notnull" AS nn, dflt_value FROM pragma_table_info('${table}') WHERE name = ?1`,
+      )
+        .bind(name)
+        .first();
+    expect(await col('rooms', 'closed_at')).toEqual({ type: 'INTEGER', nn: 0, dflt_value: null });
+    expect(await col('questions', 'room_id')).toEqual({ type: 'TEXT', nn: 0, dflt_value: null });
+    expect(
+      await rejects(
+        "INSERT INTO rooms (id, name, owner_user_id, invite_code, created_at, closed_at) VALUES ('r19', 'R', 'u', 'CODE19X', 1, -1)",
+      ),
+    ).toContain('CHECK constraint failed');
+
+    const roomIx = (await indexesOf('questions')).find((ix) => ix.name === 'questions_room_idx');
+    expect(roomIx).toMatchObject({
+      unique: false,
+      partial: true,
+      columns: ['room_id', 'created_at'],
+    });
+
+    const slot = (await indexesOf('rounds')).find((ix) => ix.name === 'rounds_room_slot');
+    expect(slot).toMatchObject({ unique: true, partial: true, columns: ['room_id', 'closes_at'] });
+    expect(slot?.sql).toContain("WHERE kind = 'room'");
+    const round = (id: string, room: string, closesAt: number) =>
+      env.DB.prepare(
+        "INSERT INTO rounds (id, kind, room_id, opens_at, closes_at, status) VALUES (?1, 'room', ?2, 1000, ?3, 'scheduled')",
+      )
+        .bind(id, room, closesAt)
+        .run();
+    await round('r19-a', 'room19', 2000);
+    await round('r19-b', 'room19b', 2000);
+    await round('r19-c', 'room19', 3000);
+    expect(
+      await rejects(
+        "INSERT INTO rounds (id, kind, room_id, opens_at, closes_at, status) VALUES ('r19-d', 'room', 'room19', 1000, 2000, 'scheduled')",
+      ),
+    ).toMatch(/UNIQUE constraint failed/);
+    await env.DB.prepare("DELETE FROM rounds WHERE id LIKE 'r19-%'").run();
   });
 });
 

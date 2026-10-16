@@ -9,8 +9,9 @@ import type { VoteQuestionResponse } from '@flocked/shared';
 import { HttpError } from '../lib/errors.js';
 import { servedScore, voteWeight } from './score.js';
 
-/** SQL: the question (alias `q`) is in the public vote queue. */
-export const VOTE_QUEUE_SQL = "q.status IN ('submitted', 'queued') AND q.needs_review = 0";
+/** SQL: the question (alias `q`) is in the public vote queue (a room's question never is). */
+export const VOTE_QUEUE_SQL =
+  "q.room_id IS NULL AND q.status IN ('submitted', 'queued') AND q.needs_review = 0";
 
 interface VoteTarget {
   author_user_id: string | null;

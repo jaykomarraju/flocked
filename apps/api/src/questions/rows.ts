@@ -32,6 +32,8 @@ export interface QuestionRow {
   needs_review: number;
   rejection_reason: string | null;
   rejected_at: number | null;
+  /** A room's custom question (migration 0019): private to the room, never in the public queue. */
+  room_id: string | null;
 }
 
 /** The author columns `QUESTION_SELECT` joins in (`users` as `a`). */
@@ -47,7 +49,7 @@ export type QuestionWithAuthorRow = QuestionRow & QuestionAuthorColumns;
 /** Every `questions` column, from the alias `q`. */
 export const QUESTION_COLUMNS =
   'q.id, q.author_user_id, q.prompt, q.options_json, q.category, q.status, q.moderation_json, ' +
-  'q.score, q.created_at, q.needs_review, q.rejection_reason, q.rejected_at';
+  'q.score, q.created_at, q.needs_review, q.rejection_reason, q.rejected_at, q.room_id';
 
 /** The author's columns, from the alias `a` (`LEFT JOIN users a ON a.id = q.author_user_id`). */
 export const QUESTION_AUTHOR_COLUMNS =

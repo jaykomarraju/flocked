@@ -8,8 +8,9 @@
 // a recent result is listed once its mode is settled, refunded or voided.
 //
 // Authored questions: `queued` ones (public in the vote queue) and `used` ones whose daily round has
-// opened (a used question is locked a day ahead and must not leak before its round opens). Split
-// quality comes from the Free mode's revealed tally of a final mode, or the Stakes one without it.
+// opened (a used question is locked a day ahead and must not leak before its round opens), never a
+// room's question (W8-D: private to the room). Split quality comes from the Free mode's revealed
+// tally of a final mode, or the Stakes one without it.
 import {
   QuestionOptionSchema,
   gameDayOf,
@@ -132,7 +133,7 @@ export async function readProfile(
         `SELECT q.id, q.prompt, q.options_json, q.status, r.id AS round_id
          FROM questions q
          LEFT JOIN rounds r ON r.question_id = q.id AND r.kind = 'daily' AND r.locked_at IS NOT NULL
-         WHERE q.author_user_id = ?1
+         WHERE q.author_user_id = ?1 AND q.room_id IS NULL
            AND (q.status = 'queued' OR (q.status = 'used' AND r.opens_at <= ?2))
          ORDER BY q.created_at DESC, q.id LIMIT ?3`,
       )

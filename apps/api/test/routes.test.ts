@@ -108,6 +108,11 @@ const IMPLEMENTED = new Set([
   // W8-B (test/boards/, test/stats/, test/referrals/)
   'GET /leaderboards/:board',
   'GET /users/:handle',
+  // W8-D (test/rooms/)
+  'POST /rooms',
+  'POST /rooms/join',
+  'GET /rooms/:id',
+  'POST /rooms/:id/questions',
 ]);
 
 /**

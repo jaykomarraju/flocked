@@ -165,7 +165,15 @@ function reasonOf(raw: string): string {
 
 // Approve -----------------------------------------------------------------------------------------
 
+/** A room's question stays private: Approve and Assign would put it in the public queue or a daily round. */
+function refuseRoomQuestion(row: QuestionWithAuthorRow): void {
+  if (row.room_id !== null) {
+    throw new HttpError('conflict', "A room's question stays in its room");
+  }
+}
+
 function refuseApprove(row: QuestionWithAuthorRow): void {
+  refuseRoomQuestion(row);
   if (row.status !== 'submitted') {
     throw new HttpError(
       'conflict',
@@ -276,6 +284,7 @@ export async function rejectQuestion(
 // Assign ------------------------------------------------------------------------------------------
 
 function refuseAssign(row: QuestionWithAuthorRow): void {
+  refuseRoomQuestion(row);
   if (row.status !== 'queued') {
     throw new HttpError(
       'conflict',

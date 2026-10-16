@@ -7,8 +7,9 @@
 //
 // The Vectorize index (cosine, 768 dimensions) stores one vector per question, id = question id,
 // metadata `{ createdAt }` (epoch ms; a number metadata index, so a query can filter on it). A hit
-// only counts once D1 confirms it: the question still exists, is not `rejected`, and was created in
-// the window (a later admin rejection or a deleted row never blocks a new question).
+// only counts once D1 confirms it: the question still exists, is not `rejected`, was created in the
+// window (a later admin rejection or a deleted row never blocks a new question), and is not a room's
+// question (W8-D: those are private to the room, never indexed, and never block a public one).
 //
 // AI and Vectorize have no local simulator (they throw "needs to be run remotely"), so with
 // ENVIRONMENT 'local' the stand-in below is used: an exact match of the normalized text among D1
@@ -58,7 +59,7 @@ async function confirmBest(
   if (hits.length === 0) return null;
   const { results } = await db
     .prepare(
-      "SELECT id FROM questions WHERE id IN (SELECT value FROM json_each(?1)) AND status != 'rejected' AND created_at >= ?2",
+      "SELECT id FROM questions WHERE id IN (SELECT value FROM json_each(?1)) AND status != 'rejected' AND created_at >= ?2 AND room_id IS NULL",
     )
     .bind(JSON.stringify(hits.map((h) => h.id)), since)
     .all<{ id: string }>();
@@ -98,15 +99,15 @@ const StoredOptionsSchema = z.array(z.object({ label: z.string() }));
 
 /**
  * The local stand-in (ENVIRONMENT 'local' only): the oldest D1 question created at or after `since`,
- * not rejected, whose normalized `duplicateText` equals the normalized `text` (score 1). `add` is a
- * no-op: D1 is the index.
+ * not rejected and not a room's, whose normalized `duplicateText` equals the normalized `text`
+ * (score 1). `add` is a no-op: D1 is the index.
  */
 export function localDuplicateIndex(env: Pick<ModerationEnv, 'DB'>): DuplicateIndex {
   return {
     findDuplicate: async (text, { since }) => {
       const want = normalizeText(text);
       const { results } = await env.DB.prepare(
-        "SELECT id, prompt, options_json FROM questions WHERE status != 'rejected' AND created_at >= ?1 ORDER BY created_at, id",
+        "SELECT id, prompt, options_json FROM questions WHERE status != 'rejected' AND created_at >= ?1 AND room_id IS NULL ORDER BY created_at, id",
       )
         .bind(since)
         .all<{ id: string; prompt: string; options_json: string }>();

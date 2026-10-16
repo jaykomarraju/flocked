@@ -6,6 +6,7 @@
 //     anyone else's would show an upcoming daily question before its lock, and a round is public
 //     only once its question is locked (spec "API" › Reveal gating).
 //   * `used` lists questions used by a locked daily round, so a room's question never shows here.
+//   * A room's question (`room_id` set, W8-D) is private to the room and is never listed.
 //
 // `top` (the default) is the top 50 by decayed score in one page: `questions.score` is stored
 // epoch-scaled, so ORDER BY score is the decayed order (./score.ts). `new` pages by creation time,
@@ -45,11 +46,11 @@ function statusFilter(status: Status, viewerId: string | null): [string, unknown
       return [VOTE_QUEUE_SQL, []];
     case 'scheduled':
       if (viewerId === null) return null;
-      return ["q.status = 'scheduled' AND q.author_user_id = ?1", [viewerId]];
+      return ["q.room_id IS NULL AND q.status = 'scheduled' AND q.author_user_id = ?1", [viewerId]];
     case 'used':
       return [
-        "q.status = 'used' AND EXISTS (SELECT 1 FROM rounds r WHERE r.question_id = q.id " +
-          "AND r.kind = 'daily' AND r.locked_at IS NOT NULL)",
+        "q.room_id IS NULL AND q.status = 'used' AND EXISTS (SELECT 1 FROM rounds r " +
+          "WHERE r.question_id = q.id AND r.kind = 'daily' AND r.locked_at IS NOT NULL)",
         [],
       ];
   }
