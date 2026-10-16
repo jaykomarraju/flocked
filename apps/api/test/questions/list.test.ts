@@ -314,6 +314,7 @@ describe('stored values that fail their schema', () => {
       needs_review: 0,
       rejection_reason: null,
       rejected_at: null,
+      room_id: null,
     };
     expect(questionView(row, null, T0)).toMatchObject({ category: 'life', score: 0 });
     for (const bad of [

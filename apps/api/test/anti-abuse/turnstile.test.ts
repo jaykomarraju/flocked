@@ -46,9 +46,10 @@ let next: TestRound;
 beforeAll(async () => {
   useTestSigner();
   roomId = newUlid();
-  // a and b close on the same New York date; `next` closes the day after.
+  // a and b close on the same New York date; `next` closes the day after. (One room round per room
+  // and close time, migration 0019: b closes a second before a.)
   a = await createRound({ roomId });
-  b = await createRound({ roomId });
+  b = await createRound({ roomId, opensAt: BASE_OPENS_AT - 1000 });
   next = await createRound({ roomId, opensAt: BASE_OPENS_AT + 24 * HOUR });
   setClock(BASE_OPENS_AT + HOUR);
   for (const r of [a, b, next]) await r.stub.init(r.locked);

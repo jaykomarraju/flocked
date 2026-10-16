@@ -2,7 +2,8 @@
 // tick, idempotently:
 //   1. checks that the open game day's daily round exists, and the next one once its lock is due; a
 //      missing one is a schedule gap (ALERT-6): it alerts and creates the round;
-//   2. locks every round whose question lock (opensAt − 6 h) has passed (src/scheduler/lock.ts);
+//   2. locks every round whose question lock (opensAt − 6 h) has passed (src/scheduler/lock.ts), a
+//      slot's daily round before its room rounds (a mirror room's round takes the daily question);
 //   3. for each locked round still before close: Stakes `createRound` through src/chain/operator.ts
 //      (storing `chain_round_id` from the receipt), and the Free lock leaf through the AnchorDO (one
 //      `submitLock` call for every round still waiting for its leaf);
@@ -46,7 +47,7 @@ export interface SchedulerDeps {
 export interface TickReport {
   /** Daily rounds that were missing when due (a gap) and were created now. */
   createdForGap: string[];
-  locks: Record<string, LockOutcome['status'] | `refused:${string}`>;
+  locks: Record<string, LockOutcome['status'] | `refused:${string}` | `closed:${string}`>;
   /** Stakes `createRound` results by round. */
   stakes: Record<string, string>;
   /** Rounds whose Free lock leaf went to the AnchorDO. */
@@ -177,9 +178,9 @@ export async function schedulerTick(env: Env, deps: SchedulerDeps = {}): Promise
   };
   await ensureDueRounds(env, t, report);
 
-  // Step 2: lock what is due.
+  // Step 2: lock what is due, each slot's daily round before its room rounds.
   const { results: due } = await env.DB.prepare(
-    `SELECT ${ROUND_COLUMNS} FROM rounds WHERE locked_at IS NULL AND status = 'scheduled' AND opens_at - ?2 <= ?1 AND closes_at > ?1 ORDER BY opens_at, id`,
+    `SELECT ${ROUND_COLUMNS} FROM rounds WHERE locked_at IS NULL AND status = 'scheduled' AND opens_at - ?2 <= ?1 AND closes_at > ?1 ORDER BY opens_at, CASE kind WHEN 'daily' THEN 0 ELSE 1 END, id`,
   )
     .bind(t, LOCK_LEAD_MS)
     .all<RoundRow>();
@@ -187,7 +188,9 @@ export async function schedulerTick(env: Env, deps: SchedulerDeps = {}): Promise
     try {
       const outcome = await lockRound(env, chain, r, t);
       report.locks[r.id] =
-        outcome.status === 'refused' ? `refused:${outcome.reason}` : outcome.status;
+        outcome.status === 'refused' || outcome.status === 'closed'
+          ? `${outcome.status}:${outcome.reason}`
+          : outcome.status;
     } catch (err) {
       log.error('round_lock_failed', { roundId: r.id, error: message(err) });
     }

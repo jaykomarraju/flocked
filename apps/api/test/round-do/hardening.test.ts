@@ -161,20 +161,21 @@ describe('RoundDO hardening', () => {
   });
 
   it('a user short of points on a sealed round gets round_closed, not insufficient_balance', async () => {
-    const r = await createRound();
+    // Short even with the room grant (5 + 100), so a wider stake range than the default.
+    const r = await createRound({ free: { stakeMax: '500' } });
     const scope = r.locked.roomId as string;
     setClock(r.locked.closesAt - 60_000);
     await r.stub.init(r.locked);
     const poor = await createUser(5, scope);
     // Open in D1 too: the balance is the reason.
-    expect(errCode(await enter(r, poor, '25', await sealedPick(r.locked)))).toBe(
+    expect(errCode(await enter(r, poor, '125', await sealedPick(r.locked)))).toBe(
       'insufficient_balance',
     );
     // D1 sealed (the DO has not run its close yet): the round is the reason.
     await env.DB.prepare("UPDATE rounds SET status = 'closed' WHERE id = ?1")
       .bind(r.locked.roundId)
       .run();
-    expect(errCode(await enter(r, poor, '25', await sealedPick(r.locked)))).toBe('round_closed');
+    expect(errCode(await enter(r, poor, '125', await sealedPick(r.locked)))).toBe('round_closed');
   });
 
   it('an empty Free mode skips the commit (rule 1, not rule 7)', async () => {

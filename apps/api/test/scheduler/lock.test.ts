@@ -159,24 +159,25 @@ describe('lockRound', () => {
   });
 
   it('a gap that persists alerts again after an hour, even when it is seen every minute', async () => {
-    // A room round without a question is refused at every tick (rooms have no house fill).
-    const id = newUlid();
-    const slot = dailySlot('2026-12-28');
-    await env.DB.prepare(
-      "INSERT INTO rounds (id, kind, room_id, opens_at, closes_at) VALUES (?1, 'room', 'room-gap', ?2, ?3)",
-    )
-      .bind(id, slot.opensAt, slot.closesAt)
+    // A daily round whose draft config is invalid (beaconDelay below 60 s) is refused at every tick.
+    // (W8-D: this was a room round without a question, which now closes quietly instead.)
+    const { id, lockAt } = await newRound(await insertQuestion({ status: 'scheduled' }));
+    const draft = {
+      beaconDelay: 5,
+      free: { ...LOCKED_CONFIG_DEFAULTS.free, awardRecipient: null },
+    };
+    await env.DB.prepare('UPDATE rounds SET config_json = ?2 WHERE id = ?1')
+      .bind(id, JSON.stringify(draft))
       .run();
     const alerts = alertSpy();
-    const lockAt = slot.opensAt - 6 * HOUR;
     for (let m = 0; m <= 61; m++) {
-      expect(await lockRound(h.env, drand, await roundRow(id), lockAt + m * MIN)).toEqual({
+      expect(await lockRound(h.env, drand, await roundRow(id), lockAt + m * MIN)).toMatchObject({
         status: 'refused',
-        reason: 'no_question',
+        reason: 'invalid_config',
       });
     }
     // At lockAt and lockAt + 60 min (the first alert's hour has passed), not in between.
-    expect(gapReasons(alerts.spy)).toEqual(['no_question', 'no_question']);
+    expect(gapReasons(alerts.spy)).toEqual(['invalid_config', 'invalid_config']);
     const { n } = (await env.DB.prepare(
       "SELECT COUNT(*) AS n FROM audit_log WHERE action = 'schedule_gap' AND target = ?1",
     )

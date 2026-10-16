@@ -52,18 +52,25 @@ const STAKES_DRAFT = {
 
 let day = 0;
 
-/** A round for `questionId` (daily unless `room`), with the Stakes draft unless `freeOnly`. */
+/**
+ * A round for `questionId` (daily unless `room`), with the Stakes draft unless `freeOnly`. A room
+ * round is in the custom room `room-c5`, whose owner's question it takes (W8-D).
+ */
 async function newRound(questionId: string, o: { room?: boolean; freeOnly?: boolean } = {}) {
   const slot = dailySlot(addGameDays('2027-03-01', ++day));
   const config = o.freeOnly ? null : JSON.stringify(STAKES_DRAFT);
   let id: string;
   if (o.room) {
     id = newUlid();
-    await env.DB.prepare(
-      "INSERT INTO rounds (id, kind, room_id, question_id, opens_at, closes_at, config_json) VALUES (?1, 'room', 'room-c5', ?2, ?3, ?4, ?5)",
-    )
-      .bind(id, questionId, slot.opensAt, slot.closesAt, config)
-      .run();
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO rooms (id, name, owner_user_id, invite_code, question_source, created_at) VALUES ('room-c5', 'C5', ?1, 'invite-c5', 'custom', 0) ON CONFLICT DO NOTHING",
+      ).bind(newUlid()),
+      env.DB.prepare("UPDATE questions SET room_id = 'room-c5' WHERE id = ?1").bind(questionId),
+      env.DB.prepare(
+        "INSERT INTO rounds (id, kind, room_id, question_id, opens_at, closes_at, config_json) VALUES (?1, 'room', 'room-c5', ?2, ?3, ?4, ?5)",
+      ).bind(id, questionId, slot.opensAt, slot.closesAt, config),
+    ]);
   } else {
     id = (await insertDailyRound(env.DB, slot)) as string;
     await env.DB.prepare('UPDATE rounds SET question_id = ?2, config_json = ?3 WHERE id = ?1')
@@ -250,13 +257,25 @@ describe('the Stakes creator at lock', () => {
   });
 
   it('a room round keeps the draft’s creator, even for an author who passes', async () => {
-    const a = await passingAuthor(h.chain);
-    const r = await newRound(await insertQuestion({ author: a.id, status: 'scheduled' }), {
-      room: true,
-    });
-    const row = await lockedRow(r.id, r.lockAt);
-    expect(configOf(row).stakes).toMatchObject({ creator: TREASURY, payoutAddress: null });
-    expect(await creatorAudit(r.id)).toEqual([]);
+    // A room round keeps its draft's Stakes mode only with Stakes rooms and Stakes on (W8-D).
+    const flags = ['rooms.stakes.enabled', 'mode.stakes.enabled'];
+    for (const key of flags) {
+      await run(
+        "INSERT INTO config (key, value_json, updated_at) VALUES (?1, 'true', 0) ON CONFLICT (key) DO UPDATE SET value_json = 'true'",
+        key,
+      );
+    }
+    try {
+      const a = await passingAuthor(h.chain);
+      const r = await newRound(await insertQuestion({ author: a.id, status: 'scheduled' }), {
+        room: true,
+      });
+      const row = await lockedRow(r.id, r.lockAt);
+      expect(configOf(row).stakes).toMatchObject({ creator: TREASURY, payoutAddress: null });
+      expect(await creatorAudit(r.id)).toEqual([]);
+    } finally {
+      for (const key of flags) await run('DELETE FROM config WHERE key = ?1', key);
+    }
   });
 
   it('a Free-only round is unaffected: no Stakes section, no attestation reads', async () => {

@@ -2,6 +2,15 @@
 // read the chunks back in seq order, check each against the partial tally its consumer reported,
 // run `settle`, build the payout tree, and write the bundle (chunks first, the manifest last, all
 // write-once). Payouts are not written anywhere here: the apply hook writes them (W5-D, W6-A).
+//
+// Room rounds (W8-D; spec "Profiles, leaderboards and rooms" › Anti-farming): the API decides which
+// entries count toward the room minimum and passes that flag to settlement, which counts only those
+// for rule 1 (`countQualifyingOnly`, against the locked `minEntrants`, 3). A Free entry qualifies
+// when it is valid, its user's account was created at least 24 hours before `closesAt`, and it is
+// that user's first qualifying entry in the mode (distinct users; a person ID binds to one account, so
+// distinct verified users are distinct people). A Stakes entry qualifies when it is valid: tickets go
+// only to members old enough at close, and onchain every entry counts toward `minEntrants`. The flag
+// is in every room entry's bundle record (`qualifies`); daily rounds carry none.
 import {
   FORMULA_VERSION,
   checkInvariant,
@@ -13,7 +22,7 @@ import {
   type StakesLeafKind,
   type VoidReason,
 } from '@flocked/settle';
-import { ulidToBytes } from '@flocked/shared';
+import { ROOM_QUALIFYING_ACCOUNT_AGE_MS, ulidToBytes } from '@flocked/shared';
 import type { Hex } from 'viem';
 import type { DecryptChunkResult } from '../do/types.js';
 import type { Env } from '../env.js';
@@ -52,25 +61,49 @@ async function readJson<T>(bucket: R2Bucket, key: string): Promise<T> {
   return obj.json<T>();
 }
 
-/** entryId → userId for the mode's entries. */
-async function userIds(
-  db: D1Database,
-  round: SettlementRound,
-): Promise<Map<string, string | null>> {
-  const map = new Map<string, string | null>();
+interface EntryUser {
+  userId: string | null;
+  /** The account's `users.created_at` (epoch ms); null when the user row is missing. */
+  createdAt: number | null;
+}
+
+/** entryId → the entry's user and account creation time, for the mode's entries. */
+async function userIds(db: D1Database, round: SettlementRound): Promise<Map<string, EntryUser>> {
+  const map = new Map<string, EntryUser>();
   let after = '';
   for (;;) {
     const { results } = await db
       .prepare(
-        'SELECT id, user_id FROM entries WHERE round_id = ?1 AND mode = ?2 AND id > ?3 ORDER BY id LIMIT 5000',
+        'SELECT e.id, e.user_id, u.created_at FROM entries e LEFT JOIN users u ON u.id = e.user_id ' +
+          'WHERE e.round_id = ?1 AND e.mode = ?2 AND e.id > ?3 ORDER BY e.id LIMIT 5000',
       )
       .bind(round.roundId, round.mode, after)
-      .all<{ id: string; user_id: string | null }>();
-    for (const r of results) map.set(r.id, r.user_id);
+      .all<{ id: string; user_id: string | null; created_at: number | null }>();
+    for (const r of results) map.set(r.id, { userId: r.user_id, createdAt: r.created_at });
     const last = results[results.length - 1];
     if (!last || results.length < 5000) return map;
     after = last.id;
   }
+}
+
+/**
+ * The room minimum's rule (see the header), entry by entry in seq order. Daily rounds: undefined
+ * (no flag). `seen` holds the users already counted.
+ */
+function qualifiesFor(
+  round: SettlementRound,
+  user: EntryUser,
+  valid: boolean,
+  seen: Set<string>,
+): boolean | undefined {
+  if (round.kind !== 'room') return undefined;
+  if (!valid) return false;
+  if (round.mode === 'stakes') return true;
+  const oldEnough =
+    user.createdAt !== null && user.createdAt <= round.closesAt - ROOM_QUALIFYING_ACCOUNT_AGE_MS;
+  if (user.userId === null || !oldEnough || seen.has(user.userId)) return false;
+  seen.add(user.userId);
+  return true;
 }
 
 /** Throws IntegrityError unless the consumer's partial tally is what its output says. */
@@ -109,7 +142,9 @@ function reconcileChunk(
   if (!ok) throw new IntegrityError(`chunk ${index}: the reported tally does not match its output`);
 }
 
+/** Settle's params from the locked config; a room round counts only qualifying entries for rule 1. */
 export function settleParams(round: SettlementRound): SettleParams {
+  const room = round.kind === 'room' ? { countQualifyingOnly: true } : {};
   if (round.mode === 'free') {
     const f = round.config.free;
     if (!f) throw new Error('no free config');
@@ -120,6 +155,7 @@ export function settleParams(round: SettlementRound): SettleParams {
       minEntrants: f.minEntrants,
       // House questions and rooms pay no award (awardRecipient null).
       creatorAwardBps: f.awardRecipient === null ? 0 : f.creatorAwardBps,
+      ...room,
     };
   }
   const s = round.config.stakes;
@@ -129,6 +165,7 @@ export function settleParams(round: SettlementRound): SettleParams {
     creatorBps: s.creatorBps,
     capMultiple: s.capMultiple,
     minEntrants: s.minEntrants,
+    ...room,
   };
 }
 
@@ -143,6 +180,7 @@ export async function reduce(
   const { roundId, mode } = round;
   const bundleChunkSize = i.bundleChunkSize ?? BUNDLE_CHUNK_SIZE;
   const users = await userIds(env.DB, round);
+  const counted = new Set<string>();
   const entries: ClassifiedEntry[] = [];
   const chunks: ChunkRef[] = [];
   let pending: BundleEntry[] = [];
@@ -163,16 +201,20 @@ export async function reduce(
     for (const [k, o] of output.entries.entries()) {
       const e = input.entries[k];
       if (!e) throw new IntegrityError('unreachable: reconciled');
-      if (!users.has(e.entryId)) throw new IntegrityError(`entry ${e.entryId} is not in D1`);
+      const user = users.get(e.entryId);
+      if (!user) throw new IntegrityError(`entry ${e.entryId} is not in D1`);
+      const qualifies = qualifiesFor(round, user, o.option !== null, counted);
+      const flag = qualifies === undefined ? {} : { qualifies };
       entries.push({
         entryId: e.entryId,
-        userId: users.get(e.entryId) ?? null,
+        userId: user.userId,
         account: e.account,
         stake: BigInt(e.stake),
         seq: e.seq,
         option: o.option,
         nonce: o.nonce,
         voidReason: o.voidReason,
+        ...flag,
       });
       pending.push({
         seq: e.seq,
@@ -183,6 +225,7 @@ export async function reduce(
         valid: o.option !== null,
         voidReason: o.voidReason,
         ...(mode === 'free' ? { commitment: e.commitment, ciphertext: e.ciphertext } : {}),
+        ...flag,
       });
       // Bundle chunk i is exactly entries [i·size, (i + 1)·size) in seq order.
       if (pending.length === bundleChunkSize) await flush();
@@ -198,6 +241,7 @@ export async function reduce(
     stake: e.stake,
     option: e.option,
     voidReason: e.voidReason,
+    ...(e.qualifies === undefined ? {} : { qualifies: e.qualifies }),
   }));
   const { record, payouts } = settle(inputs, settleParams(round));
   checkInvariant(record, payouts);

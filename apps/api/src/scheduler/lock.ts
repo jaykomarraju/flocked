@@ -9,11 +9,22 @@
 // house backlog is closed unlocked, so that game day has no daily round; a lock that used a house
 // question checks the backlog (src/questions/backlog.ts); and the author of a daily round's question
 // is sent `question_used` (stage `scheduled`).
+//
+// W8-D (spec "Profiles, leaderboards and rooms" › Rooms): room rounds. A closed room's round closes
+// unlocked, quietly (no alert, no gap row). A mirror room's round takes the question of the daily
+// round of the same slot once that one is locked (it waits, quietly, while the daily is unlocked, and
+// closes quietly on a day with no daily round); a custom room's round takes the owner's question and
+// closes quietly without one. A room round locks with `minEntrants` = 3 (the room minimum) in every
+// mode and no creator award; it keeps a draft's Stakes section only while `rooms.stakes.enabled` and
+// `mode.stakes.enabled` are both on, and is Free only otherwise. The tick locks a slot's daily round
+// before its room rounds.
 import {
   LOCKED_CONFIG_DEFAULTS,
   LockedConfigSchema,
   NotifyMessageSchema,
   QuestionOptionSchema,
+  ROOMS_STAKES_ENABLED_KEY,
+  ROOM_MIN_QUALIFYING_ENTRANTS,
   freeConfigHash,
   gameDayOf,
   newUlid,
@@ -39,6 +50,7 @@ import type { AnchorLockItem, LockedRound } from '../do/types.js';
 import type { Env } from '../env.js';
 import { raiseAlert } from '../lib/alert.js';
 import { log } from '../lib/log.js';
+import { CONFIG_KEYS } from '../personhood/config-store.js';
 import { checkHouseBacklog } from '../questions/backlog.js';
 import { TREASURY_CREATOR, resolveCreator, type CreatorResolution } from '../questions/creator.js';
 import { HOUR_MS } from '../rounds/schedule.js';
@@ -86,13 +98,24 @@ export type GapReason =
   | 'lock_leaf_failed';
 
 /**
+ * Why a room round was closed at its lock without a round (quietly: no alert, no gap row). `no_question`
+ * is a custom room's round with no usable question; `no_daily_round` a mirror room's round on a day
+ * with no daily round.
+ */
+export type RoomCloseReason = 'room_closed' | 'no_question' | 'no_daily_round';
+
+/**
  * `refused` with `no_house_question` is the lock that found nothing to lock and closed its game day
- * (no daily round); `no_daily_round` answers every later call for that closed, unlocked round.
+ * (no daily round); `no_daily_round` answers every later call for that closed, unlocked round (a room
+ * round's included). `refused` with `awaiting_daily` is a mirror room's round whose daily round isn't
+ * locked yet: no alert, and the next tick retries. `closed` is a room round closed unlocked by this
+ * call (final).
  */
 export type LockOutcome =
   | { status: 'locked'; houseFill: boolean }
   | { status: 'already_locked' }
-  | { status: 'refused'; reason: GapReason | TargetRoundError; detail?: string };
+  | { status: 'closed'; reason: RoomCloseReason }
+  | { status: 'refused'; reason: GapReason | TargetRoundError | 'awaiting_daily'; detail?: string };
 
 const OptionsSchema = z.tuple([QuestionOptionSchema, QuestionOptionSchema]);
 
@@ -142,11 +165,14 @@ async function question(db: D1Database, id: string): Promise<QuestionRow | null>
     .first<QuestionRow>();
 }
 
-/** The top house question in the backlog (author null, queued): highest score, then oldest. */
+/**
+ * The top house question in the backlog (author null, queued, not a room's own question): highest
+ * score, then oldest.
+ */
 export async function topHouseQuestion(db: D1Database): Promise<QuestionRow | null> {
   return db
     .prepare(
-      "SELECT id, author_user_id, prompt, options_json, status FROM questions WHERE author_user_id IS NULL AND status = 'queued' ORDER BY score DESC, created_at ASC, id ASC LIMIT 1",
+      "SELECT id, author_user_id, prompt, options_json, status FROM questions WHERE author_user_id IS NULL AND status = 'queued' AND room_id IS NULL ORDER BY score DESC, created_at ASC, id ASC LIMIT 1",
     )
     .first<QuestionRow>();
 }
@@ -165,11 +191,16 @@ export function questionHashOf(q: QuestionRow): Hex {
  * payout wallet in both when it resolved (src/questions/creator.ts; daily rounds only), else the
  * draft's creator (the treasury) and null. A draft's own payoutAddress is never kept. Reads publish
  * both from here, never from the author's current prefs (O4).
+ *
+ * A room round (W8-D) always has Free (the defaults when the draft has no Free section), with no
+ * creator award; it keeps the draft's Stakes section only when `roomStakes` (`roomStakesEnabled`) is
+ * true; and every mode it keeps locks `minEntrants` = ROOM_MIN_QUALIFYING_ENTRANTS (3).
  */
 export function configToLock(
   r: RoundRow,
   q: QuestionRow,
   creator: CreatorResolution = TREASURY_CREATOR,
+  roomStakes = false,
 ): LockedConfig {
   const draft = r.config_json
     ? (JSON.parse(r.config_json) as Record<string, unknown>)
@@ -177,19 +208,63 @@ export function configToLock(
         beaconDelay: LOCKED_CONFIG_DEFAULTS.beaconDelay,
         free: { ...LOCKED_CONFIG_DEFAULTS.free, awardRecipient: null },
       };
+  const room = r.kind === 'room';
+  if (room) {
+    draft.free ??= { ...LOCKED_CONFIG_DEFAULTS.free };
+    if (!roomStakes) delete draft.stakes;
+  }
+  const roomMin = room ? { minEntrants: ROOM_MIN_QUALIFYING_ENTRANTS } : {};
   const free = draft.free as Record<string, unknown> | undefined;
   if (free) {
-    draft.free = { ...free, awardRecipient: r.kind === 'daily' ? q.author_user_id : null };
+    draft.free = {
+      ...free,
+      ...roomMin,
+      awardRecipient: r.kind === 'daily' ? q.author_user_id : null,
+    };
   }
   const stakes = draft.stakes as Record<string, unknown> | undefined;
   if (stakes) {
     const author = r.kind === 'daily' && q.author_user_id !== null ? creator : TREASURY_CREATOR;
     draft.stakes =
       author.creator !== null
-        ? { ...stakes, creator: author.creator, payoutAddress: author.payoutAddress }
-        : { ...stakes, payoutAddress: null };
+        ? { ...stakes, ...roomMin, creator: author.creator, payoutAddress: author.payoutAddress }
+        : { ...stakes, ...roomMin, payoutAddress: null };
   }
   return LockedConfigSchema.parse(draft);
+}
+
+/** The round's draft has a Stakes section (an unparsable draft is refused by configToLock). */
+function draftHasStakes(r: RoundRow): boolean {
+  if (!r.config_json) return false;
+  try {
+    const draft = JSON.parse(r.config_json) as unknown;
+    return typeof draft === 'object' && draft !== null && 'stakes' in draft;
+  } catch {
+    return false;
+  }
+}
+
+/** A JSON `true` in `config.value_json`; anything else (or no row) is off. */
+function jsonTrue(value: string | undefined): boolean {
+  if (value === undefined) return false;
+  try {
+    return JSON.parse(value) === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Whether a room round may keep a Stakes mode: `rooms.stakes.enabled` (off by default) and the Stakes
+ * kill switch `mode.stakes.enabled` both on. Stakes is still enabled per round by the draft.
+ */
+export async function roomStakesEnabled(db: D1Database): Promise<boolean> {
+  const { results } = await db
+    .prepare('SELECT key, value_json FROM config WHERE key IN (?1, ?2)')
+    .bind(ROOMS_STAKES_ENABLED_KEY, CONFIG_KEYS.stakesEnabled)
+    .all<{ key: string; value_json: string }>();
+  const on = (key: string) => jsonTrue(results.find((x) => x.key === key)?.value_json);
+  return on(ROOMS_STAKES_ENABLED_KEY) && on(CONFIG_KEYS.stakesEnabled);
 }
 
 /**
@@ -239,6 +314,79 @@ async function closeNoRoundDay(env: Env, r: RoundRow, t: number): Promise<void> 
   await recordGap(env, t, r.id, 'no_daily_round', { gameDay, opensAt: r.opens_at });
 }
 
+/**
+ * Closes a room round unlocked at its lock, without a round: final, like a no-round day, but quiet
+ * (no alert and no gap row: an empty custom room or a closed room is not a schedule fault). `closed`
+ * when this call closed it; `already_locked` when an overlapping call locked or closed it first.
+ */
+async function closeRoomRound(
+  db: D1Database,
+  r: RoundRow,
+  reason: RoomCloseReason,
+): Promise<LockOutcome> {
+  const res = await db
+    .prepare(
+      "UPDATE rounds SET status = 'closed' WHERE id = ?1 AND locked_at IS NULL AND status = 'scheduled'",
+    )
+    .bind(r.id)
+    .run();
+  if (res.meta.changes !== 1) return { status: 'already_locked' };
+  log.info('room_round_closed_unlocked', { roundId: r.id, roomId: r.room_id, reason });
+  return { status: 'closed', reason };
+}
+
+interface RoomRow {
+  question_source: 'daily' | 'custom';
+  closed_at: number | null;
+}
+
+/**
+ * A room round's question at its lock: a mirror room's is the same slot's locked daily question, a
+ * custom room's the owner's (`rounds.question_id`, a usable question of that room). Otherwise what
+ * the lock returns instead: a quiet close, or (mirror, daily not locked yet) a refusal to retry.
+ */
+async function roomQuestion(
+  db: D1Database,
+  r: RoundRow,
+): Promise<{ q: QuestionRow } | { outcome: LockOutcome }> {
+  const room = await db
+    .prepare('SELECT question_source, closed_at FROM rooms WHERE id = ?1')
+    .bind(r.room_id)
+    .first<RoomRow>();
+  if (!room || room.closed_at !== null) {
+    return { outcome: await closeRoomRound(db, r, 'room_closed') };
+  }
+  if (room.question_source === 'daily') {
+    const daily = await db
+      .prepare(
+        "SELECT question_id, status, locked_at FROM rounds WHERE kind = 'daily' AND closes_at = ?1",
+      )
+      .bind(r.closes_at)
+      .first<{ question_id: string | null; status: string; locked_at: number | null }>();
+    if (daily && daily.locked_at !== null && daily.question_id !== null) {
+      const q = await question(db, daily.question_id);
+      if (q) return { q };
+    }
+    if (daily && daily.locked_at === null && daily.status === 'closed') {
+      return { outcome: await closeRoomRound(db, r, 'no_daily_round') };
+    }
+    // The daily round isn't locked yet (the tick locks it first; a missing one is the gap check's).
+    return { outcome: { status: 'refused', reason: 'awaiting_daily' } };
+  }
+  const q = r.question_id
+    ? await db
+        .prepare(
+          'SELECT id, author_user_id, prompt, options_json, status FROM questions WHERE id = ?1 AND room_id = ?2',
+        )
+        .bind(r.question_id, r.room_id)
+        .first<QuestionRow>()
+    : null;
+  if (!q || !USABLE.has(q.status)) {
+    return { outcome: await closeRoomRound(db, r, 'no_question') };
+  }
+  return { q };
+}
+
 /** `question_used` (stage `scheduled`) to the author of a daily round's question. Never throws. */
 async function enqueueQuestionUsed(
   env: Pick<Env, 'QUEUE_NOTIFY'>,
@@ -264,9 +412,9 @@ async function enqueueQuestionUsed(
 
 /**
  * Locks one round at its question lock: picks the question (filling a gap with the top house
- * question and alerting, or closing a daily round's game day when there is none), freezes the
- * config, and creates its `round_modes` rows, all in one D1 batch that applies only while the round
- * is unlocked and scheduled. Idempotent: a locked round is left as it is.
+ * question and alerting, or closing a daily round's game day when there is none; for a room round,
+ * see the header), freezes the config, and creates its `round_modes` rows, all in one D1 batch that
+ * applies only while the round is unlocked and scheduled. Idempotent: a locked round is left as it is.
  */
 export async function lockRound(
   env: Env,
@@ -275,29 +423,34 @@ export async function lockRound(
   t: number,
 ): Promise<LockOutcome> {
   if (r.locked_at !== null) return { status: 'already_locked' };
-  // Only a no-round day closes an unlocked round (closeNoRoundDay).
+  // Only a no-round day (closeNoRoundDay) or a room round's quiet close closes an unlocked round.
   if (r.status === 'closed') return { status: 'refused', reason: 'no_daily_round' };
   const db = env.DB;
 
-  let q = r.question_id ? await question(db, r.question_id) : null;
+  let q: QuestionRow | null;
   let houseFill = false;
-  if (!q || !USABLE.has(q.status)) {
-    if (r.kind !== 'daily') {
-      await recordGap(env, t, r.id, 'no_question', { kind: r.kind });
-      return { status: 'refused', reason: 'no_question' };
+  let roomStakes = false;
+  if (r.kind === 'room') {
+    const found = await roomQuestion(db, r);
+    if ('outcome' in found) return found.outcome;
+    q = found.q;
+    if (draftHasStakes(r)) roomStakes = await roomStakesEnabled(db);
+  } else {
+    q = r.question_id ? await question(db, r.question_id) : null;
+    if (!q || !USABLE.has(q.status)) {
+      q = await topHouseQuestion(db);
+      if (!q) {
+        await closeNoRoundDay(env, r, t);
+        return { status: 'refused', reason: 'no_house_question' };
+      }
+      houseFill = true;
     }
-    q = await topHouseQuestion(db);
-    if (!q) {
-      await closeNoRoundDay(env, r, t);
-      return { status: 'refused', reason: 'no_house_question' };
-    }
-    houseFill = true;
   }
 
   let config: LockedConfig;
   let qHash: Hex;
   try {
-    config = configToLock(r, q);
+    config = configToLock(r, q, TREASURY_CREATOR, roomStakes);
     qHash = questionHashOf(q);
   } catch (err) {
     const detail = message(err);
@@ -379,6 +532,7 @@ export async function lockRound(
       ? { stakesCreator: creator.creator !== null ? 'author' : 'treasury', failed: creator.failed }
       : {}),
   });
+  if (r.kind !== 'daily') return { status: 'locked', houseFill };
   if (q.author_user_id === null) {
     try {
       if (houseFill) {

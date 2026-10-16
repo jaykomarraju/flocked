@@ -86,6 +86,9 @@ async function enter(r: TestRound, userId: string, stake = '25', ciphertext?: st
   });
 }
 
+/** These are room rounds: an entry first credits the room grant (+100 below 1,000; W8-D). */
+const ROOM_GRANT = 100;
+
 describe('SET-1b (rule 4): a void before close', () => {
   it('voids every mode with reason 4 once voidRound is mined before closesAt, refunding Free', async () => {
     queues = recordQueues();
@@ -102,7 +105,7 @@ describe('SET-1b (rule 4): a void before close', () => {
     const ctA = await sealedPick(r.locked, 0);
     const first = okValue(await enter(r, a, '25', ctA));
     okValue(await enter(r, b, '40'));
-    expect(await balance(a, scope)).toBe(75);
+    expect(await balance(a, scope)).toBe(75 + ROOM_GRANT);
 
     // Phase 1: entries stop at once.
     const req = await r.stub.requestVoid();
@@ -131,8 +134,8 @@ describe('SET-1b (rule 4): a void before close', () => {
     }
     expect(await roundStatus(r.locked.roundId)).toBe('closed');
     // Every Free stake came back, once.
-    expect(await balance(a, scope)).toBe(100);
-    expect(await balance(b, scope)).toBe(100);
+    expect(await balance(a, scope)).toBe(100 + ROOM_GRANT);
+    expect(await balance(b, scope)).toBe(100 + ROOM_GRANT);
     expect((await ledgerRows(a)).filter((x) => x.reason === 'void_refund')).toEqual([
       { reason: 'void_refund', delta: 25 },
     ]);
@@ -145,7 +148,7 @@ describe('SET-1b (rule 4): a void before close', () => {
     await alarmAt(r.stub, r.locked.beaconTimeSec * 1000 + 25 * 3_600_000);
     expect(queues.settled).toEqual([]);
     expect((await readMeta(r.stub))?.freeClose).toBeNull();
-    expect(await balance(a, scope)).toBe(100);
+    expect(await balance(a, scope)).toBe(100 + ROOM_GRANT);
   });
 
   it('a Free-only round confirms the void at once (nothing onchain)', async () => {
@@ -165,7 +168,7 @@ describe('SET-1b (rule 4): a void before close', () => {
       status: 'voided',
       refund_reason: 4,
     });
-    expect(await balance(a, r.locked.roomId as string)).toBe(100);
+    expect(await balance(a, r.locked.roomId as string)).toBe(100 + ROOM_GRANT);
   });
 
   it('writes one refund payouts row per Free entry, however often applyVoid runs (owner decision, Oct 12)', async () => {
@@ -201,8 +204,8 @@ describe('SET-1b (rule 4): a void before close', () => {
     expect(await applyVoid(env, r.locked, t0 + 5_000)).toEqual([]);
     expect(await applyVoid(env, r.locked, t0 + 9_000)).toEqual([]);
     expect(await payouts()).toEqual(first);
-    expect(await balance(a, scope)).toBe(100);
-    expect(await balance(b, scope)).toBe(100);
+    expect(await balance(a, scope)).toBe(100 + ROOM_GRANT);
+    expect(await balance(b, scope)).toBe(100 + ROOM_GRANT);
   });
 
   it('is refused once closesAt has passed', async () => {
@@ -262,7 +265,7 @@ describe('a void that misses close is abandoned', () => {
       expect((await modeRow(r.locked.roundId, mode))?.status).toBe('pending');
     }
     expect(await roundStatus(r.locked.roundId)).toBe('closed');
-    expect(await balance(a, scope)).toBe(75);
+    expect(await balance(a, scope)).toBe(75 + ROOM_GRANT);
     const state = await r.stub.getState();
     expect(state.voidRequested).toBe(false);
     expect(entered.entry.stake).toBe('25');
@@ -334,7 +337,7 @@ describe('the void and Free entries in flight', () => {
     await alarmAt(r.stub, t0);
     for (const [i, res] of results.entries()) {
       expect(res.ok).toBe(true);
-      expect(await balance(users[i] as string, scope)).toBe(100);
+      expect(await balance(users[i] as string, scope)).toBe(100 + ROOM_GRANT);
     }
     const { results: ledger } = await env.DB.prepare(
       "SELECT COUNT(*) AS n FROM points_ledger WHERE reason = 'void_refund' AND ref_id = ?1",

@@ -2,7 +2,8 @@
 // nothing can be locked (no scheduled question and an empty backlog), that game day has no daily
 // round. The admin is alerted"). The daily round is closed unlocked at its question lock, with an
 // audit row and ALERT_SCHEDULE_GAP (`no_daily_round`); it never locks later, nothing recreates it,
-// the reads never show it, and the next day's round is unaffected. Room rounds keep their refusal.
+// the reads never show it, and the next day's round is unaffected. A custom room's round without a
+// question closes too, but quietly (W8-D; more in test/rooms/rounds.test.ts).
 import { env } from 'cloudflare:test';
 import { addGameDays, newUlid } from '@flocked/shared';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -133,18 +134,24 @@ describe('a daily round with no question and an empty house backlog', () => {
     expect(gapReasons(alerts.spy).filter((g) => g === 'no_daily_round')).toHaveLength(1);
   });
 
-  it('a room round without a question keeps its refusal and stays scheduled', async () => {
+  it('a custom room round without a question is closed unlocked, quietly (no alert, no gap row)', async () => {
     const slot = dailySlot('2027-06-20');
     const id = newUlid();
-    await env.DB.prepare(
-      "INSERT INTO rounds (id, kind, room_id, opens_at, closes_at) VALUES (?1, 'room', 'room-e4', ?2, ?3)",
-    )
-      .bind(id, slot.opensAt, slot.closesAt)
-      .run();
+    await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO rooms (id, name, owner_user_id, invite_code, question_source, created_at) VALUES ('room-e4', 'E4', ?1, 'invite-e4', 'custom', 0)",
+      ).bind(newUlid()),
+      env.DB.prepare(
+        "INSERT INTO rounds (id, kind, room_id, opens_at, closes_at) VALUES (?1, 'room', 'room-e4', ?2, ?3)",
+      ).bind(id, slot.opensAt, slot.closesAt),
+    ]);
+    const alerts = alertSpy();
     expect(await lockRound(env, drand, await roundRow(id), slot.opensAt - 6 * HOUR)).toEqual({
-      status: 'refused',
+      status: 'closed',
       reason: 'no_question',
     });
-    expect(await roundRow(id)).toMatchObject({ status: 'scheduled', locked_at: null });
+    expect(await roundRow(id)).toMatchObject({ status: 'closed', locked_at: null });
+    expect(alerts.codes()).toEqual([]);
+    expect(await gapAudit(id)).toEqual([]);
   });
 });

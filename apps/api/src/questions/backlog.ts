@@ -22,7 +22,7 @@ export async function checkHouseBacklog(
   t: number,
 ): Promise<{ count: number; alerted: boolean }> {
   const row = await env.DB.prepare(
-    "SELECT COUNT(*) AS n FROM questions WHERE status = 'queued' AND author_user_id IS NULL",
+    "SELECT COUNT(*) AS n FROM questions WHERE status = 'queued' AND author_user_id IS NULL AND room_id IS NULL",
   ).first<{ n: number }>();
   const count = row?.n ?? 0;
   if (count >= HOUSE_BACKLOG_MIN) return { count, alerted: false };
