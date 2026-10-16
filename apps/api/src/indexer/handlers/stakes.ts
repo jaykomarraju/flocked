@@ -17,6 +17,11 @@
 //   - `RoundRefunded` reasons 1 (refundTooFew), 2 and 3 (a refund proposal finalized), 5 (a vetoed
 //     settlement) and 6 (refundTimeout) → refunded with final_at, and a `refund` payout per entry.
 //     Reason 4 (void) is src/lifecycle/handlers.ts's.
+//   - then, for both, the post-final hooks (`runModeFinal`, src/settlement/hooks.ts; W8-D): a second
+//     handler on each event, so it runs after the first one's statements commit (the hooks read
+//     round_modes.status and payouts). A hook failure throws, so the entry retries; the outcome
+//     handler is marked handled and doesn't run again, and every hook is idempotent, so a retried or
+//     re-processed event credits nothing twice.
 // A foreign entry (no ticket, so no user) gets no `payouts` row: its payout lives only in the payout
 // tree and the bundle, and its wallet claims onchain like any other (W2-Z carry-over; payouts.user_id
 // stays NOT NULL). A removed event that isn't live again alerts and puts D1 back where it was before
@@ -34,6 +39,7 @@ import { newUlid } from '@flocked/shared';
 import type { Hex } from 'viem';
 import type { ModeResult, ModeTally } from '../../do/types.js';
 import type { Env } from '../../env.js';
+import { runModeFinal } from '../../settlement/hooks.js';
 import { raiseAlert } from '../../lib/alert.js';
 import { log } from '../../lib/log.js';
 import type { HandlerRegistry } from '../registry.js';
@@ -658,6 +664,33 @@ function refundRemoved(
 }
 
 /**
+ * After `RoundFinalized` (Settled) or `RoundRefunded` (any reason but 4) has committed: the post-final
+ * hooks for the Stakes mode, once D1 says it is final (a mode the outcome handler skipped or refused
+ * has nothing to run). Removals run nothing: a reorged-out final isn't undone in stats or referrals
+ * (W8-B open issue).
+ */
+export const stakesModeFinalHandler: EventHandler = async (evt, env) => {
+  if (evt.contractKind !== 'escrow' || evt.removed) return;
+  const outcome =
+    evt.event === 'RoundFinalized'
+      ? Number(evt.args.status) === SETTLED
+        ? 'settled'
+        : null
+      : evt.event === 'RoundRefunded' && Number(evt.args.reason) !== REASON_VOIDED
+        ? 'refunded'
+        : null;
+  if (!outcome) return;
+  const row = await env.DB.prepare(
+    `SELECT m.round_id, r.kind FROM round_modes m JOIN rounds r ON r.id = m.round_id
+     WHERE m.mode = 'stakes' AND m.chain_round_id = ?1 AND m.status = ?2`,
+  )
+    .bind(String(evt.args.roundId), outcome)
+    .first<{ round_id: string; kind: 'daily' | 'room' }>();
+  if (!row) return;
+  await runModeFinal(env, { roundId: row.round_id, mode: 'stakes', kind: row.kind, outcome });
+};
+
+/**
  * Registers the Stakes outcome handlers on `registry`. Names are stable (chain_event_handled). The
  * lifecycle registry calls it (src/lifecycle/handlers.ts), so the default registry has them.
  */
@@ -666,5 +699,8 @@ export function registerStakesHandlers(registry: HandlerRegistry): HandlerRegist
   registry.register('ProposalVetoed', 'stakes-veto', proposalVetoedHandler);
   registry.register('RoundFinalized', 'stakes-finalized', roundFinalizedHandler);
   registry.register('RoundRefunded', 'stakes-refunded', roundRefundedHandler);
+  // After the outcome handlers, so each runs on what they committed (the registry keeps order).
+  registry.register('RoundFinalized', 'stakes-finalized-hooks', stakesModeFinalHandler);
+  registry.register('RoundRefunded', 'stakes-refunded-hooks', stakesModeFinalHandler);
   return registry;
 }

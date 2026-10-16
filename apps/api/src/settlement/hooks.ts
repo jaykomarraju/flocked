@@ -1,8 +1,8 @@
 // Post-final hooks (wave-8 pinned interface; W8-B owns this file in wave 8). A mode is final when it
 // reaches `settled`, `refunded` or `voided` (spec "Data model" › round_modes.final_at): Free at
 // apply or refund (src/settlement/apply/free.ts), Stakes at `RoundFinalized` (the indexer's Stakes
-// handler; wired by W8-D). Stats, streaks and referrals (W8-B) and creator credit (W8-A,
-// registered by W8-D) run here.
+// handler; wired by W8-D). Stats, streaks and referrals (W8-B) and the question's split quality and
+// `question_used` notice (W8-A, registered by W8-D) run here.
 //
 // Every handler must be idempotent: a retried settlement, or a re-processed chain event, calls them
 // all again. `runModeFinal` runs each one, logs every failure and then throws, so the caller's own
@@ -14,6 +14,7 @@
 import type { Mode, RoundKind } from '@flocked/shared';
 import type { Env } from '../env.js';
 import { log } from '../lib/log.js';
+import { onQuestionModeFinal } from '../questions/final.js';
 import { referralsOnModeFinal } from '../referrals/reward.js';
 import { statsOnModeFinal } from '../stats/apply.js';
 
@@ -58,7 +59,8 @@ export async function runModeFinal(env: Env, event: ModeFinalEvent): Promise<voi
   }
 }
 
-// W8-B: stats and streaks (daily rounds, both modes), referrals (daily Free). W8-D adds W8-A's
-// creator handler here.
+// W8-B: stats and streaks (daily rounds, both modes), referrals (daily Free). W8-A: split quality
+// and the author's `question_used` notice (daily rounds; it credits nothing), registered by W8-D.
 onModeFinal(statsOnModeFinal);
 onModeFinal(referralsOnModeFinal);
+onModeFinal(onQuestionModeFinal);
