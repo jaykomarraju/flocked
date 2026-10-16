@@ -393,6 +393,25 @@ describe('the Free entry flow', () => {
     expect(screen.getByText(PICK_LOST_LINE)).toBeVisible();
     expect(screen.getByText('25 points')).toBeVisible();
   });
+
+  it('draws the round once when GET /me answers after GET /rounds/today, so a pick is never dropped', async () => {
+    let answerMe = () => {};
+    const meAnswered = new Promise<void>((r) => (answerMe = r));
+    const fetch = apiFetch({
+      ...signedIn(),
+      'GET /me': () => meAnswered.then(() => json(200, ME)),
+    });
+    renderApp({ fetch });
+    await waitFor(() =>
+      expect(fetch.mock.calls.some(([u]) => String(u).endsWith('/rounds/today'))).toBe(true),
+    );
+    await act(() => new Promise((r) => setTimeout(r, 50)));
+    answerMe();
+    await userEvent.click(await screen.findByRole('radio', { name: 'No pineapple' }));
+    expect(screen.getByRole('button', { name: 'Seal my pick' })).toBeEnabled();
+    // A remount would have opened a second socket and dropped the pick (W9-Z, CI's `ui` job).
+    expect(FakeSocket.all.filter((s) => s.url.includes(round.id))).toHaveLength(1);
+  });
 });
 
 describe('the reveal', () => {
@@ -424,6 +443,36 @@ describe('the reveal', () => {
     expect(screen.getByText('63%')).toBeVisible();
     expect(await screen.findByText(/Unflocked\. You and 37% of people/)).toBeVisible();
     expect(revealPlayed(round.id, 'free')).toBe(true);
+  });
+
+  it('keeps the same screen and socket when the closed round becomes previousRoundId', async () => {
+    writePick(storedPick());
+    let today: unknown = TODAY;
+    const fetch = apiFetch({
+      ...signedIn(),
+      'GET /rounds/today': () => json(200, today),
+      [`GET /rounds/${round.id}`]: () => json(200, { round }),
+    });
+    renderApp({ fetch });
+    await screen.findByText(VOICE.sealed);
+    push(round.id, stateMsg());
+    // As the API answers once the round closes: no open round, this one still revealing.
+    today = { round: null, previousRoundId: round.id, crowdHint: null };
+    vi.setSystemTime((round.closesAt + 18) * 1000);
+    push(round.id, {
+      type: 'closed',
+      roundId: round.id,
+      closesAt: round.closesAt,
+      beaconRound: round.beaconRound,
+      beaconTime: round.beaconTime,
+    });
+    await waitFor(() =>
+      expect(fetch.mock.calls.some(([u]) => String(u).endsWith(`/rounds/${round.id}`))).toBe(true),
+    );
+    const timer = await screen.findByRole('timer', { name: 'Unsealing in' });
+    await waitFor(() => expect(timer).toHaveTextContent('1:42'), { timeout: 2500 });
+    expect(timer).toBeInTheDocument();
+    expect(FakeSocket.all.filter((s) => s.url.includes(round.id))).toHaveLength(1);
   });
 
   it('animates the bars over 3 s the first time, then never again on this device', async () => {

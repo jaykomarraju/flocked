@@ -96,17 +96,15 @@ async function recordPhases(page: Page): Promise<void> {
 }
 
 /**
- * The Reveal phases drawn, in order. A gap with no Reveal view (`none`) is left out, with the same
- * phase drawn again after it: at the close the screen shows a skeleton for a few milliseconds while
- * it fetches the round for its previous-round slot, then the same phase (W9-D.2 Open issues).
+ * The Reveal phases drawn, in order, from the first one (Today and Sealed draw none). A gap after it
+ * (`none`) would be a blink: the screen staying mounted at the close is part of what this checks.
  */
 async function phasesSeen(page: Page): Promise<PhaseSeen[]> {
   const seen = await page.evaluate(
     () => (globalThis as unknown as { __flockedPhases?: PhaseSeen[] }).__flockedPhases ?? [],
   );
-  return seen
-    .filter((s) => s.phase !== 'none')
-    .filter((s, i, all) => i === 0 || all[i - 1]!.phase !== s.phase);
+  const first = seen.findIndex((s) => s.phase !== 'none');
+  return first < 0 ? [] : seen.slice(first);
 }
 
 function messageType(msg: string): unknown {

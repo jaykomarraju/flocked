@@ -65,12 +65,17 @@ export function Today() {
 function usePlayed(roundId: string | null) {
   const { client, me, status } = useAuth();
   const userId = me?.user.id ?? null;
-  const [stored, setStored] = useState<StoredPick | null>(() =>
-    userId && roundId ? readPick(userId, roundId) : null,
-  );
-  useEffect(() => {
-    setStored(userId && roundId ? readPick(userId, roundId) : null);
-  }, [userId, roundId]);
+  const key = userId && roundId ? `${userId}/${roundId}` : null;
+  const read = () => (userId && roundId ? readPick(userId, roundId) : null);
+  // Read again in the same render the round or user changes, so a round that just became
+  // `previousRoundId` never reads as not entered for a render (which would remount its screen).
+  const [local, setLocal] = useState(() => ({ key, pick: read() }));
+  let stored = local.pick;
+  if (local.key !== key) {
+    stored = read();
+    setLocal({ key, pick: stored });
+  }
+  const setStored = useCallback((pick: StoredPick) => setLocal({ key, pick }), [key]);
   const mine = useQuery({
     queryKey: roundMeKey(roundId ?? '', userId ?? ''),
     queryFn: ({ signal }) => client.call(roundMe, { params: { id: roundId ?? '' }, signal }),
@@ -84,8 +89,9 @@ function usePlayed(roundId: string | null) {
     me: mine.data ?? null,
     refetchMe: mine.refetch,
     entered: stored !== null || entry !== null,
-    /** Still finding out (no stored pick, and the server hasn't answered). */
-    pending: stored === null && mine.isPending && mine.fetchStatus !== 'idle',
+    /** Still finding out (no stored pick, and the session or the server hasn't answered). */
+    pending:
+      stored === null && (status === 'loading' || (mine.isPending && mine.fetchStatus !== 'idle')),
   };
 }
 
@@ -103,10 +109,17 @@ function TodayScreen({ data }: { data: RoundsTodayResponse }) {
     if (previousRoundId && prev.entered) setSticky(previousRoundId);
   }, [previousRoundId, prev.entered]);
   const cur = usePlayed(round?.id ?? null);
+  // The round last on screen: once it closes, `GET /rounds/today` names it `previousRoundId`, and its
+  // `GET /rounds/:id` starts from it, so its screen stays mounted (no skeleton, no second socket).
+  const [shown, setShown] = useState(round);
+  useEffect(() => {
+    if (round) setShown(round);
+  }, [round]);
   const prevView = useQuery({
     queryKey: roundKey(prevId ?? ''),
     queryFn: ({ signal }) => client.call(roundDetail, { params: { id: prevId ?? '' }, signal }),
     enabled: prevId !== null && prev.entered,
+    placeholderData: shown && shown.id === prevId ? { round: shown } : undefined,
   });
   const refetchToday = useCallback(
     () => void queryClient.invalidateQueries({ queryKey: ROUNDS_TODAY_KEY }),
