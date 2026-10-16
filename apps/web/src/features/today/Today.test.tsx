@@ -470,6 +470,52 @@ describe('the reveal', () => {
     );
   });
 
+  it('a refunded tie keeps its split from GET /rounds/:id, with the refund card and Share', async () => {
+    reduceMotion(false);
+    writePick(storedPick());
+    vi.setSystemTime((round.beaconTime + 30) * 1000);
+    const tie = [
+      { headcount: 3, total: '75' },
+      { headcount: 3, total: '75' },
+    ];
+    const settlement = {
+      proposalSeq: 0,
+      outcome: 'refunded',
+      formulaVersion: 1,
+      winningOption: null,
+      tally: tie,
+      lossPool: '0',
+      fee: '0',
+      creatorFee: '0',
+      distributable: '0',
+      rebatePool: '0',
+      dust: '0',
+      payoutRoot: null,
+      bundleHash: null,
+      txHash: null,
+      settledAt: null,
+    };
+    const free = {
+      ...round.modes.free!,
+      status: 'refunded',
+      refundReason: 3,
+      revealedAt: (round.beaconTime + 20) * 1000,
+      settlement,
+    };
+    renderApp({
+      fetch: apiFetch({
+        ...signedIn(meEntry()),
+        [`GET /rounds/${round.id}`]: () =>
+          json(200, { round: { ...round, status: 'closed', modes: { free } } }),
+      }),
+    });
+    await screen.findByText(COUNTING_TITLE);
+    push(round.id, stateMsg({ status: 'closed', free: { status: 'refunded', refundReason: 3 } }));
+    expect(await screen.findByText(VOICE.refundedTie)).toBeVisible();
+    expect(await screen.findAllByText('50%')).toHaveLength(2);
+    expect(screen.getByRole('button', { name: 'Share' })).toBeVisible();
+  });
+
   it('reveals the previous round first; "The next question is already live" opens Today', async () => {
     reduceMotion(true);
     writePick(storedPick({ roundId: PREV }));

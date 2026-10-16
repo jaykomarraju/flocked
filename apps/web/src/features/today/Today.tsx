@@ -344,7 +344,18 @@ function PlayedRound({
   const [animate] = useState(() => !revealPlayed(seed.id, 'free'));
   const free = round?.modes.free;
   const result = free?.result ?? null;
-  const counts = result ? ([result.tally[0].headcount, result.tally[1].headcount] as const) : null;
+  // A refunded mode's tally is on GET /rounds/:id only (decision A2): rules 1, 2, 3 and 5 show it.
+  const refundDetail = useQuery({
+    queryKey: roundKey(seed.id),
+    queryFn: ({ signal }) => client.call(roundDetail, { params: { id: seed.id }, signal }),
+    enabled: phase === 'refunded',
+  });
+  const tally =
+    result?.tally ??
+    (phase === 'refunded'
+      ? (refundDetail.data?.round.modes.free?.settlement?.tally ?? null)
+      : null);
+  const counts = tally ? ([tally[0].headcount, tally[1].headcount] as const) : null;
   const { stored, me: mine, refetchMe } = played;
   const entry = mine?.modes.free ?? null;
   const optionIndex = stored?.optionIndex ?? entry?.entry.optionIndex ?? null;
@@ -406,6 +417,7 @@ function PlayedRound({
     free?.refundReason ?? null,
   );
   const refunded = revealPhase === 'refunded';
+  const hideSplit = refunded && (!counts || !refundKeepsSplit(free?.refundReason ?? null));
   const shareId = mine?.cards.find((c) => c.kind === 'result' && c.mode === 'free')?.shareId;
   return (
     <>
@@ -427,11 +439,13 @@ function PlayedRound({
         pick={optionIndex}
         counts={counts}
         winner={refunded ? null : (result?.winningOption ?? null)}
-        hideSplit={refunded && (!counts || !refundKeepsSplit(free?.refundReason ?? null))}
+        hideSplit={hideSplit}
         result={card}
         share={
-          card && counts && card.result !== 'refunded' ? (
+          // Share with a split to show: a settled result, or a refund that keeps its split (Paper).
+          card && counts && (card.result !== 'refunded' || !hideSplit) ? (
             <ShareBlock
+              breakpoint={breakpoint}
               question={seed.question.prompt}
               counts={counts}
               winner={result?.winningOption ?? null}
