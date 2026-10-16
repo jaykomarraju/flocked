@@ -24,7 +24,7 @@ On `w9-integration`, write the browser e2e for a full Free round (E2E-1 Free UI,
   ```
 
 ## Scope and file ownership
-- May create or edit: `e2e/ui/free-round.spec.ts`; `e2e/fixtures/**` and `e2e/ui/world.ts` only to share a helper with `today.spec.ts` (say which in the handoff); the registry files only for a fix the spec needs; `docs/sessions/W9-D.2.md`, `docs/prompts/W9-Z.md`.
+- May create or edit: `e2e/ui/free-round.spec.ts`; `e2e/ui/reveal.spec.ts` and `e2e/ui/world.ts` for task 1's hardening; `e2e/fixtures/**` only to share a helper with `today.spec.ts` (say which in the handoff); `apps/web/src/ws/**` only if the flake is the client's (name it in the handoff); the registry files only for a fix the spec needs; `docs/sessions/W9-D.2.md`, `docs/prompts/W9-Z.md`.
 - Must not touch: `contracts/**` (`git diff audit-candidate-1 HEAD -- contracts/src` stays empty), `Product_Spec.md`, `Design_Language.md`, `plan.md`, `docs/plan/`, Paper and `docs/design/`.
 
 ## Pinned interfaces
