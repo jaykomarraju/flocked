@@ -257,6 +257,14 @@ export const MAX_DAILY_STAKE_CAP_KEY = 'limits.stakes.maxDailyCap';
 /** The maximum daily stake cap by default, and its upper bound: 1,000 USDC per game day. */
 export const DEFAULT_MAX_DAILY_STAKE_CAP = 1_000_000_000n;
 
+/**
+ * The `config` key of the Stakes-rooms flag (spec "Profiles, leaderboards and rooms" › Rooms): JSON
+ * `true` turns it on; anything else, or no row, is off (the default). While it is off, room rounds
+ * have a single Free mode; while it is on (and `mode.stakes.enabled`), they also get a Stakes mode with
+ * `minEntrants` 3, and only members whose accounts meet the age rule get tickets.
+ */
+export const ROOMS_STAKES_ENABLED_KEY = 'rooms.stakes.enabled';
+
 // ---- Hashes committed at lock ----
 
 /**
