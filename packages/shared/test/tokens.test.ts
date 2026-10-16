@@ -38,6 +38,18 @@ describe('design-tokens.json (wave-2 plan P2.3)', () => {
     });
   });
 
+  it('keeps the mono stack of Design_Language.md "Typography" (decision E8)', () => {
+    const tokens = DesignTokensSchema.parse(raw);
+    expect(tokens.font.mono.stack).toEqual([
+      'ui-monospace',
+      'SFMono-Regular',
+      'Menlo',
+      'monospace',
+    ]);
+    const noStack = { ...tokens, font: { ...tokens.font, mono: { stack: [] } } };
+    expect(DesignTokensSchema.safeParse(noStack).success).toBe(false);
+  });
+
   it('has ascending spacing and breakpoints', () => {
     const tokens = DesignTokensSchema.parse(raw);
     expect([...tokens.space].sort((a, b) => a - b)).toEqual(tokens.space);

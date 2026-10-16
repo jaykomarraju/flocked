@@ -25,7 +25,8 @@
   "font": {
     "display": { "family": "Fredoka", "weights": [600, 700] },
     "body": { "family": "Inter", "weights": [400, 500, 600] },
-    "numeric": { "family": "Inter", "features": ["tnum"] }
+    "numeric": { "family": "Inter", "features": ["tnum"] },
+    "mono": { "stack": ["ui-monospace", "SFMono-Regular", "Menlo", "monospace"] }
   },
   "type": {
     "display": {
