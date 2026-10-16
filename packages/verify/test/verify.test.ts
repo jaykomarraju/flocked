@@ -26,7 +26,7 @@ describe('verifyRound: Free', () => {
         { sealed: 'bad_plaintext' },
         { option: 0, stake: 101n }, // stake_out_of_range
         { option: 1 },
-        { option: 0 }, // not_anchored (anchored: 9)
+        { option: 0, stake: 101n }, // not_anchored (anchored: 9), which wins over stake_out_of_range
       ],
       anchored: 9,
       decryptChunk: 4,
@@ -156,6 +156,19 @@ describe('verifyRound: Stakes', () => {
     const r = await verify(f);
     expect(r.verdict).toBe('mismatch');
     expect(ids(r)).toContain('entry.pick');
+  });
+
+  it('an Entered log by another player is a mismatch', async () => {
+    const f = await makeBundle('stakes', {
+      entries: [{ option: 0 }, { option: 1 }, { option: 1 }],
+      stakes: { minEntrants: 3 },
+    });
+    const [a, ...rest] = f.reader.enteredLogs;
+    if (!a) throw new Error('logs');
+    f.reader.enteredLogs = [{ ...a, player: `0x${'99'.repeat(20)}` }, ...rest];
+    const r = await verify(f);
+    expect(r.verdict).toBe('mismatch');
+    expect(ids(r)).toEqual(['entry.account']);
   });
 
   it('an Entered log the bundle omits is a mismatch', async () => {

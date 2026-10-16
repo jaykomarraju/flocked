@@ -94,6 +94,17 @@ describe.each([
     await expectMismatch(f, objects, 'chunk.totals');
   });
 
+  it("a tally: a chunk's VOID count", async () => {
+    const f = await make();
+    const objects = republish(f, {
+      manifest: (m) => {
+        const c = m.chunks.find((x) => x.voids > 0);
+        if (c) c.voids -= 1;
+      },
+    });
+    await expectMismatch(f, objects, 'chunk.totals');
+  });
+
   it('a tally: the settlement record', async () => {
     const f = await make();
     const objects = republish(f, {
