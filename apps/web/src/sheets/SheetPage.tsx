@@ -7,21 +7,24 @@ import type { SheetBreakpoint, SheetDef } from './types';
 
 const modules = import.meta.glob<{ default: SheetDef }>('./**/*.sheet.tsx');
 
-/** Sheet module path → its definition loader, keyed by the sheet name. */
+/**
+ * The sheet module for `<surface>/<screen>`: `./<surface>/<screen>.sheet.tsx`, loaded on its own so a
+ * broken sheet can't take the others down. Its `name` must agree with its path.
+ */
 async function loadSheet(name: string): Promise<SheetDef | null> {
-  for (const load of Object.values(modules)) {
-    const def = (await load()).default;
-    if (def.name === name) return def;
-  }
-  return null;
+  const load = modules[`./${name}.sheet.tsx`];
+  if (!load) return null;
+  const def = (await load()).default;
+  return def.name === name ? def : null;
 }
 
-/** Every sheet's artboards, for the index page. */
+/** Every sheet's artboards, for the index page (a sheet that fails to load is left out). */
 export async function listArtboards(): Promise<string[]> {
-  const defs = await Promise.all(
-    Object.values(modules).map(async (load) => (await load()).default),
-  );
-  return defs.flatMap((d) => d.artboards.map((a) => `${d.name}/${a}`)).sort();
+  const loaded = await Promise.allSettled(Object.values(modules).map((load) => load()));
+  return loaded
+    .flatMap((r) => (r.status === 'fulfilled' ? [r.value.default] : []))
+    .flatMap((d) => d.artboards.map((a) => `${d.name}/${a}`))
+    .sort();
 }
 
 export function SheetPage() {

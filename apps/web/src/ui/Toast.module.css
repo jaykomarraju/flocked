@@ -1,0 +1,35 @@
+.toast {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  padding: 14px var(--spacing-4);
+  background: var(--color-ink);
+  color: var(--color-bg);
+  border-radius: var(--radius-card);
+  animation: fade-in var(--motion-fade-duration) var(--motion-fade-easing);
+}
+
+.message {
+  flex: 1 1 0%;
+}
+
+/* The action is a text button: the label role at 600, no box of its own. */
+.action {
+  flex-shrink: 0;
+  padding: 0;
+  font-weight: 600;
+  color: var(--color-bg);
+  background: none;
+  border: 0;
+}
+
+/* The foundation ring would be ink on ink here: draw it in the toast's text colour. */
+.action:focus-visible {
+  outline-color: var(--color-bg);
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}

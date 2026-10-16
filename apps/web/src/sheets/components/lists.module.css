@@ -1,0 +1,71 @@
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-4);
+}
+
+.ruled {
+  padding-top: var(--spacing-8);
+  border-top: var(--border-default) solid var(--color-line);
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: var(--spacing-3);
+  width: 488px;
+}
+
+/* Sheet notes: Inter 400 13/18 in ink (the sheet's own note style, not the caption role). */
+.note {
+  font-family: var(--font-body);
+  font-size: var(--text-caption);
+  line-height: 18px;
+  letter-spacing: 0.01em;
+  font-variation-settings: 'opsz' 26;
+}
+
+.avatars {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--spacing-6);
+  padding-block: var(--spacing-4);
+}
+
+.avatarSample {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+.sizeLabel {
+  font-family: var(--font-body);
+  font-size: var(--text-caption);
+  line-height: 18px;
+  font-feature-settings: 'tnum';
+  font-variation-settings: 'opsz' 26;
+}
+
+.notes {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: var(--spacing-5);
+  width: 488px;
+  padding-top: var(--spacing-10);
+}
+
+.noteBlock {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+}
+
+.noteText {
+  font-family: var(--font-body);
+  font-size: var(--text-label);
+  line-height: 20px;
+  font-variation-settings: 'opsz' 28;
+}

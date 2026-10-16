@@ -1,0 +1,37 @@
+/* Components › Stake selector (Paper `components/stake-selector/{light,dark}/desktop`): two sections, each a head
+   20px over a row of 320-wide columns 16px apart; the second section sits under a 1.5px line rule. */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-5);
+}
+
+.ruled {
+  padding-top: var(--spacing-8);
+  border-top: var(--border-default) solid var(--color-line);
+}
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-4);
+}
+
+/* A state: its name (body strong), the component, then the note, 12px apart. */
+.column {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: var(--spacing-3);
+  width: 320px;
+}
+
+/* The state notes: Inter 400 13/18 in ink (the sheet's own style, not the caption role). */
+.note {
+  font-family: var(--font-body);
+  font-size: var(--text-caption);
+  font-weight: 400;
+  line-height: 18px;
+  letter-spacing: 0.01em;
+  font-variation-settings: 'opsz' 26;
+}

@@ -1,0 +1,69 @@
+/* The bar is bg with a line divider (Paper: 72 tall with 1.5px line borders), plus the device safe
+   area below the slots. */
+.bar {
+  flex-shrink: 0;
+  height: calc(72px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  border-top: var(--border-default) solid var(--color-line);
+  border-bottom: var(--border-default) solid var(--color-line);
+  background: var(--color-bg);
+}
+
+.slots {
+  display: flex;
+  height: 100%;
+}
+
+.slot {
+  display: flex;
+  flex: 1 1 0%;
+  min-width: 0;
+}
+
+.item {
+  display: flex;
+  flex: 1 1 0%;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-1);
+  margin: 0;
+  padding: var(--spacing-2) 0 0;
+  border: 0;
+  background: none;
+  color: var(--color-ink);
+  text-decoration: none;
+}
+
+/* The pill behind the icon: ink with a bg icon when active, line on hover otherwise. */
+.indicator {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 30px;
+  border-radius: var(--radius-pill);
+  transition: background-color var(--motion-micro-duration) var(--motion-micro-easing);
+}
+
+.item:hover:not([data-active]) .indicator {
+  background: var(--color-line);
+}
+
+.item[data-active] .indicator {
+  background: var(--color-ink);
+  color: var(--color-bg);
+}
+
+/* The nav label: Inter 13/18, 400 ink (600 when active); opsz 26 as Paper renders 13px Inter. */
+.label {
+  font-family: var(--font-body);
+  font-size: var(--text-caption);
+  font-weight: 400;
+  line-height: 18px;
+  font-variation-settings: 'opsz' 26;
+}
+
+.item[data-active] .label {
+  font-weight: 600;
+}

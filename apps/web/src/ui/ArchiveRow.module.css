@@ -1,0 +1,76 @@
+.list {
+  display: flex;
+  flex-direction: column;
+  border-top: var(--border-default) solid var(--color-line);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-4);
+  padding-block: var(--spacing-4);
+  border-bottom: var(--border-default) solid var(--color-line);
+  color: var(--color-ink);
+  text-decoration: none;
+}
+
+.main {
+  display: flex;
+  flex: 1 1 0%;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.meta {
+  color: var(--color-muted);
+}
+
+.question {
+  color: var(--color-ink);
+}
+
+@media (hover: hover) {
+  .row:hover .question {
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-position: from-font;
+  }
+}
+
+/* The result slot: 96 wide, right-aligned; win and loss in 600, refunded in the label's 500. */
+.result {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  width: 96px;
+  text-align: right;
+}
+
+.result[data-result='win'],
+.result[data-result='loss'] {
+  font-weight: 600;
+}
+
+/* The mini split: 6px tall, two pills 3px apart; the accent marks only the winning side. */
+.split {
+  display: flex;
+  flex-shrink: 0;
+  gap: 3px;
+  height: 6px;
+}
+
+.side,
+.win {
+  border-radius: var(--radius-pill);
+  background: var(--color-ink);
+}
+
+.win {
+  background: var(--color-accent);
+}
+
+.rest {
+  flex: 1 1 0%;
+}

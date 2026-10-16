@@ -1,0 +1,32 @@
+.button {
+  appearance: none;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  height: 48px;
+  margin: 0;
+  padding: 0 var(--spacing-4);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-ink);
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-underline-position: from-font;
+  transition: transform var(--motion-press-duration) var(--motion-press-easing);
+}
+
+.button:enabled:active {
+  transform: scale(0.97);
+}
+
+.button[data-force='focus'] {
+  outline: var(--border-strong) solid var(--color-ink);
+  outline-offset: 3px;
+}
+
+.button:disabled {
+  color: var(--color-muted);
+  cursor: default;
+}

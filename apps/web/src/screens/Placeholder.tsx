@@ -1,4 +1,4 @@
-import type { TabId } from '../routes';
+import type { TabId } from '../nav';
 
 export function Placeholder({ title }: { tab: TabId | null; title: string }) {
   return <h1 className="type-title">{title}</h1>;

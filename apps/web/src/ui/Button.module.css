@@ -1,0 +1,109 @@
+/* The pill buttons (Paper Components › Actions). `--h` is the drawn height: 56 primary, 48 secondary,
+   36 small. Labels centre in the pill; the container sets the width (the CTA runs full width on
+   mobile). */
+.button {
+  --h: 48px;
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--h);
+  margin: 0;
+  padding: 0 var(--spacing-6);
+  border: var(--border-strong) solid var(--color-ink);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  white-space: nowrap;
+  transition:
+    background-color var(--motion-micro-duration) var(--motion-micro-easing),
+    transform var(--motion-press-duration) var(--motion-press-easing);
+}
+
+.button[data-variant='primary'] {
+  --h: 56px;
+  border: 0;
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+}
+
+.button[data-size='small'] {
+  --h: 36px;
+  padding-inline: var(--spacing-4);
+}
+
+/* The label and the loading row share one grid cell, so loading never narrows the pill. */
+.stack {
+  display: grid;
+  justify-items: center;
+}
+
+.row {
+  display: flex;
+  grid-area: 1 / 1;
+  align-items: center;
+  gap: 10px;
+}
+
+.row[data-reserve] {
+  visibility: hidden;
+}
+
+/* Small pills: the label role at 600 (Paper: Inter 600 14/20). */
+.smallLabel {
+  font-weight: 600;
+}
+
+.spinner {
+  flex-shrink: 0;
+  animation: spin 900ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Hover (secondary, pointer devices only) and pressed: the fill changes to line. */
+@media (hover: hover) {
+  .button[data-variant='secondary']:enabled:not([aria-disabled='true']):hover {
+    background: var(--color-line);
+  }
+}
+
+.button[data-variant='secondary']:enabled:not([aria-disabled='true']):active,
+.button[data-variant='secondary'][data-force='hover'],
+.button[data-variant='secondary'][data-force='pressed'] {
+  background: var(--color-line);
+}
+
+/* Pressed: scale 0.97 (motion.press). */
+.button:enabled:not([aria-disabled='true']):active {
+  transform: scale(0.97);
+}
+
+/* Paper can't draw a transform, so the sheets draw the press as a pill 3% smaller with the label at
+   its size; the forced state reproduces that drawing. */
+.button[data-force='pressed'] {
+  align-self: center;
+  width: round(97%, 1px);
+  height: round(calc(var(--h) * 0.97), 1px);
+}
+
+.button[data-force='focus'] {
+  outline: var(--border-strong) solid var(--color-ink);
+  outline-offset: 3px;
+}
+
+/* Disabled: bg fill, dashed muted border, muted label. Not focusable (the `disabled` attribute). */
+.button:disabled {
+  border: var(--border-strong) dashed var(--color-muted);
+  background: var(--color-bg);
+  color: var(--color-muted);
+  cursor: default;
+}
+
+.button[aria-busy='true'] {
+  cursor: progress;
+}

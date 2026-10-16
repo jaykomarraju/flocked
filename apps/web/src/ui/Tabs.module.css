@@ -1,0 +1,55 @@
+/* Tabs (Paper Components › Actions › Tabs): a row 28px apart on a 1.5px line rule; each tab 44px tall
+   with a 3px underline slot. */
+.rule {
+  display: flow-root;
+  border-bottom: var(--border-default) solid var(--color-line);
+}
+
+/* The row scrolls sideways on mobile and never wraps. A scroller clips what it paints outside its
+   padding box, so it reaches 5px past the tabs on every side (the focus ring's 2px + 3px offset) and
+   negative margins put the tabs back where Paper draws them, on the rule. */
+.tabs {
+  display: flex;
+  gap: 28px;
+  margin: -5px;
+  padding: 5px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tab {
+  appearance: none;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  color: var(--color-ink);
+  white-space: nowrap;
+  transition: border-color var(--motion-micro-duration) var(--motion-micro-easing);
+}
+
+/* Hover (pointer devices only): a 3px line underline. */
+@media (hover: hover) {
+  .tab[aria-selected='false']:hover {
+    border-bottom-color: var(--color-line);
+  }
+}
+
+.tab[aria-selected='false'][data-force='hover'] {
+  border-bottom-color: var(--color-line);
+}
+
+.tab[data-force='focus'] {
+  outline: var(--border-strong) solid var(--color-ink);
+  outline-offset: 3px;
+}
+
+/* Active: a 3px ink underline (with the bodyStrong label). */
+.tab[aria-selected='true'] {
+  border-bottom-color: var(--color-ink);
+}

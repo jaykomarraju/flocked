@@ -1,0 +1,56 @@
+/* Components › Actions: four sections, each a 176-wide title column and its states, 16 apart; every
+   section after the first sits under a 1.5px line rule with 32px above it. */
+.section {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-4);
+}
+
+.ruled {
+  padding-top: var(--spacing-8);
+  border-top: var(--border-default) solid var(--color-line);
+}
+
+.intro {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  gap: 6px;
+  width: 176px;
+}
+
+.state {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.grow {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.smallRow {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  height: 48px;
+}
+
+/* The note beside "Stakes hidden", level with the control. */
+.aside {
+  flex-shrink: 0;
+  width: 164px;
+  padding-top: 30px;
+}
+
+/* The sheet's notes: Inter 400 13/18, ink (Paper draws them this way, not in the caption role). */
+.note {
+  font-family: var(--font-body);
+  font-size: var(--text-caption);
+  font-weight: 400;
+  line-height: 18px;
+  letter-spacing: 0.01em;
+  font-variation-settings: 'opsz' 26;
+}

@@ -1,0 +1,30 @@
+.list {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Rows 48 tall (a mobile hit area), hover = line fill, corners concentric with the sheet's. */
+.item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 48px;
+  margin: 0;
+  padding: 0 var(--spacing-3);
+  border: 0;
+  border-radius: calc(var(--radius-card) - var(--spacing-2));
+  background: none;
+  color: var(--color-ink);
+  text-align: left;
+  text-decoration: none;
+}
+
+.item:hover {
+  background: var(--color-line);
+}
+
+.rule {
+  height: var(--border-default);
+  margin: var(--spacing-1) 0;
+  background: var(--color-line);
+}
