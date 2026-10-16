@@ -129,3 +129,14 @@
   - a reorged-out Stakes proposal reaches connected viewers only when they reconnect;
   - measure the hourly room-round insert (it pages through every open room) and the scheduler tick under load.
 - **W13-C:** W7-F1 R12's timing: the personhood callback refuses a suspended account only after the Coinbase token exchange; refusing before it needs a change in `personhood/flow.ts`.
+
+## Carry-over from W9-Z (Oct 16, 2026)
+
+- **W13-A:**
+  - a failed daily cast is logged (`daily_cast_failed`) and not retried until the round's `open` event re-runs: add an alert code;
+  - `notification_log` has no pruning: a cron deletes done rows older than about 30 days;
+  - `test/auth/rate-limit.test.ts` › "PATCH /me allows 30 per minute, then 429" failed once in W8-F1 (the token bucket refills on the wall clock): pin its clock.
+- **W13-B:**
+  - notification fan-out: the outcome producers and the alarm bodies enqueue one message per user, in 100-message batches from one invocation, and `question_live` reaches every reachable non-entrant; at about 50k users page them through chunked jobs;
+  - W9-F1's guardian-void sweep is a step of the tick: include it in the tick under load;
+  - W8-F1's H1 residual: mirror rounds refused `awaiting_daily` stay first in the room lock batch while their daily round's lock is refused, and past about 18,000 live room rounds a page cycle exceeds the 6 hours before opening.

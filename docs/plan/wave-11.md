@@ -93,3 +93,11 @@
 - **W11-D:**
   - share links and `?ref=` (owner decision, Oct 16): the web client keeps `?ref=` and `/s/:shareId` for 7 days (the attribution window; the server can't check its age) and sends the ref at sign-in;
   - mini app sign-in e2e: it needs a host-frame harness (W8-C open issue), with OA-11.
+
+## Carry-over from W9-Z (Oct 16, 2026)
+
+- **W11-C:**
+  - `npx @flocked/verify` (AC-3): the bin loads TypeScript through `tsx`, like every workspace package; publishing needs a build (bundle `src/cli.ts` as ESM with `@flocked/*` inlined). Owner: W11-C, or the release wave if W11-C doesn't publish;
+  - the Verify page verifies one entry (`verifyEntry`), not the whole round: decryption is sequential (about 6 ms an entry, about 10 min for 100k);
+  - long `getLogs` scans on Base: a provider with a tight range limit makes the `RoleRevoked` and `OutcomeProposed` scans slow (they halve down to 500 blocks).
+- **W11-D:** the web service worker shows `{ title, body, url, tag }` and subscribes with `VAPID_PUBLIC_KEY` through `POST /push/subscribe` (open to suspended accounts, decision B7); the mini app manifest's `webhookUrl` is `${API_ORIGIN}/api/v1/farcaster/webhook`. Sealed's "Remind me" opens Settings until a client flow subscribes (owner, Oct 16).

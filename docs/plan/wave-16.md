@@ -28,3 +28,7 @@ This wave has a single build session. Nothing else can run in parallel with a pr
 - Tick every row of `plan.md` §7 Production readiness with evidence links. For any unticked agent work, add wave 17 instead of ending.
 - Update Status: every session ✅. Owner actions still open are listed with what each unblocks (e.g. Stakes waiting on gate 2; final mascot art).
 - Write `docs/sessions/W16-Z.md` as the launch summary, and tag `v1.0.0`.
+
+## Carry-over from W9-Z (Oct 16, 2026)
+
+- **W16-A:** commit `contracts/deployments/8453.json` with the mainnet deploy; the web's Free entry flow reads it (W9-C).
