@@ -24,6 +24,7 @@
 // exactly once.
 import { gameDayOf, isoWeekOf, type Mode } from '@flocked/shared';
 import type { Env } from '../env.js';
+import { raiseAlert } from '../lib/alert.js';
 import { now } from '../lib/clock.js';
 import { log } from '../lib/log.js';
 import type { ModeFinalEvent } from '../settlement/hooks.js';
@@ -169,8 +170,16 @@ async function step(db: D1Database, mode: Mode, day: DayRow, t: number): Promise
   return true;
 }
 
+/** Called when a final day can't be applied (its data is inconsistent): stats stop there. */
+export type StatsBlocked = (data: { mode: Mode; roundId: string; reason: string }) => void;
+
 /** Starts the next day if it is final. Returns false when there is nothing to start. */
-async function startNext(db: D1Database, mode: Mode, t: number): Promise<boolean> {
+async function startNext(
+  db: D1Database,
+  mode: Mode,
+  t: number,
+  blocked: StatsBlocked,
+): Promise<boolean> {
   const next = await db
     .prepare(NEXT_DAY)
     .bind(mode)
@@ -183,7 +192,10 @@ async function startNext(db: D1Database, mode: Mode, t: number): Promise<boolean
   const outcome = next.status as Outcome;
   const winner = outcome === 'settled' ? next.winner : null;
   if (outcome === 'settled' && winner !== 0 && winner !== 1) {
-    throw new Error(`stats: the settled ${mode} mode of ${next.id} has no winner`);
+    // A settled mode always has its current settlement with a winner. Without one, stop here and
+    // alert rather than throw: a throw would fail every later settlement's hooks, not just stats.
+    blocked({ mode, roundId: next.id, reason: 'settled_without_winner' });
+    return false;
   }
   const gameDay = gameDayOf(Math.floor(next.closes_at / 1000));
   await db
@@ -197,12 +209,17 @@ async function startNext(db: D1Database, mode: Mode, t: number): Promise<boolean
  * Applies every final day of `mode` that is next in line, up to `STATS_SIZES.days` of them.
  * Idempotent and safe to run concurrently; it returns the number of days it finished.
  */
-export async function applyFinalDays(db: D1Database, mode: Mode, t: number): Promise<number> {
+export async function applyFinalDays(
+  db: D1Database,
+  mode: Mode,
+  t: number,
+  blocked: StatsBlocked = (data) => log.error('stats_blocked', data),
+): Promise<number> {
   let finished = 0;
   while (finished < STATS_SIZES.days) {
     const day = await db.prepare(IN_PROGRESS).bind(mode).first<DayRow>();
     if (!day) {
-      if (!(await startNext(db, mode, t))) break;
+      if (!(await startNext(db, mode, t, blocked))) break;
       continue; // read it back: a concurrent caller may have started it instead
     }
     if (!(await step(db, mode, day, t))) {
@@ -216,5 +233,8 @@ export async function applyFinalDays(db: D1Database, mode: Mode, t: number): Pro
 /** The `onModeFinal` handler: daily rounds only (room rounds never touch global stats). */
 export async function statsOnModeFinal(env: Env, event: ModeFinalEvent): Promise<void> {
   if (event.kind !== 'daily') return;
-  await applyFinalDays(env.DB, event.mode, now(env));
+  await applyFinalDays(env.DB, event.mode, now(env), (data) => {
+    log.error('stats_blocked', data);
+    raiseAlert(env, 'ALERT_DO_ERROR', { step: 'stats_blocked', ...data });
+  });
 }

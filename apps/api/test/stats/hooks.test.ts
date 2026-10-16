@@ -152,6 +152,34 @@ describe('runModeFinal', () => {
     expect(await statsOf(USERS[0] ?? '')).toEqual(EXPECTED_U1);
   });
 
+  it('a settled day without its settlement stops the stats and alerts, but fails no settlement', async () => {
+    const broken = await seedDay({
+      day: '2026-10-05',
+      modes: {
+        free: { status: 'settled', winner: 0, entries: [{ user: USERS[0] ?? '', option: 0 }] },
+      },
+    });
+    await env.DB.prepare('DELETE FROM settlements WHERE round_id = ?1').bind(broken.roundId).run();
+    const later = await seedDay({
+      day: '2026-10-06',
+      modes: {
+        free: { status: 'settled', winner: 0, entries: [{ user: USERS[0] ?? '', option: 0 }] },
+      },
+    });
+    const writes = vi.spyOn(env.ANALYTICS, 'writeDataPoint');
+    await runModeFinal(env, {
+      roundId: later.roundId,
+      mode: 'free',
+      kind: 'daily',
+      outcome: 'settled',
+    });
+    expect(writes.mock.calls.map((c) => (c[0] as { indexes: string[] }).indexes[0])).toContain(
+      'ALERT_DO_ERROR',
+    );
+    expect((await snapshot()).days).toEqual([]);
+    expect(await statsOf(USERS[0] ?? '')).toBeNull();
+  });
+
   it('a room round never touches global stats', async () => {
     const room = await seedDay({
       day: '2026-10-05',
