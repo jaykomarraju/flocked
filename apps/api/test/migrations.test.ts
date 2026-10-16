@@ -156,6 +156,9 @@ const SPEC_COLUMNS: Record<string, readonly string[]> = {
     'qualified_round_id',
     'rewarded_at',
     'created_at',
+    // 0018 (W8-B): the cap's week and the reward attempt rotation (W8-B spec issue).
+    'reward_week',
+    'checked_at',
   ],
   sessions: ['id_hash', 'user_id', 'expires_at', 'created_at', 'user_agent'],
   notification_prefs: ['user_id', 'channel', 'event', 'enabled'],
@@ -228,6 +231,21 @@ const SPEC_COLUMNS: Record<string, readonly string[]> = {
   audit_log: ['id', 'actor', 'actor_user_id', 'action', 'target', 'data_json', 'created_at'],
   // 0003_round_do (W3-B): the final skip of a daily grant; not yet a row in the spec's data model.
   daily_grant_skips: ['user_id', 'round_id', 'balance', 'skipped_at'],
+  // 0018_stats (W8-B): the days user_stats has absorbed, the Strays board's winners and the Weekly
+  // board's weeks; not yet rows in the spec's data model (W8-B spec issue).
+  stats_days: [
+    'round_id',
+    'mode',
+    'closes_at',
+    'game_day',
+    'outcome',
+    'winner',
+    'after_user',
+    'started_at',
+    'done_at',
+  ],
+  stats_wins: ['round_id', 'mode', 'user_id', 'stray_streak', 'best_stray_streak', 'entered_at'],
+  stats_weeks: ['user_id', 'mode', 'iso_week', 'wins', 'net', 'updated_at'],
   // 0005_scheduler (W4-A): at-most-once operator transactions; not yet a row in the spec's data model.
   operator_txs: ['purpose', 'status', 'tx_json', 'tx_hash', 'created_at', 'updated_at'],
   // 0009_personhood (W5-B): admin flags and config, and deleted people's cap state; neither is a
@@ -836,6 +854,61 @@ describe('0016 (W6-F1 O1)', () => {
     await env.DB.batch(m.queries.map((q) => env.DB.prepare(q)));
     expect(await rows()).toEqual(before);
     expect(before).toHaveLength(4);
+  });
+});
+
+describe('0018 (W8-B)', () => {
+  it('stats_days: one day in progress per mode, one row per (mode, closes_at), a winner iff settled', async () => {
+    const { results } = await env.DB.prepare('SELECT name FROM d1_migrations').all<{
+      name: string;
+    }>();
+    expect(results.map((r) => r.name)).toContain('0018_stats.sql');
+    const insert = `INSERT INTO stats_days (round_id, mode, closes_at, game_day, outcome, winner,
+      started_at, done_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7)`;
+    const run = (...p: unknown[]) =>
+      env.DB.prepare(insert)
+        .bind(...p)
+        .run();
+    await run('d18-a', 'free', 100, '2026-10-01', 'settled', 0, 5);
+    await run('d18-b', 'free', 200, '2026-10-02', 'refunded', null, null);
+    expect(await rejects(insert, 'd18-c', 'free', 300, '2026-10-03', 'voided', null, null)).toMatch(
+      /UNIQUE constraint failed/,
+    );
+    expect(await rejects(insert, 'd18-c', 'free', 200, '2026-10-03', 'voided', null, 6)).toMatch(
+      /UNIQUE constraint failed/,
+    );
+    await run('d18-c', 'stakes', 300, '2026-10-03', 'voided', null, null);
+    expect(await rejects(insert, 'd18-d', 'free', 400, '2026-10-04', 'settled', null, 7)).toMatch(
+      /CHECK constraint failed/,
+    );
+    expect(await rejects(insert, 'd18-d', 'free', 400, '2026-10-04', 'refunded', 1, 7)).toMatch(
+      /CHECK constraint failed/,
+    );
+    expect(await rejects(insert, 'd18-d', 'free', 400, '2026/10/04', 'voided', null, 7)).toMatch(
+      /CHECK constraint failed/,
+    );
+  });
+
+  it('stats_wins and stats_weeks check their values; referrals.reward_week is an ISO week', async () => {
+    expect(
+      await rejects(
+        "INSERT INTO stats_wins (round_id, mode, user_id, stray_streak, best_stray_streak, entered_at) VALUES ('r', 'free', 'u', 3, 2, 1)",
+      ),
+    ).toMatch(/CHECK constraint failed/);
+    expect(
+      await rejects(
+        "INSERT INTO stats_weeks (user_id, mode, iso_week, wins, net, updated_at) VALUES ('u', 'free', '2026-41', 1, 0, 1)",
+      ),
+    ).toMatch(/CHECK constraint failed/);
+    expect(
+      await rejects(
+        "INSERT INTO referrals (referrer_user_id, referee_user_id, status, created_at, reward_week) VALUES ('a', 'b', 'pending', 1, 'W41')",
+      ),
+    ).toMatch(/CHECK constraint failed/);
+    const plan = await env.DB.prepare(
+      "EXPLAIN QUERY PLAN SELECT user_id FROM user_stats WHERE mode = 'free' ORDER BY best_stray_streak DESC, stray_streak DESC, rounds_played DESC LIMIT 10",
+    ).all<{ detail: string }>();
+    expect(plan.results.map((r) => r.detail).join('\n')).toContain('user_stats_streaks_idx');
   });
 });
 

@@ -13,6 +13,7 @@ import {
   freeConfigHash,
   gameDayOf,
   questionHash,
+  type CrowdHint,
   type Mode,
   type ModeStatus,
   type RoundArchiveItem,
@@ -320,14 +321,66 @@ export async function readRound(env: Env, roundId: string): Promise<RoundView | 
   return roundView(env, r, modes, counts, settlements);
 }
 
+/** The crowd-history hint (W8-B): the last 30 settled daily rounds, hidden below 5. */
+export const CROWD_HINT = { rounds: 30, minRounds: 5 } as const;
+
 /**
- * GET /rounds/today: the daily round open at `t` (epoch ms; null in a schedule gap), and the
- * previous daily round while any of its modes is still revealing or settling.
+ * The crowd-history hint per mode (spec "Client app", Today): over the category's last 30 settled
+ * daily rounds that closed before `before` (epoch ms), the mean share of valid entrants on the
+ * winning side. Settled means final (a Stakes proposal counts once finalized) and therefore
+ * revealed; each mode's hint is null below 5 rounds.
+ */
+export async function readCrowdHint(
+  db: D1Database,
+  category: string,
+  before: number,
+): Promise<{ free: CrowdHint | null; stakes: CrowdHint | null }> {
+  const { results } = await db
+    .prepare(
+      `SELECT mode, COUNT(*) AS n, AVG(share) AS share FROM (
+         SELECT mode, (CASE winner WHEN 0 THEN h0 ELSE h1 END) * 1.0 / (h0 + h1) AS share,
+                ROW_NUMBER() OVER (PARTITION BY mode ORDER BY closes_at DESC) AS k
+         FROM (
+           SELECT m.mode, r.closes_at, json_extract(s.winners_json, '$.winner') AS winner,
+                  CAST(json_extract(s.tally_json, '$[0].headcount') AS INTEGER) AS h0,
+                  CAST(json_extract(s.tally_json, '$[1].headcount') AS INTEGER) AS h1
+           FROM rounds r
+           JOIN questions q ON q.id = r.question_id
+           JOIN round_modes m ON m.round_id = r.id AND m.status = 'settled'
+             AND m.revealed_at IS NOT NULL
+           JOIN settlements s ON s.round_id = r.id AND s.mode = m.mode AND s.superseded_at IS NULL
+           WHERE r.kind = 'daily' AND r.locked_at IS NOT NULL AND q.category = ?1
+             AND r.closes_at < ?2
+         ) WHERE h0 + h1 > 0 AND winner IN (0, 1)
+       ) WHERE k <= ?3 GROUP BY mode`,
+    )
+    .bind(category, before, CROWD_HINT.rounds)
+    .all<{ mode: Mode; n: number; share: number }>();
+  const hint = (mode: Mode): CrowdHint | null => {
+    const r = results.find((x) => x.mode === mode);
+    if (!r || r.n < CROWD_HINT.minRounds) return null;
+    return {
+      category: category as CrowdHint['category'],
+      winningShare: Math.min(0.5, Math.max(0, r.share)),
+      rounds: r.n,
+    };
+  };
+  return { free: hint('free'), stakes: hint('stakes') };
+}
+
+/**
+ * GET /rounds/today: the daily round open at `t` (epoch ms; null in a schedule gap), the previous
+ * daily round while any of its modes is still revealing or settling, and the open round's
+ * crowd-history hint.
  */
 export async function readToday(
   env: Env,
   t: number,
-): Promise<{ round: RoundView | null; previousRoundId: string | null }> {
+): Promise<{
+  round: RoundView | null;
+  previousRoundId: string | null;
+  crowdHint: { free: CrowdHint | null; stakes: CrowdHint | null } | null;
+}> {
   const open = await env.DB.prepare(
     `${ROUND_SELECT} AND r.kind = 'daily' AND r.opens_at <= ?1 AND r.closes_at > ?1
      ORDER BY r.closes_at LIMIT 1`,
@@ -344,7 +397,8 @@ export async function readToday(
     .bind(t)
     .first<{ id: string }>();
   const round = open ? await readRound(env, open.id) : null;
-  return { round, previousRoundId: prev?.id ?? null };
+  const crowdHint = open ? await readCrowdHint(env.DB, open.q_category, open.closes_at) : null;
+  return { round, previousRoundId: prev?.id ?? null, crowdHint };
 }
 
 /** The open daily round's ID and opensAt at `t` (for the first-visit grant), or null. */

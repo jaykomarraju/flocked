@@ -77,6 +77,39 @@
         }
       },
       {
+        "board": "streaks",
+        "mode": "free",
+        "period": null,
+        "rows": [
+          {
+            "rank": 1,
+            "user": {
+              "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+              "handle": "woolly",
+              "displayName": "Woolly",
+              "avatarUrl": "https://img.example/u/woolly.png"
+            },
+            "strayStreak": 2,
+            "bestStrayStreak": 9,
+            "roundsPlayed": 40
+          },
+          {
+            "rank": 2,
+            "user": {
+              "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CF",
+              "handle": "baa-baa",
+              "displayName": null,
+              "avatarUrl": null
+            },
+            "strayStreak": 6,
+            "bestStrayStreak": 6,
+            "roundsPlayed": 12,
+            "topLiveStreak": true
+          }
+        ],
+        "me": null
+      },
+      {
         "board": "strays",
         "mode": "stakes",
         "period": "2026-10-08",
@@ -166,6 +199,32 @@
     ]
   },
   "invalid": {
+    "LeaderboardResponseSchema": [
+      {
+        "why": "topLiveStreak is only ever true",
+        "value": {
+          "board": "streaks",
+          "mode": "free",
+          "period": null,
+          "rows": [
+            {
+              "rank": 1,
+              "user": {
+                "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+                "handle": "woolly",
+                "displayName": "Woolly",
+                "avatarUrl": null
+              },
+              "strayStreak": 0,
+              "bestStrayStreak": 3,
+              "roundsPlayed": 5,
+              "topLiveStreak": false
+            }
+          ],
+          "me": null
+        }
+      }
+    ],
     "LeaderboardParamsSchema": [
       {
         "why": "unknown board",

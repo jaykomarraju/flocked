@@ -49,6 +49,7 @@ import { validate } from '../lib/validate.js';
 import { personhoodReturnUrl } from '../personhood/config.js';
 import { stakesAgeRequirement, stakesEligibility } from '../personhood/eligibility.js';
 import { completePersonhood, startPersonhood } from '../personhood/flow.js';
+import { readReferrals } from '../referrals/read.js';
 
 type Ctx = Context<AppEnv>;
 
@@ -303,10 +304,11 @@ me.get(
   },
 );
 
-// Referrals land in W8-B; until then the caller has none.
+// Referrals (W8-B, src/referrals/): the caller's code, invitees and referral points.
 me.get('/me/referrals', requireUser, async (c) => {
-  const { ref_code } = await loadMeUser(c.env.DB, getUser(c).id);
-  return c.json({ refCode: ref_code, referrals: [], rewardTotal: '0' } satisfies ReferralsResponse);
+  const userId = getUser(c).id;
+  const { ref_code } = await loadMeUser(c.env.DB, userId);
+  return c.json((await readReferrals(c.env, userId, ref_code)) satisfies ReferralsResponse);
 });
 
 me.delete('/me', requireUser, limitUser('writes'), async (c) => {
