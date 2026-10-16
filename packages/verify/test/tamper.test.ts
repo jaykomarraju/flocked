@@ -157,6 +157,21 @@ describe('tamper: Free-only fields', () => {
     await expectMismatch(f, objects, 'commitment.root');
   });
 
+  it('every anchored entry dropped: an empty bundle against an anchor that holds a commitment', async () => {
+    const full = (await free()).reader;
+    const held = full.anchorState!;
+    const f = await makeBundle('free', { entries: [] });
+    f.reader.anchorState = {
+      ...f.reader.anchorState!,
+      committedAt: held.committedAt,
+      commitmentRoot: held.commitmentRoot,
+      entryCount: held.entryCount,
+      totalStake: held.totalStake,
+    };
+    f.reader.logs = [...f.reader.logs, ...full.logs.filter((l) => l.event === 'Committed')];
+    await expectMismatch(f, f.objects, 'anchor.commitment');
+  });
+
   it('a non-canonical encoding of the same manifest', async () => {
     const f = await free();
     const key = `bundles/${f.roundId}/free/manifest.json`;

@@ -166,6 +166,9 @@ async function verifyFree(
           commitment.totalStake,
         );
     }
+  } else if (a.committedAt !== 0n) {
+    // A null commitment means no entries; the anchor saying otherwise means entries were dropped.
+    checks.fail('anchor.commitment', 'the anchor holds a commitment the manifest leaves out');
   }
   if (a.manifestAnchoredAt === 0n)
     checks.error('anchor.manifestHash', 'the manifest hash is not anchored yet');
