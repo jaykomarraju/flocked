@@ -101,6 +101,10 @@ const IMPLEMENTED = new Set([
   'DELETE /me',
   'PUT /me/limits',
   'POST /me/limits/exclusion-lift',
+  // W8-A (test/questions/)
+  'GET /questions',
+  'POST /questions',
+  'POST /questions/:id/vote',
 ]);
 
 /**

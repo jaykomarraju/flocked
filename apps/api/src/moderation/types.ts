@@ -33,7 +33,12 @@ export interface ModelOutput {
 export type ModelVerdict =
   | { kind: 'verdict'; output: ModelOutput; stopReason: string | null }
   | { kind: 'refusal'; category: string | null }
-  | { kind: 'error'; error: string };
+  | {
+      kind: 'error';
+      error: string;
+      /** The call succeeded but its output did not parse or validate (`invalid_output`). */
+      invalidOutput?: boolean;
+    };
 
 /** The rubric model. Declared as a property function type (unbound-method lint). */
 export interface ModerationModel {

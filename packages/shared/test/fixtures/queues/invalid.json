@@ -145,6 +145,41 @@
           "gameDay": "2026-10-08"
         }
       }
+    },
+    {
+      "why": "question_rejected without a reason",
+      "value": {
+        "event": "question_rejected",
+        "userId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+        "dedupeKey": "question_rejected:01K6Z8Y4N2R7VQ3M5T9W1XB0CG",
+        "payload": {
+          "questionId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CG",
+          "reason": ""
+        }
+      }
+    },
+    {
+      "why": "question_rejected reason over 500 characters",
+      "value": {
+        "event": "question_rejected",
+        "userId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+        "dedupeKey": "question_rejected:01K6Z8Y4N2R7VQ3M5T9W1XB0CG",
+        "payload": {
+          "questionId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CG",
+          "reason": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        }
+      }
+    },
+    {
+      "why": "question_rejected without its question",
+      "value": {
+        "event": "question_rejected",
+        "userId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+        "dedupeKey": "question_rejected:01K6Z8Y4N2R7VQ3M5T9W1XB0CG",
+        "payload": {
+          "reason": "It asks for a fact, not a preference."
+        }
+      }
     }
   ]
 }

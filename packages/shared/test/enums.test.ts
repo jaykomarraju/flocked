@@ -62,6 +62,7 @@ describe('enums match the spec', () => {
       'question_used',
       'streak_at_risk',
       'question_edited',
+      'question_rejected',
       'security_notice',
     ]);
   });

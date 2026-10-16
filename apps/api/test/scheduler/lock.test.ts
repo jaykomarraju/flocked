@@ -1,6 +1,7 @@
 // Question lock (spec "Round lifecycle" › Scheduling; "Question pipeline" › House questions): when it
-// happens, what it freezes, idempotence and immutability, house-question gap fills (ALERT-6), and the
-// target-round check on non-default timing.
+// happens, what it freezes, idempotence and immutability, house-question gap fills (ALERT-6), the
+// game day with no daily round (E4; more in test/questions/lock-day.test.ts), the hourly repeat of a
+// persisting gap's alert, and the target-round check on non-default timing.
 import { env } from 'cloudflare:test';
 import {
   LOCKED_CONFIG_DEFAULTS,
@@ -15,9 +16,20 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { dailySlot, insertDailyRound } from '../../src/scheduler/create.js';
 import { freeLockItem, lockRound, type QuestionRow } from '../../src/scheduler/lock.js';
 import { alertSpy, drand } from '../anchor-do/helpers.js';
-import { HOUR, MIN, insertQuestion, modeRows, roundRow } from './helpers.js';
+import {
+  HOUR,
+  MIN,
+  creatorHarness,
+  gapReasons,
+  insertQuestion,
+  modeRows,
+  roundRow,
+} from './helpers.js';
 
 afterEach(() => vi.restoreAllMocks());
+
+/** The env the locks run with: its notify queue records (an authored lock sends `question_used`). */
+const h = creatorHarness();
 
 let day = 0;
 /** A fresh daily round (its own game day), with an optional scheduled question. */
@@ -37,7 +49,7 @@ describe('lockRound', () => {
     const author = newUlid();
     const qId = await insertQuestion({ author, status: 'scheduled' });
     const r = await newRound(qId);
-    const out = await lockRound(env, drand, await roundRow(r.id), r.lockAt);
+    const out = await lockRound(h.env, drand, await roundRow(r.id), r.lockAt);
     expect(out).toEqual({ status: 'locked', houseFill: false });
 
     const row = await roundRow(r.id);
@@ -60,15 +72,15 @@ describe('lockRound', () => {
 
   it('is idempotent and the locked round is immutable', async () => {
     const r = await newRound(await insertQuestion({ status: 'scheduled' }));
-    await lockRound(env, drand, await roundRow(r.id), r.lockAt);
+    await lockRound(h.env, drand, await roundRow(r.id), r.lockAt);
     const before = await roundRow(r.id);
-    expect(await lockRound(env, drand, before, r.lockAt + MIN)).toEqual({
+    expect(await lockRound(h.env, drand, before, r.lockAt + MIN)).toEqual({
       status: 'already_locked',
     });
     // A stale read of the unlocked row cannot lock it a second time either.
     expect(
       await lockRound(
-        env,
+        h.env,
         drand,
         { ...before, locked_at: null, config_json: null },
         r.lockAt + MIN,
@@ -99,14 +111,18 @@ describe('lockRound', () => {
     const top = await insertQuestion({ score: 9 });
     await insertQuestion({ score: 9, author: newUlid() }); // not a house question
     const r = await newRound();
-    expect(await lockRound(env, drand, await roundRow(r.id), r.lockAt)).toEqual({
+    expect(await lockRound(h.env, drand, await roundRow(r.id), r.lockAt)).toEqual({
       status: 'locked',
       houseFill: true,
     });
     const row = await roundRow(r.id);
     expect(row.question_id).toBe(top);
     expect((JSON.parse(row.config_json!) as LockedConfig).free?.awardRecipient).toBeNull();
-    expect(alerts.codes()).toEqual(['ALERT_SCHEDULE_GAP']);
+    // The gap, and the house backlog check after a lock that used a house question.
+    expect(alerts.codes().every((c) => c === 'ALERT_SCHEDULE_GAP')).toBe(true);
+    expect(gapReasons(alerts.spy).filter((g) => g !== 'house_backlog_low')).toEqual([
+      'no_question',
+    ]);
     const audit = await env.DB.prepare(
       "SELECT data_json FROM audit_log WHERE action = 'schedule_gap' AND target = ?1",
     )
@@ -118,23 +134,55 @@ describe('lockRound', () => {
   it('a rejected scheduled question is a gap too', async () => {
     const r = await newRound(await insertQuestion({ status: 'rejected', author: newUlid() }));
     const house = await insertQuestion({ score: 100 });
-    await lockRound(env, drand, await roundRow(r.id), r.lockAt);
+    await lockRound(h.env, drand, await roundRow(r.id), r.lockAt);
     expect((await roundRow(r.id)).question_id).toBe(house);
   });
 
-  it('with no house question left it refuses, alerting at most once an hour', async () => {
+  // W8-A (E4): this used to refuse and retry every tick, alerting hourly; now the game day has no
+  // daily round, and the round is closed unlocked the first time.
+  it('with no house question left the game day has no daily round: closed once, alerting once', async () => {
     await env.DB.prepare("UPDATE questions SET status = 'used' WHERE author_user_id IS NULL").run();
     const alerts = alertSpy();
     const r = await newRound();
-    const refused = { status: 'refused', reason: 'no_house_question' };
-    expect(await lockRound(env, drand, await roundRow(r.id), r.lockAt)).toEqual(refused);
-    expect(await lockRound(env, drand, await roundRow(r.id), r.lockAt + MIN)).toEqual(refused);
-    expect(alerts.codes()).toEqual(['ALERT_SCHEDULE_GAP']);
-    expect(await lockRound(env, drand, await roundRow(r.id), r.lockAt + HOUR + MIN)).toEqual(
-      refused,
-    );
-    expect(alerts.codes()).toEqual(['ALERT_SCHEDULE_GAP', 'ALERT_SCHEDULE_GAP']);
-    expect((await roundRow(r.id)).locked_at).toBeNull();
+    expect(await lockRound(h.env, drand, await roundRow(r.id), r.lockAt)).toEqual({
+      status: 'refused',
+      reason: 'no_house_question',
+    });
+    for (const t of [r.lockAt + MIN, r.lockAt + HOUR + MIN]) {
+      expect(await lockRound(h.env, drand, await roundRow(r.id), t)).toEqual({
+        status: 'refused',
+        reason: 'no_daily_round',
+      });
+    }
+    expect(gapReasons(alerts.spy)).toEqual(['no_daily_round']);
+    expect(await roundRow(r.id)).toMatchObject({ status: 'closed', locked_at: null });
+  });
+
+  it('a gap that persists alerts again after an hour, even when it is seen every minute', async () => {
+    // A room round without a question is refused at every tick (rooms have no house fill).
+    const id = newUlid();
+    const slot = dailySlot('2026-12-28');
+    await env.DB.prepare(
+      "INSERT INTO rounds (id, kind, room_id, opens_at, closes_at) VALUES (?1, 'room', 'room-gap', ?2, ?3)",
+    )
+      .bind(id, slot.opensAt, slot.closesAt)
+      .run();
+    const alerts = alertSpy();
+    const lockAt = slot.opensAt - 6 * HOUR;
+    for (let m = 0; m <= 61; m++) {
+      expect(await lockRound(h.env, drand, await roundRow(id), lockAt + m * MIN)).toEqual({
+        status: 'refused',
+        reason: 'no_question',
+      });
+    }
+    // At lockAt and lockAt + 60 min (the first alert's hour has passed), not in between.
+    expect(gapReasons(alerts.spy)).toEqual(['no_question', 'no_question']);
+    const { n } = (await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM audit_log WHERE action = 'schedule_gap' AND target = ?1",
+    )
+      .bind(id)
+      .first<{ n: number }>())!;
+    expect(n).toBe(62);
   });
 });
 
@@ -160,7 +208,7 @@ describe('the target-round check at lock', () => {
     while ((close + 600 - drand.genesis) % drand.period === 0) close += 1;
     const r = await customRound(close * 1000, 600);
     const alerts = alertSpy();
-    expect(await lockRound(env, drand, r, r.opens_at - 6 * HOUR)).toEqual({
+    expect(await lockRound(h.env, drand, r, r.opens_at - 6 * HOUR)).toEqual({
       status: 'refused',
       reason: 'beacon_too_late',
     });
@@ -171,14 +219,14 @@ describe('the target-round check at lock', () => {
   it('accepts a non-default beaconDelay it can meet', async () => {
     const close = Date.UTC(2027, 1, 4, 2, 0, 0) / 1000; // 21:00 EST
     const r = await customRound(close * 1000, 60);
-    expect((await lockRound(env, drand, r, r.opens_at - 6 * HOUR)).status).toBe('locked');
+    expect((await lockRound(h.env, drand, r, r.opens_at - 6 * HOUR)).status).toBe('locked');
     expect((await roundRow(r.id)).beacon_round).toBe(firstRoundAtOrAfter(drand, close + 60));
   });
 
   it('refuses a lock whose beacon time has already passed', async () => {
     const close = Date.UTC(2027, 1, 5, 2, 0, 0);
     const r = await customRound(close, 120);
-    expect(await lockRound(env, drand, r, close + 10 * MIN)).toMatchObject({
+    expect(await lockRound(h.env, drand, r, close + 10 * MIN)).toMatchObject({
       status: 'refused',
       reason: 'beacon_in_past',
     });
@@ -189,7 +237,7 @@ describe('the Free lock leaf', () => {
   it('commits closesAt, beaconRound, the question hash and configHash = freeConfigHash(config)', async () => {
     const qId = await insertQuestion({ status: 'scheduled', author: newUlid() });
     const r = await newRound(qId);
-    await lockRound(env, drand, await roundRow(r.id), r.lockAt);
+    await lockRound(h.env, drand, await roundRow(r.id), r.lockAt);
     const row = await roundRow(r.id);
     const q = (await env.DB.prepare('SELECT * FROM questions WHERE id = ?1')
       .bind(qId)

@@ -3,9 +3,16 @@
 // are frozen into `rounds` in one D1 batch, with its `round_modes` rows; after that nothing in the
 // round can change (the `rounds_locked_immutable` trigger, migration 0005). The onchain halves (Stakes
 // `createRound`, the Free lock leaf) and `RoundDO.init` follow in src/scheduler/tick.ts.
+//
+// W8-A (decisions C5 and E4, Oct 12, 2026): the Stakes `creator` and `payoutAddress` are resolved
+// together at lock (src/questions/creator.ts); a daily round with no usable question and an empty
+// house backlog is closed unlocked, so that game day has no daily round; a lock that used a house
+// question checks the backlog (src/questions/backlog.ts); and the author of a daily round's question
+// is sent `question_used` (stage `scheduled`).
 import {
   LOCKED_CONFIG_DEFAULTS,
   LockedConfigSchema,
+  NotifyMessageSchema,
   QuestionOptionSchema,
   freeConfigHash,
   gameDayOf,
@@ -32,6 +39,8 @@ import type { AnchorLockItem, LockedRound } from '../do/types.js';
 import type { Env } from '../env.js';
 import { raiseAlert } from '../lib/alert.js';
 import { log } from '../lib/log.js';
+import { checkHouseBacklog } from '../questions/backlog.js';
+import { TREASURY_CREATOR, resolveCreator, type CreatorResolution } from '../questions/creator.js';
 import { HOUR_MS } from '../rounds/schedule.js';
 
 /** The question lock: 6 hours before `opensAt`. */
@@ -71,10 +80,15 @@ export type GapReason =
   | 'no_round'
   | 'no_question'
   | 'no_house_question'
+  | 'no_daily_round'
   | 'invalid_config'
   | 'stakes_create_round_failed'
   | 'lock_leaf_failed';
 
+/**
+ * `refused` with `no_house_question` is the lock that found nothing to lock and closed its game day
+ * (no daily round); `no_daily_round` answers every later call for that closed, unlocked round.
+ */
 export type LockOutcome =
   | { status: 'locked'; houseFill: boolean }
   | { status: 'already_locked' }
@@ -85,9 +99,13 @@ const OptionsSchema = z.tuple([QuestionOptionSchema, QuestionOptionSchema]);
 /** Usable question statuses for a round; `rejected` and `submitted` are not. */
 const USABLE = new Set(['queued', 'scheduled', 'used']);
 
+const message = (err: unknown) => (err instanceof Error ? err.message : String(err));
+
 /**
  * A schedule gap (ALERT-6): an `audit_log` row (system) every time, and ALERT_SCHEDULE_GAP at most
- * once per round and reason per hour, so a gap that persists keeps paging without flooding.
+ * once per round and reason per hour, so a gap that persists keeps paging without flooding. Only the
+ * rows that alerted (`alerted: true`) count for the hour: a gap seen every minute would otherwise
+ * always find the previous minute's row and page once only.
  */
 export async function recordGap(
   env: Pick<Env, 'DB' | 'ANALYTICS' | 'ENVIRONMENT'>,
@@ -97,16 +115,22 @@ export async function recordGap(
   data: Record<string, unknown> = {},
 ): Promise<boolean> {
   const recent = await env.DB.prepare(
-    "SELECT 1 FROM audit_log WHERE action = 'schedule_gap' AND target = ?1 AND json_extract(data_json, '$.reason') = ?2 AND created_at > ?3 LIMIT 1",
+    "SELECT 1 FROM audit_log WHERE action = 'schedule_gap' AND target = ?1 AND json_extract(data_json, '$.reason') = ?2 AND json_extract(data_json, '$.alerted') = 1 AND created_at > ?3 LIMIT 1",
   )
     .bind(target, reason, t - GAP_ALERT_EVERY_MS)
     .first();
+  const alert = !recent;
   await env.DB.prepare(
     "INSERT INTO audit_log (id, actor, actor_user_id, action, target, data_json, created_at) VALUES (?1, 'system', NULL, 'schedule_gap', ?2, ?3, ?4)",
   )
-    .bind(newUlid(t), target, JSON.stringify({ reason, ...data }), t)
+    .bind(
+      newUlid(t),
+      target,
+      JSON.stringify({ reason, ...data, ...(alert ? { alerted: true } : {}) }),
+      t,
+    )
     .run();
-  if (recent) return false;
+  if (!alert) return false;
   raiseAlert(env, 'ALERT_SCHEDULE_GAP', { target, reason, ...data });
   return true;
 }
@@ -137,14 +161,15 @@ export function questionHashOf(q: QuestionRow): Hex {
  * The config to freeze. Before lock, `config_json` may hold a draft (an admin's per-round config); a
  * round without one gets the launch defaults with Free only (Stakes is enabled per round, behind its
  * launch gates). A daily round's Free creator award goes to the question's author (null for house).
- * Stakes freezes the author's `payoutAddress` (O4, Oct 12, 2026): `authorPayoutWallet`, the payout
- * wallet the author named in Settings, when it is the resolved `creator`; else null (house questions,
- * the treasury). Reads publish it from here, never from the author's current prefs.
+ * Stakes `creator` and `payoutAddress` are set together from `creator` (decision C5): the author's
+ * payout wallet in both when it resolved (src/questions/creator.ts; daily rounds only), else the
+ * draft's creator (the treasury) and null. A draft's own payoutAddress is never kept. Reads publish
+ * both from here, never from the author's current prefs (O4).
  */
 export function configToLock(
   r: RoundRow,
   q: QuestionRow,
-  authorPayoutWallet: string | null = null,
+  creator: CreatorResolution = TREASURY_CREATOR,
 ): LockedConfig {
   const draft = r.config_json
     ? (JSON.parse(r.config_json) as Record<string, unknown>)
@@ -158,30 +183,13 @@ export function configToLock(
   }
   const stakes = draft.stakes as Record<string, unknown> | undefined;
   if (stakes) {
-    const payout = q.author_user_id !== null ? (authorPayoutWallet?.toLowerCase() ?? null) : null;
-    const creator = typeof stakes.creator === 'string' ? stakes.creator.toLowerCase() : null;
-    draft.stakes = {
-      ...stakes,
-      payoutAddress: payout !== null && payout === creator ? payout : null,
-    };
+    const author = r.kind === 'daily' && q.author_user_id !== null ? creator : TREASURY_CREATOR;
+    draft.stakes =
+      author.creator !== null
+        ? { ...stakes, creator: author.creator, payoutAddress: author.payoutAddress }
+        : { ...stakes, payoutAddress: null };
   }
   return LockedConfigSchema.parse(draft);
-}
-
-/** The payout wallet the author named in Settings (`users.prefs_json`), or null. */
-async function authorPayoutWallet(db: D1Database, q: QuestionRow): Promise<string | null> {
-  if (q.author_user_id === null) return null;
-  const row = await db
-    .prepare('SELECT prefs_json FROM users WHERE id = ?1')
-    .bind(q.author_user_id)
-    .first<{ prefs_json: string | null }>();
-  if (!row?.prefs_json) return null;
-  try {
-    const prefs = JSON.parse(row.prefs_json) as { creator_payout_wallet?: unknown };
-    return typeof prefs.creator_payout_wallet === 'string' ? prefs.creator_payout_wallet : null;
-  } catch {
-    return null;
-  }
 }
 
 /**
@@ -213,17 +221,62 @@ export function lockTiming(
 }
 
 /**
+ * A daily round at its lock with no usable question and an empty house backlog: that game day has
+ * no daily round (spec "Question pipeline" › House questions; decision E4). The round is closed
+ * while unlocked, which is final: the tick locks only `scheduled` rounds and the lock's own update
+ * requires it, `ensureDueRounds` finds the row and creates nothing, and every read of a round
+ * requires `locked_at`. The admin is alerted (ALERT-6) once, by the call that closed it.
+ */
+async function closeNoRoundDay(env: Env, r: RoundRow, t: number): Promise<void> {
+  const res = await env.DB.prepare(
+    "UPDATE rounds SET status = 'closed' WHERE id = ?1 AND locked_at IS NULL AND status = 'scheduled'",
+  )
+    .bind(r.id)
+    .run();
+  if (res.meta.changes !== 1) return;
+  const gameDay = gameDayOf(Math.floor(r.closes_at / 1000));
+  log.warn('no_daily_round', { roundId: r.id, gameDay });
+  await recordGap(env, t, r.id, 'no_daily_round', { gameDay, opensAt: r.opens_at });
+}
+
+/** `question_used` (stage `scheduled`) to the author of a daily round's question. Never throws. */
+async function enqueueQuestionUsed(
+  env: Pick<Env, 'QUEUE_NOTIFY'>,
+  r: RoundRow,
+  q: QuestionRow,
+): Promise<void> {
+  try {
+    const body = NotifyMessageSchema.parse({
+      event: 'question_used',
+      userId: q.author_user_id,
+      dedupeKey: `question_used:${q.id}:scheduled`,
+      payload: { questionId: q.id, stage: 'scheduled', roundId: r.id },
+    });
+    await env.QUEUE_NOTIFY.send(body);
+  } catch (err) {
+    log.error('question_used_enqueue_failed', {
+      roundId: r.id,
+      questionId: q.id,
+      error: message(err),
+    });
+  }
+}
+
+/**
  * Locks one round at its question lock: picks the question (filling a gap with the top house
- * question and alerting), freezes the config, and creates its `round_modes` rows, all in one D1 batch
- * that applies only while the round is unlocked. Idempotent: a locked round is left as it is.
+ * question and alerting, or closing a daily round's game day when there is none), freezes the
+ * config, and creates its `round_modes` rows, all in one D1 batch that applies only while the round
+ * is unlocked and scheduled. Idempotent: a locked round is left as it is.
  */
 export async function lockRound(
-  env: Pick<Env, 'DB' | 'ANALYTICS' | 'ENVIRONMENT'>,
+  env: Env,
   chain: DrandChain,
   r: RoundRow,
   t: number,
 ): Promise<LockOutcome> {
   if (r.locked_at !== null) return { status: 'already_locked' };
+  // Only a no-round day closes an unlocked round (closeNoRoundDay).
+  if (r.status === 'closed') return { status: 'refused', reason: 'no_daily_round' };
   const db = env.DB;
 
   let q = r.question_id ? await question(db, r.question_id) : null;
@@ -235,7 +288,7 @@ export async function lockRound(
     }
     q = await topHouseQuestion(db);
     if (!q) {
-      await recordGap(env, t, r.id, 'no_house_question', { opensAt: r.opens_at });
+      await closeNoRoundDay(env, r, t);
       return { status: 'refused', reason: 'no_house_question' };
     }
     houseFill = true;
@@ -243,12 +296,11 @@ export async function lockRound(
 
   let config: LockedConfig;
   let qHash: Hex;
-  const payoutWallet = await authorPayoutWallet(db, q);
   try {
-    config = configToLock(r, q, payoutWallet);
+    config = configToLock(r, q);
     qHash = questionHashOf(q);
   } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
+    const detail = message(err);
     await recordGap(env, t, r.id, 'invalid_config', { detail });
     return { status: 'refused', reason: 'invalid_config', detail };
   }
@@ -256,6 +308,22 @@ export async function lockRound(
   if (!timing.ok) {
     await recordGap(env, t, r.id, 'invalid_config', { detail: timing.reason });
     return { status: 'refused', reason: timing.reason };
+  }
+
+  // Stakes on a daily round's authored question: who receives the creator fee (decision C5).
+  const authored = r.kind === 'daily' && q.author_user_id !== null;
+  let creator: CreatorResolution | null = null;
+  if (config.stakes && authored) {
+    creator = await resolveCreator(env, q, t);
+    if (creator.creator !== null) {
+      try {
+        config = configToLock(r, q, creator);
+      } catch (err) {
+        const detail = message(err);
+        await recordGap(env, t, r.id, 'invalid_config', { detail });
+        return { status: 'refused', reason: 'invalid_config', detail };
+      }
+    }
   }
 
   const modes: Mode[] = [];
@@ -266,7 +334,7 @@ export async function lockRound(
   const stmts: D1PreparedStatement[] = [
     db
       .prepare(
-        'UPDATE rounds SET question_id = ?2, beacon_round = ?3, config_json = ?4, locked_at = ?5 WHERE id = ?1 AND locked_at IS NULL',
+        "UPDATE rounds SET question_id = ?2, beacon_round = ?3, config_json = ?4, locked_at = ?5 WHERE id = ?1 AND locked_at IS NULL AND status = 'scheduled'",
       )
       .bind(r.id, q.id, timing.beaconRound, JSON.stringify(config), t),
     ...modes.map((mode) =>
@@ -280,12 +348,48 @@ export async function lockRound(
       .prepare(`UPDATE questions SET status = 'used' WHERE id = ?3 AND ${lockedHere}`)
       .bind(r.id, t, q.id),
   ];
+  if (creator) {
+    // Who receives the creator fee and, for the treasury, which check failed (no addresses here:
+    // the locked config has them).
+    const data = {
+      questionId: q.id,
+      authorUserId: q.author_user_id,
+      creator: creator.creator !== null ? 'author' : 'treasury',
+      failed: creator.failed,
+    };
+    stmts.push(
+      db
+        .prepare(
+          `INSERT INTO audit_log (id, actor, actor_user_id, action, target, data_json, created_at) SELECT ?4, 'system', NULL, 'stakes_creator', ?1, ?5, ?2 WHERE ${lockedHere}`,
+        )
+        .bind(r.id, t, q.id, newUlid(t), JSON.stringify(data)),
+    );
+  }
   const results = await db.batch(stmts);
+  // Locked meanwhile, or closed as a no-round day by an overlapping tick.
   if ((results[0] as D1Result).meta.changes !== 1) return { status: 'already_locked' };
 
-  log.info('round_locked', { roundId: r.id, questionId: q.id, modes, houseFill, qHash });
-  if (houseFill) {
-    await recordGap(env, t, r.id, 'no_question', { filledWith: q.id, opensAt: r.opens_at });
+  log.info('round_locked', {
+    roundId: r.id,
+    questionId: q.id,
+    modes,
+    houseFill,
+    qHash,
+    ...(creator
+      ? { stakesCreator: creator.creator !== null ? 'author' : 'treasury', failed: creator.failed }
+      : {}),
+  });
+  if (q.author_user_id === null) {
+    try {
+      if (houseFill) {
+        await recordGap(env, t, r.id, 'no_question', { filledWith: q.id, opensAt: r.opens_at });
+      }
+      await checkHouseBacklog(env, t);
+    } catch (err) {
+      log.error('house_question_alert_failed', { roundId: r.id, error: message(err) });
+    }
+  } else if (authored) {
+    await enqueueQuestionUsed(env, r, q);
   }
   return { status: 'locked', houseFill };
 }
