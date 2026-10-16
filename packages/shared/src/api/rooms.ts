@@ -16,8 +16,14 @@ export type RoomQuestionSource = (typeof ROOM_QUESTION_SOURCES)[number];
 export const ROOM_ROLES = ['owner', 'member'] as const;
 export type RoomRole = (typeof ROOM_ROLES)[number];
 
-/** Members per room by default (spec "Profiles, leaderboards and rooms" › Rooms). */
+/**
+ * Members per room by default, counting only members whose account isn't deleted (spec "Profiles,
+ * leaderboards and rooms" › Rooms).
+ */
 export const ROOM_MAX_MEMBERS = 50;
+
+/** Open rooms one account owns at most; past it `POST /rooms` answers 409 `conflict` (same section). */
+export const ROOM_MAX_OWNED = 10;
 
 /**
  * The room minimum: a room round refunds (rule 1) unless it has at least this many qualifying
