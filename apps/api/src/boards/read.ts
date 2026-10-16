@@ -12,7 +12,8 @@
 // a rank (1, 2, 2, 4); the user ID orders them for a stable page.
 //
 // The boards read what src/stats/apply.ts wrote from final outcomes (`user_stats`, `stats_wins`,
-// `stats_weeks`), except creators, which reads the revealed tallies of final daily modes.
+// `stats_weeks`), except creators, which reads the revealed tallies of settled daily modes (a refunded
+// or voided mode's split doesn't count; W8-F1 L6, decision of Oct 16, 2026).
 import {
   isoWeekOf,
   type Board,
@@ -308,7 +309,7 @@ async function creators(db: D1Database, q: Query): Promise<LeaderboardResponse> 
               CAST(json_extract(s.tally_json, '$[1].headcount') AS INTEGER) AS h1
        FROM rounds r
        JOIN round_modes m ON m.round_id = r.id AND m.mode = ?1
-         AND m.status IN ('settled', 'refunded') AND m.revealed_at IS NOT NULL
+         AND m.status = 'settled' AND m.revealed_at IS NOT NULL
        JOIN settlements s ON s.round_id = r.id AND s.mode = ?1 AND s.superseded_at IS NULL
        WHERE r.kind = 'daily' AND r.locked_at IS NOT NULL
      ) t

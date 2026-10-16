@@ -4,7 +4,9 @@
 //   1. the kill switch `mode.stakes.enabled` is on (it stops tickets immediately; the signer checks
 //      it again before signing, and its refusal answers `stakes_disabled` too);
 //   then a room round is invisible outside its room: a non-member gets the unknown round's 404
-//   before anything else about the round answers (spec "API" › Reveal gating; W6-F1 R10);
+//   before anything else about the round answers (spec "API" › Reveal gating; W6-F1 R10); and for a
+//   room round the rooms kill switch `rooms.stakes.enabled` must be on too, else `stakes_disabled`
+//   (decision, Oct 16, 2026; W8-F1);
 //   2. the round's Stakes mode exists, was created onchain and is open: `round_modes.status` is
 //      `pending` and the RoundDO is open with no void requested (W4-Z carry-over: `round_modes`
 //      alone misses a pending void);
@@ -48,6 +50,7 @@ import type { Env } from '../env.js';
 import { readStakesConfig } from '../personhood/config-store.js';
 import { stakesEligibility } from '../personhood/eligibility.js';
 import { isRoomMember } from '../read/access.js';
+import { roomStakesEnabled } from '../scheduler/lock.js';
 import {
   TICKET_REISSUE_GRACE_SEC,
   TICKET_TTL_SEC,
@@ -314,6 +317,9 @@ export async function prepareStakesTicket(
   if (!config.stakesEnabled) throw new HttpError('stakes_disabled', 'Stakes is paused');
   if (!round) throw new HttpError('not_found', 'No such round');
   await requireVisible(db, round, user.id);
+  if (round.kind === 'room' && !(await roomStakesEnabled(db))) {
+    throw new HttpError('stakes_disabled', 'Stakes in rooms is paused');
+  }
   const stake = lockedStake(round);
   if (stake === null || round.beacon_round === null) {
     throw new HttpError('mode_unavailable', "Stakes isn't open in this round");

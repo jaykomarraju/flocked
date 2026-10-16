@@ -22,6 +22,11 @@
 // and moves the day's cursor, all conditional on the cursor it read. The last batch resets the
 // non-entrants and marks the day done. A retry or a concurrent caller therefore applies every chunk
 // exactly once.
+//
+// A Stakes call runs inside an IndexerDO poll (the Stakes final's hook), under the poll's Workers
+// budget (W4-F1 POLL_BUDGET), so it applies at most STATS_SIZES.stakesBatches batches (W8-F1 L5);
+// what is left waits for the next call: the next Stakes final's, or the scheduler tick's
+// (`drainStakesStats`), which runs every minute, so a backlog always drains.
 import { gameDayOf, isoWeekOf, type Mode } from '@flocked/shared';
 import type { Env } from '../env.js';
 import { raiseAlert } from '../lib/alert.js';
@@ -29,8 +34,11 @@ import { now } from '../lib/clock.js';
 import { log } from '../lib/log.js';
 import type { ModeFinalEvent } from '../settlement/hooks.js';
 
-/** Entrants per batch, and days per call (a long backlog continues on the next call). */
-export const STATS_SIZES = { chunk: 1000, days: 7 };
+/**
+ * Entrants per batch, days per call (a long backlog continues on the next call), and batches per
+ * Stakes call (about 6 D1 statements each).
+ */
+export const STATS_SIZES = { chunk: 1000, days: 7, stakesBatches: 8 };
 
 type Outcome = 'settled' | 'refunded' | 'voided';
 const FINAL: ReadonlySet<string> = new Set<Outcome>(['settled', 'refunded', 'voided']);
@@ -206,8 +214,9 @@ async function startNext(
 }
 
 /**
- * Applies every final day of `mode` that is next in line, up to `STATS_SIZES.days` of them.
- * Idempotent and safe to run concurrently; it returns the number of days it finished.
+ * Applies every final day of `mode` that is next in line, up to `STATS_SIZES.days` of them, and for
+ * Stakes up to `STATS_SIZES.stakesBatches` batches. Idempotent and safe to run concurrently; it
+ * returns the number of days it finished.
  */
 export async function applyFinalDays(
   db: D1Database,
@@ -215,19 +224,30 @@ export async function applyFinalDays(
   t: number,
   blocked: StatsBlocked = (data) => log.error('stats_blocked', data),
 ): Promise<number> {
+  const maxBatches = mode === 'stakes' ? STATS_SIZES.stakesBatches : Infinity;
   let finished = 0;
-  while (finished < STATS_SIZES.days) {
+  let batches = 0;
+  while (finished < STATS_SIZES.days && batches < maxBatches) {
     const day = await db.prepare(IN_PROGRESS).bind(mode).first<DayRow>();
     if (!day) {
       if (!(await startNext(db, mode, t, blocked))) break;
       continue; // read it back: a concurrent caller may have started it instead
     }
+    batches += 1;
     if (!(await step(db, mode, day, t))) {
       finished += 1;
       log.info('stats_day_applied', { mode, roundId: day.round_id, outcome: day.outcome });
     }
   }
   return finished;
+}
+
+/**
+ * The scheduler tick's share (W8-F1 L5): the Stakes days a bounded hook call left, one bounded call
+ * a minute. A blocked day is logged here; the hook alerts.
+ */
+export async function drainStakesStats(env: Env, t: number): Promise<number> {
+  return applyFinalDays(env.DB, 'stakes', t);
 }
 
 /** The `onModeFinal` handler: daily rounds only (room rounds never touch global stats). */

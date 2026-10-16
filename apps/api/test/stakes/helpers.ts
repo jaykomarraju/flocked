@@ -84,8 +84,11 @@ export async function setStakesConfig(opts: {
   allow?: string[] | null;
   age21?: string[] | null;
   enabled?: boolean | null;
+  /** `rooms.stakes.enabled` (unset unless given). */
+  rooms?: boolean;
 }): Promise<void> {
   const rows: [string, unknown][] = [];
+  if (opts.rooms !== undefined) rows.push(['rooms.stakes.enabled', opts.rooms]);
   if (opts.allow !== null) rows.push(['geo.stakes.allow', opts.allow ?? ['US']]);
   if (opts.age21 !== null && opts.age21 !== undefined) rows.push(['geo.stakes.age21', opts.age21]);
   if (opts.enabled !== null) rows.push(['mode.stakes.enabled', opts.enabled ?? true]);

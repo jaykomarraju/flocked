@@ -414,6 +414,7 @@ describe('ID-5: every ineligible branch is refused with its reason, and no ticke
   });
 
   it('room rounds: members only, with an account 24 hours older than closesAt', async () => {
+    await setStakesConfig({ rooms: true });
     const r = await round(t, { kind: 'room' });
     const outsider = await player(t);
     // A non-member gets the unknown round's 404 (Reveal gating; W6-F1 R10), not `not_member`.
@@ -434,6 +435,27 @@ describe('ID-5: every ineligible branch is refused with its reason, and no ticke
 
     const member = await player(t, { createdAt: r.locked.closesAt - DAY_MS });
     await join(r, member.id);
+    await ok(await prepare(t, member, r.locked.roundId, member.wallet));
+  });
+
+  it('room rounds: refused while the rooms kill switch rooms.stakes.enabled is off (W8-F1)', async () => {
+    const r = await round(t, { kind: 'room' });
+    const member = await player(t, { createdAt: r.locked.closesAt - DAY_MS });
+    await join(r, member.id);
+    for (const rooms of [undefined, false]) {
+      await setStakesConfig(rooms === undefined ? {} : { rooms });
+      await refused(
+        await prepare(t, member, r.locked.roundId, member.wallet),
+        'stakes_disabled',
+        member.id,
+        /rooms/,
+      );
+    }
+    // The daily round is not affected; with the switch on the member gets a ticket.
+    const daily = await round(t);
+    const p = await player(t);
+    await ok(await prepare(t, p, daily.locked.roundId, p.wallet));
+    await setStakesConfig({ rooms: true });
     await ok(await prepare(t, member, r.locked.roundId, member.wallet));
   });
 

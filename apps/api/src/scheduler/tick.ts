@@ -11,7 +11,9 @@
 //      `submitLock` call for every round still waiting for its leaf);
 //   5. calls `RoundDO.init` for every locked round that hasn't closed and whose modes are ready, so
 //      the RoundDO opens it at `opensAt` (a repeated init is how a stalled alarm chain restarts);
-//      then step 2 runs once more if step 4 abandoned a createRound, to replace it at its nonce now.
+//      then step 2 runs once more if step 4 abandoned a createRound, to replace it at its nonce now;
+//   6. applies a bounded share of the Stakes stats days a Stakes final's hook left (W8-F1 L5:
+//      src/stats/apply.ts bounds each Stakes call, so the backlog drains here, a minute at a time).
 // The tick is one invocation, and D1 allows 1,000 queries per invocation (W8-F1 H1), so the room
 // rounds are bounded: steps 1–3 run before any room round, the daily rounds go first in steps 3–5,
 // step 3 locks at most ROOM_LOCKS_PER_TICK room rounds (the rest lock on the next ticks, hours before
@@ -33,6 +35,7 @@ import type { AnchorLockItem } from '../do/types.js';
 import type { Env } from '../env.js';
 import { now } from '../lib/clock.js';
 import { log } from '../lib/log.js';
+import { drainStakesStats } from '../stats/apply.js';
 import { insertDailyRound, slotsAhead } from './create.js';
 import {
   LOCK_LEAD_MS,
@@ -309,5 +312,11 @@ export async function schedulerTick(env: Env, deps: SchedulerDeps = {}): Promise
     }
   }
 
+  // Step 6.
+  try {
+    await drainStakesStats(env, t);
+  } catch (err) {
+    log.error('stakes_stats_drain_failed', { error: message(err) });
+  }
   return report;
 }

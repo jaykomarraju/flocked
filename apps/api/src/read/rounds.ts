@@ -27,6 +27,7 @@ import {
 } from '@flocked/shared';
 import { z } from 'zod';
 import type { Env } from '../env.js';
+import { now } from '../lib/clock.js';
 import { log } from '../lib/log.js';
 
 const OptionsSchema = z.tuple([QuestionOptionSchema, QuestionOptionSchema]);
@@ -306,6 +307,21 @@ async function roundRow(db: D1Database, roundId: string): Promise<RoundRow | nul
   return db.prepare(`${ROUND_SELECT} AND r.id = ?1`).bind(roundId).first<RoundRow>();
 }
 
+/**
+ * Past beacon time a closed round's settlement has started, so a mode D1 still shows `pending`
+ * reads `revealing`, as in the WebSocket `state` (src/ws/snapshot.ts `asOfClock`; spec "API",
+ * GET /rounds/:id; W8-F1). D1 moves it only when the SettlementDO (Free) or the indexer (Stakes)
+ * gets to it.
+ */
+function asOfBeacon(view: RoundView, nowMs: number): RoundView {
+  const closed = view.status === 'closed' || nowMs >= view.closesAt * 1000;
+  if (!closed || nowMs < view.beaconTime * 1000) return view;
+  for (const m of Object.values(view.modes)) {
+    if (m.status === 'pending') m.status = 'revealing';
+  }
+  return view;
+}
+
 /** GET /rounds/:id's round (the caller has passed `roundAccess`), or null when not locked. */
 export async function readRound(env: Env, roundId: string): Promise<RoundView | null> {
   const r = await roundRow(env.DB, roundId);
@@ -318,7 +334,7 @@ export async function readRound(env: Env, roundId: string): Promise<RoundView | 
   const counts = live
     ? await liveCounts(env, r.id)
     : ((await d1Counts(env.DB, [r.id])).get(r.id) ?? {});
-  return roundView(env, r, modes, counts, settlements);
+  return asOfBeacon(roundView(env, r, modes, counts, settlements), now(env));
 }
 
 /** The crowd-history hint (W8-B): the last 30 settled daily rounds, hidden below 5. */
