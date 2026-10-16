@@ -102,6 +102,8 @@ export interface World {
   myEntry: { stake: string; optionIndex: 0 | 1 | null } | null;
   /** Sends a message on the round socket (after the app connected). */
   push: (msg: Record<string, unknown>) => Promise<void>;
+  /** Re-sends `state` at the world's server time on the open socket, if the app has one. */
+  resync: () => Promise<void>;
   /** The `state` message the socket sends on connect, at the world's server time. */
   state: (over?: Record<string, unknown>) => Record<string, unknown>;
   /** Messages every new socket gets after `state` (a page loaded after the close or the reveal). */
@@ -195,6 +197,9 @@ export async function mockWorld(
       for (let i = 0; i < 50 && !socket; i++) await page.waitForTimeout(100);
       if (!socket) throw new Error('the app never opened the round socket');
       socket.send(JSON.stringify(msg));
+    },
+    resync: async () => {
+      if (socket) await world.push(world.state());
     },
   };
 
@@ -465,9 +470,18 @@ export async function expectAccessible(page: Page): Promise<void> {
   ).toEqual([]);
 }
 
-/** Moves the page's (and the world's server) clock to `unixSec`, and lets a 1 s tick land. */
+/**
+ * Moves the page's (and the world's server) clock to `unixSec`, re-sends the socket's `state` at the
+ * new time, and lets a 1 s tick land.
+ *
+ * A `state` the socket stamped before the jump can reach the page after it, and its `serverTime` then
+ * leaves the page's server clock an hour behind for good (`skewMs`, apps/web/src/ws/live.ts): CI saw
+ * "Unsealing in 10:00" (W9-D). Messages on one socket arrive in order, so the re-sent `state` is the
+ * page's last word on the skew. (The clock keeps flowing: axe runs on the page's timers.)
+ */
 export async function setPageTime(page: Page, world: World, unixSec: number): Promise<void> {
   world.nowSec = unixSec;
   await page.clock.setSystemTime(unixSec * 1000);
+  await world.resync();
   await page.clock.runFor(1100);
 }
