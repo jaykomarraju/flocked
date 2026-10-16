@@ -29,9 +29,9 @@ complete: `apps/web` builds and serves the shell, onboarding and sign-in; the sc
 | `pnpm check` (Node 22.23.1) | pass: node:test 20, abi 13, settle 66, tlock 176, shared 495, e2e 4 (phases), web 284, signer 19, api 950, forge 202 |
 | `pnpm format:check` | pass |
 | `pnpm stack:down && pnpm stack:up && pnpm e2e:ui && pnpm stack:down` | 52 passed (27 s) |
-| CI run 38832506938 (`e71194f`) | check, properties, static-analysis pass; contracts running at writing |
+| CI run 38833445248 (`22ae941`, the handoff commit) | check, contracts, properties, static-analysis pass |
 | E2E run 38830399295 (dispatch, `eb9860b`) | api pass; ui failed on Linux screenshots (1.5–2.4%), which led to the macOS `screens` job |
-| E2E run 38832507218 (dispatch, `e71194f`) | screens (macos-15) pass, ui (stack) pass; api running at writing |
+| E2E run 38832507218 (dispatch, `e71194f`; later commits are a build guard, the re-exports and docs) | screens (macos-15), ui (stack) and api pass |
 
 No test was skipped, deleted or weakened.
 
