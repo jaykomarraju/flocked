@@ -58,10 +58,16 @@ describe('readCrowdHint', () => {
   it('ignores refunded, voided and unsettled modes, room rounds, other categories and later rounds', async () => {
     const before = FIXTURE_ROUND.closesAt;
     const base = await readCrowdHint(env.DB, 'food', before);
-    await seedDay({
+    // A refunded mode is left out even with a winner on record.
+    const refunded = await seedDay({
       day: dayAfter(40),
-      modes: { free: { status: 'refunded', entries: voters(5, 5) } },
+      modes: { free: { status: 'refunded', entries: voters(1, 9) } },
     });
+    await env.DB.prepare(
+      'UPDATE settlements SET winners_json = \'{"winner":0}\' WHERE round_id = ?1',
+    )
+      .bind(refunded.roundId)
+      .run();
     await seedDay({ day: dayAfter(41), modes: { free: { status: 'voided', entries: [] } } });
     await seedDay({
       day: dayAfter(42),

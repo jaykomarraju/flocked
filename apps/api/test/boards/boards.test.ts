@@ -76,13 +76,16 @@ beforeAll(async () => {
   await seedUser(5, { verified: false });
   await seedUser(6, { status: 'merged' });
   await seedUser(7, { status: 'deleted', handle: null });
+  // A person ID without a verified KYC status is not verified either.
+  await seedUser(11);
+  await env.DB.prepare("UPDATE users SET kyc_status = 'pending' WHERE id = ?1").bind(u(11)).run();
   // Stray streaks after 10-08: U1 3 (best 3), U4 2 (2), U3 1 (best 2), U2 and U9 1 (1) over three
   // rounds, U10 1 (1) over one round; U8 never won.
   await day('2026-10-05', [U3], [U8]);
   await day('2026-10-06', [U1, U2, U3, U9], [U4, U8]);
   await day('2026-10-07', [U1, U4], [U2, U3, U9, U8]);
   // Entry order is the list order: U9 enters before U2.
-  await day('2026-10-08', [U1, U4, U3, U9, U2, U5, U6, U7, U10], [U8]);
+  await day('2026-10-08', [U1, U4, U3, U9, U2, U5, U6, U7, U10, u(11)], [U8]);
   expect(await applyFinalDays(env.DB, 'free', Date.UTC(2026, 9, 9))).toBe(4);
 
   // Creators (voters 100+ are unlisted users with no row; the boards above ignore them).
@@ -225,7 +228,7 @@ describe('creators', () => {
 
 describe('listing', () => {
   it('no board lists an unverified, merged or deleted account', async () => {
-    const hidden = new Set([U5, U6, U7, u(25)]);
+    const hidden = new Set([U5, U6, U7, u(11), u(25)]);
     for (const path of [
       '/leaderboards/strays',
       '/leaderboards/streaks',

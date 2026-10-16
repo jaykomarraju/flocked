@@ -10,6 +10,7 @@ import type { Env } from '../../src/env.js';
 import {
   REFERRAL,
   REFERRAL_DEPS,
+  qualifyReferrals,
   referralsOnModeFinal,
   rewardQualified,
 } from '../../src/referrals/reward.js';
@@ -151,6 +152,8 @@ describe('qualification', () => {
       modes: { free: { status: 'refunded', entries: [{ user: b, option: 0, payout: 100 }] } },
     });
     await finalFree(refunded.roundId, 'refunded');
+    // Even called for it directly, the query qualifies nothing from a refunded mode.
+    expect(await qualifyReferrals(env.DB, refunded.roundId)).toBe(0);
     const room = await seedDay({
       day: '2026-10-07',
       kind: 'room',
@@ -172,6 +175,9 @@ describe('qualification', () => {
       kind: 'daily',
       outcome: 'settled',
     });
+    // Nor from a room round or a Stakes mode.
+    expect(await qualifyReferrals(env.DB, room.roundId)).toBe(0);
+    expect(await qualifyReferrals(env.DB, stakes.roundId)).toBe(0);
     for (const x of [a, b, c, d]) expect((await referral(x))?.status).toBe('pending');
   });
 });
