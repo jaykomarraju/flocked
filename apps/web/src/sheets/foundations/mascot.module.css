@@ -1,0 +1,101 @@
+/* The Foundations "The sheep" artboard (Paper `foundations/mascot/light/desktop` and its dark twin):
+   1120 wide, padding 64, gap 32, on bg. */
+.artboard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-8);
+  width: 1120px;
+  padding: var(--spacing-16);
+  overflow: clip;
+  background: var(--color-bg);
+  color: var(--color-ink);
+}
+
+.header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding-bottom: var(--spacing-6);
+  border-bottom: var(--border-strong) solid var(--color-ink);
+}
+
+.titles {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+/* Sheet-only roles: the kicker is the label role on an 18px line, the title 56/60 Fredoka 700.
+   Inter at 14px renders at optical size 28, as Paper's exports do (the theme's .type-label does too). */
+.kicker {
+  font-family: var(--font-body);
+  font-size: var(--text-label);
+  font-weight: 500;
+  line-height: 18px;
+  font-variation-settings: 'opsz' 28;
+}
+
+.title {
+  font-family: var(--font-display);
+  font-size: 56px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 60px;
+}
+
+.intro {
+  flex-shrink: 0;
+  width: 420px;
+}
+
+.poses {
+  display: flex;
+  gap: var(--spacing-4);
+}
+
+/* Light draws the pose cards with an ink border, dark with a line border (as Paper does). */
+.card,
+.flockCard {
+  background: var(--color-surface);
+  border: var(--border-strong) solid var(--color-ink);
+  border-radius: var(--radius-card);
+}
+
+[data-theme='dark'] .card,
+[data-theme='dark'] .flockCard {
+  border-color: var(--color-line);
+}
+
+.card {
+  display: flex;
+  flex: 1 1 0%;
+  flex-direction: column;
+  gap: var(--spacing-3);
+  padding: var(--spacing-5);
+}
+
+.sheep {
+  flex-shrink: 0;
+}
+
+/* The pose notes: Inter 400 at the label size, on a 20px line (optical size 28, as .kicker). */
+.note {
+  font-family: var(--font-body);
+  font-size: var(--text-label);
+  font-weight: 400;
+  line-height: 20px;
+  font-variation-settings: 'opsz' 28;
+}
+
+.flockCard {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-10);
+  padding: var(--spacing-5) var(--spacing-8);
+}
+
+.flockText {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
