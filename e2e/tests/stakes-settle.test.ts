@@ -138,6 +138,15 @@ describe.skipIf(!state?.ready || !vars)('local stack: a Stakes round proposes an
   beforeAll(async () => {
     // Wall time for the Worker and every DO (another test may have pinned the clock).
     await seam('/clock', { nowMs: null });
+    // And for anvil: its clock can trail wall time, because indexer-reorg's evm_revert sets it back
+    // to the reverted-to block's time and anvil keeps that offset. The escrow checks anvil's time
+    // against opensAt, and the backend waits for a block past closesAt, so bring it level first.
+    const head = await client.getBlock({ blockTag: 'latest' });
+    const wall = BigInt(Math.floor(Date.now() / 1000));
+    if (head.timestamp < wall) {
+      await testClient.setNextBlockTimestamp({ timestamp: wall });
+      await testClient.mine({ blocks: 1 });
+    }
   });
   afterAll(async () => {
     await seam('/clock', { nowMs: null });
