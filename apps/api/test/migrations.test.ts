@@ -172,7 +172,15 @@ const SPEC_COLUMNS: Record<string, readonly string[]> = {
     'exclusion_lift_effective_at',
     'question_block_until',
   ],
-  indexer_state: ['chain_id', 'contract', 'last_block_number', 'last_block_hash', 'updated_at'],
+  indexer_state: [
+    'chain_id',
+    'contract',
+    'last_block_number',
+    'last_block_hash',
+    // 0020 (W7-F1 R18, owner decision C4): the position's block timestamp, Unix seconds.
+    'last_block_timestamp',
+    'updated_at',
+  ],
   // 0006_indexer (W4-B): the wave-4 pinned chain_events and sent_txs, plus dispatch bookkeeping and
   // settlement holds; not yet rows in the spec's data model.
   chain_events: [
@@ -836,6 +844,54 @@ describe('0016 (W6-F1 O1)', () => {
     await env.DB.batch(m.queries.map((q) => env.DB.prepare(q)));
     expect(await rows()).toEqual(before);
     expect(before).toHaveLength(4);
+  });
+});
+
+describe('0020 (W7-F1 R18)', () => {
+  it('indexer_state.last_block_timestamp: nullable Unix seconds; a row stored before it keeps NULL', async () => {
+    const { results } = await env.DB.prepare('SELECT name FROM d1_migrations').all<{
+      name: string;
+    }>();
+    expect(results.map((r) => r.name)).toContain('0020_indexer_block_timestamp.sql');
+    const col = await env.DB.prepare(
+      "SELECT type, \"notnull\" AS nn, dflt_value FROM pragma_table_info('indexer_state') WHERE name = 'last_block_timestamp'",
+    ).first();
+    expect(col).toEqual({ type: 'INTEGER', nn: 0, dflt_value: null });
+
+    // 0020 on a copy of 0001's indexer_state holding a row: the row stays, with no timestamp.
+    const rename = (sql: string) => sql.replace(/\bindexer_state\b/g, 'mig_indexer_state');
+    const queriesOf = (name: string) => {
+      const m = env.TEST_MIGRATIONS.find((x) => x.name === name);
+      if (!m) throw new Error(`no migration ${name}`);
+      return m.queries;
+    };
+    const v1 = queriesOf('0001_init.sql').filter((q) => /CREATE TABLE indexer_state\b/.test(q));
+    expect(v1).toHaveLength(1);
+    for (const q of v1) await env.DB.prepare(rename(q)).run();
+    await env.DB.prepare(
+      "INSERT INTO mig_indexer_state (chain_id, contract, last_block_number, last_block_hash, updated_at) VALUES (1, '0xe', 7, '0xh', 9)",
+    ).run();
+    for (const q of queriesOf('0020_indexer_block_timestamp.sql')) {
+      await env.DB.prepare(rename(q)).run();
+    }
+    expect(await env.DB.prepare('SELECT * FROM mig_indexer_state').all()).toMatchObject({
+      results: [
+        {
+          chain_id: 1,
+          contract: '0xe',
+          last_block_number: 7,
+          last_block_hash: '0xh',
+          last_block_timestamp: null,
+          updated_at: 9,
+        },
+      ],
+    });
+    expect(
+      await rejects(
+        "INSERT INTO mig_indexer_state (chain_id, contract, last_block_number, last_block_hash, last_block_timestamp, updated_at) VALUES (2, '0xe', 7, '0xh', -1, 9)",
+      ),
+    ).toContain('CHECK constraint failed');
+    await env.DB.prepare('DROP TABLE mig_indexer_state').run();
   });
 });
 

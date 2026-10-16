@@ -2,8 +2,10 @@
 // interface: called once per event revision in chain order). The settlement coordinator posts the
 // proposal and follows it onchain (src/do/settlement-do.ts); D1 moves only on what the chain says:
 //   - `OutcomeProposed` → revealing → settle_proposed or refund_proposed, with claims_open_at,
-//     revealed_at and the proposal's transaction; the RoundDO broadcasts `revealed`, or `refunded`
-//     marked provisional;
+//     revealed_at, the chain's bundle hash (round_modes.bundle_hash: only this handler writes it for
+//     Stakes, W7-F1 R15) and the proposal's transaction, once its bundle hash and payout root are
+//     the record's (R16); then, after that D1 commit (R6, decision A3), the RoundDO broadcasts
+//     `revealed`, or `refunded` marked provisional;
 //   - `ProposalVetoed`: on a settlement, the record is superseded (`RoundRefunded` reason 5 in the
 //     same transaction refunds the mode); on a refund proposal, the round is Open again onchain, so
 //     the record is superseded, the mode goes back to revealing, it alerts and opens a settlement
@@ -23,7 +25,9 @@
 // proposal refund_proposed again (its hold stays for the guardian: only an admin action releases a
 // hold); a refund → the state it refunded from, without its `refund` payouts; a settlement → settle_
 // proposed, without its payouts. A proposal re-mined after its removal was handled puts its record
-// back (R2). Side effects outside D1 (the RoundDO) run at least once; RoundDO.onModeResult ignores a
+// back (R2). A vetoed record is put back by its number in the veto's audit row (W7-F1 R13), not by
+// its superseded_at: a veto re-mined in another block within one poll keeps the first block's time
+// there. Side effects outside D1 (the RoundDO) run at least once; RoundDO.onModeResult ignores a
 // repeat, and a removal can't take one back (the alert covers it). Handlers never throw for a
 // permanent condition.
 import { newUlid } from '@flocked/shared';
@@ -41,6 +45,8 @@ const SETTLED = 4;
 /** `RoundRefunded` reasons. */
 const REASON_VOIDED = 4;
 const REASON_VETOED = 5;
+/** The payout root a refund proposal posts (its record has none). */
+const ZERO_ROOT = `0x${'00'.repeat(32)}`;
 
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
@@ -77,6 +83,8 @@ interface Proposal {
   seq: number;
   outcome: string;
   bundleHash: string | null;
+  /** Lowercase; null for a refund proposal (it posts ZERO_ROOT). */
+  payoutRoot: string | null;
   tally: ModeTally;
   winners: {
     winner: 0 | 1 | null;
@@ -113,7 +121,8 @@ async function proposalWhere(
 ): Promise<Proposal | null> {
   const row = await db
     .prepare(
-      `SELECT proposal_seq, outcome, bundle_hash, tally_json, winners_json FROM settlements
+      `SELECT proposal_seq, outcome, bundle_hash, payout_root, tally_json, winners_json
+       FROM settlements
        WHERE round_id = ?1 AND mode = 'stakes' AND ${where} ORDER BY proposal_seq DESC LIMIT 1`,
     )
     .bind(...(bundleHash === null ? [roundId] : [roundId, bundleHash]))
@@ -121,6 +130,7 @@ async function proposalWhere(
       proposal_seq: number;
       outcome: string;
       bundle_hash: string | null;
+      payout_root: string | null;
       tally_json: string;
       winners_json: string | null;
     }>();
@@ -129,6 +139,7 @@ async function proposalWhere(
     seq: row.proposal_seq,
     outcome: row.outcome,
     bundleHash: row.bundle_hash?.toLowerCase() ?? null,
+    payoutRoot: row.payout_root?.toLowerCase() ?? null,
     tally: JSON.parse(row.tally_json) as ModeTally,
     winners: JSON.parse(row.winners_json ?? '{}') as Proposal['winners'],
   };
@@ -194,22 +205,45 @@ const refundVetoedHold = (db: D1Database, roundId: string, t: number) =>
     )
     .bind(roundId, t);
 
-/** R3: the `claimsOpenAt` (ms) a veto's audit row kept for the refund proposal it vetoed. */
-async function vetoedClaimsOpenAt(
+/**
+ * What the newest audit row of the veto in `txHash` kept: the number of the record it superseded
+ * (R13) and, for a refund proposal, its `claimsOpenAt` in ms (R3). Nulls without a row.
+ */
+async function vetoAudit(
   db: D1Database,
   roundId: string,
   txHash: string,
-): Promise<number | null> {
+): Promise<{ seq: number | null; claimsOpenAt: number | null }> {
   const row = await db
     .prepare(
-      `SELECT json_extract(data_json, '$.claimsOpenAt') AS at FROM audit_log
+      `SELECT json_extract(data_json, '$.seq') AS seq, json_extract(data_json, '$.claimsOpenAt') AS at
+       FROM audit_log
        WHERE target = ?1 AND action = 'proposal_vetoed' AND json_extract(data_json, '$.txHash') = ?2
-       ORDER BY created_at DESC LIMIT 1`,
+       ORDER BY created_at DESC, id DESC LIMIT 1`,
     )
     .bind(roundId, txHash)
-    .first<{ at: number | null }>();
-  return row?.at ?? null;
+    .first<{ seq: number | null; at: number | null }>();
+  return { seq: row?.seq ?? null, claimsOpenAt: row?.at ?? null };
 }
+
+/**
+ * R13: no current record: the one a removed veto superseded is again, found by its number in the
+ * veto's audit row. Not by superseded_at: a veto re-mined in another block within one poll (its
+ * removal skipped as live again) keeps the first block's time there, so a later removal's time
+ * matches nothing. Without a number (no audit row), the record superseded at `t`.
+ */
+const unsupersedeVetoed = (db: D1Database, roundId: string, seq: number | null, t: number) =>
+  seq === null
+    ? unsupersededAt(db, roundId, t)
+    : db
+        .prepare(
+          `UPDATE settlements SET superseded_at = NULL
+           WHERE round_id = ?1 AND mode = 'stakes' AND proposal_seq = ?2
+             AND superseded_at IS NOT NULL
+             AND NOT EXISTS (SELECT 1 FROM settlements
+                             WHERE round_id = ?1 AND mode = 'stakes' AND superseded_at IS NULL)`,
+        )
+        .bind(roundId, seq);
 
 const auditRow = (db: D1Database, evt: ChainEvent, action: string, roundId: string, data: object) =>
   db
@@ -284,6 +318,21 @@ export const outcomeProposedHandler: EventHandler = async (evt, env) => {
     });
     return;
   }
+  // R16: the root posted is the record's (a refund proposal posts the zero root). The bundle hash
+  // binds it through the manifest, but a proposal the record doesn't describe is not confirmed:
+  // reads serve proofs against the record's root.
+  const payoutRoot = String(evt.args.payoutRoot).toLowerCase();
+  if (payoutRoot !== (p.payoutRoot ?? ZERO_ROOT)) {
+    raiseAlert(env, 'ALERT_DO_ERROR', {
+      roundId,
+      step: 'stakes_proposal_root_mismatch',
+      payoutRoot,
+      recorded: p.payoutRoot,
+      bundleHash,
+      txHash: evt.txHash,
+    });
+    return;
+  }
   const settle = Number(evt.args.status) === SETTLE_PROPOSED;
   const claimsOpenAt = Number(evt.args.claimsOpenAt) * 1000;
   const refundReason = settle ? null : (p.winners.refundReason ?? 1);
@@ -295,29 +344,12 @@ export const outcomeProposedHandler: EventHandler = async (evt, env) => {
     });
     return;
   }
-  await notifyRound(
-    env,
-    roundId,
-    settle
-      ? {
-          outcome: 'revealed',
-          winningOption: p.winners.winner as 0 | 1,
-          tally: p.tally,
-          bundleHash,
-          revealedAt: t,
-          claimsOpenAt,
-        }
-      : {
-          outcome: 'refunded',
-          reason: refundReason as Extract<ModeResult, { outcome: 'refunded' }>['reason'],
-          provisional: true,
-          claimsOpenAt,
-          bundleHash,
-        },
-    evt,
-  );
-  log.info('stakes_proposal_confirmed', { roundId, settle, seq: p.seq, txHash: evt.txHash });
-  return [
+  // R6 (decision A3): D1 first, then the RoundDO. These statements commit here rather than in the
+  // dispatcher's batch after this handler returns, so viewers get `revealed` only once revealed_at
+  // and the status are in D1, and a batch that fails throws before the RoundDO hears anything. Each
+  // is conditional, so a replay (the dispatcher's handled mark failed after this commit) changes
+  // nothing and calls the RoundDO again, which ignores the repeat.
+  await db.batch([
     ...restore,
     db
       .prepare(
@@ -339,7 +371,29 @@ export const outcomeProposedHandler: EventHandler = async (evt, env) => {
          WHERE round_id = ?1 AND mode = 'stakes' AND proposal_seq = ?3 AND tx_hash IS NOT ?2`,
       )
       .bind(roundId, evt.txHash, p.seq),
-  ];
+  ]);
+  log.info('stakes_proposal_confirmed', { roundId, settle, seq: p.seq, txHash: evt.txHash });
+  await notifyRound(
+    env,
+    roundId,
+    settle
+      ? {
+          outcome: 'revealed',
+          winningOption: p.winners.winner as 0 | 1,
+          tally: p.tally,
+          bundleHash,
+          revealedAt: t,
+          claimsOpenAt,
+        }
+      : {
+          outcome: 'refunded',
+          reason: refundReason as Extract<ModeResult, { outcome: 'refunded' }>['reason'],
+          provisional: true,
+          claimsOpenAt,
+          bundleHash,
+        },
+    evt,
+  );
 };
 
 /** `ProposalVetoed`: a vetoed settlement is refunded by its `RoundRefunded`; a vetoed refund proposal settles again. */
@@ -353,11 +407,12 @@ export const proposalVetoedHandler: EventHandler = async (evt, env) => {
   if (evt.removed) {
     if (await liveAgain(db, evt)) return;
     reorged(env, roundId, evt, 'stakes_veto_reorged');
-    // R3: the vetoed record is the proposal onchain again. A vetoed refund proposal is
-    // refund_proposed again (claimsOpenAt from the veto's audit row); a vetoed settlement's state is
-    // its RoundRefunded (reason 5) removal's to put back.
+    // R3: the vetoed record is the proposal onchain again (R13: by its number in the veto's audit
+    // row). A vetoed refund proposal is refund_proposed again (claimsOpenAt from the same row); a
+    // vetoed settlement's state is its RoundRefunded (reason 5) removal's to put back.
+    const audit = await vetoAudit(db, roundId, evt.txHash);
     return [
-      unsupersededAt(db, roundId, t),
+      unsupersedeVetoed(db, roundId, audit.seq, t),
       db
         .prepare(
           `UPDATE round_modes SET status = 'refund_proposed', claims_open_at = ?2,
@@ -368,7 +423,7 @@ export const proposalVetoedHandler: EventHandler = async (evt, env) => {
              AND EXISTS (SELECT 1 FROM settlements s WHERE s.round_id = ?1 AND s.mode = 'stakes'
                            AND s.superseded_at IS NULL AND s.outcome = 'refunded')`,
         )
-        .bind(roundId, await vetoedClaimsOpenAt(db, roundId, evt.txHash)),
+        .bind(roundId, audit.claimsOpenAt),
     ];
   }
   const evidenceHash = String(evt.args.evidenceHash);
@@ -560,7 +615,8 @@ export const roundRefundedHandler: EventHandler = async (evt, env) => {
  * R3: a `RoundRefunded` (not reason 4) left the chain: the mode goes back to the state it was refunded
  * from, without its `refund` payouts (unclaimed; a claim's removal comes first), so the refund
  * re-mined, or what replaces it (a finalize, a proposal), applies as it would have:
- *   - reason 5 (a vetoed settlement): settle_proposed, its record current again;
+ *   - reason 5 (a vetoed settlement): settle_proposed, its record current again (the veto's own
+ *     removal, dispatched next, puts it back by its number when this time no longer matches: R13);
  *   - a finalized refund proposal (its record current, claims_open_at set): refund_proposed;
  *   - refundTooFew or refundTimeout (the round was Open): revealing once anything was revealed or
  *     proposed, pending otherwise.

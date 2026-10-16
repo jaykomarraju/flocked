@@ -1,8 +1,9 @@
 // `PUT /me/limits` and `POST /me/limits/exclusion-lift` (spec "Compliance and responsible play" ›
 // Responsible play; "API"; "Data model" `limits`).
 //
-// - Daily stake cap: a decrease takes effect at once (and drops any pending increase); an increase
-//   waits 24 hours in `pending_cap`. Setting the same pending amount again keeps its timer; any
+// - Daily stake cap: at most `limits.stakes.maxDailyCap` (1,000 USDC unless lowered; a request
+//   above it is a `bad_request`; src/limits/max-cap.ts). A decrease takes effect at once (and drops
+//   any pending increase); an increase waits 24 hours in `pending_cap`. Setting the same pending amount again keeps its timer; any
 //   other raise restarts it. The cap in force is `effectiveDailyCap` (src/stakes/cap.ts), so a
 //   raise that has waited out its 24 hours is the base for the next change.
 // - Self-exclusion: 7 days, 30 days, 6 months or permanent. It can be started or lengthened (to a
@@ -25,6 +26,7 @@ import {
   addMonths,
   exclusionUntil,
 } from './rules.js';
+import { readMaxDailyCap } from './max-cap.js';
 
 export interface LimitsRow {
   daily_stake_cap: number | null;
@@ -66,15 +68,22 @@ function timedInForce(row: LimitsRow, t: number): boolean {
   return row.self_exclusion_until !== null && row.self_exclusion_until > t;
 }
 
-/** The new cap columns for a request of `amount` (USDC base units). */
+/** USDC base units as a USDC amount for a message ("1000", "2.5"). */
+const usdc = (units: bigint) => String(Number(units) / 1_000_000);
+
+/** The new cap columns for a request of `amount` (USDC base units), at most `max`. */
 function capChange(
   row: LimitsRow,
   amount: bigint,
   t: number,
   suspended: boolean,
+  max: bigint,
 ): Partial<LimitsRow> {
   if (amount > BigInt(Number.MAX_SAFE_INTEGER)) {
     throw new HttpError('bad_request', 'That cap is too large');
+  }
+  if (amount > max) {
+    throw new HttpError('bad_request', `The daily cap can be at most ${usdc(max)} USDC`);
   }
   const current = effectiveDailyCap(row, t);
   if (amount <= current) {
@@ -216,7 +225,8 @@ export async function setLimits(
   const current = await loadLimits(env.DB, userId);
   let next: LimitsRow = { ...(current ?? EMPTY) };
   if (request.dailyStakeCap !== undefined) {
-    next = { ...next, ...capChange(next, BigInt(request.dailyStakeCap), t, opts.suspended) };
+    const max = await readMaxDailyCap(env.DB);
+    next = { ...next, ...capChange(next, BigInt(request.dailyStakeCap), t, opts.suspended, max) };
   }
   if (request.selfExclusion !== undefined) {
     next = { ...next, ...exclusionChange(next, request.selfExclusion, t) };

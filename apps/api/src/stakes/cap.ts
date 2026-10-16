@@ -11,7 +11,8 @@
 // An unused ticket counts while it is live (until expiry + 30 s) and, after that, until the indexer
 // has processed past its expiry (O2, Oct 12; spec "Identity and personhood" › Entry tickets): an
 // entry made with it at the last second may be onchain but not yet indexed, and the ticket is marked
-// used only when the `Entered` handler runs. See indexedThroughSec for "processed".
+// used only when the `Entered` handler runs. "Processed" is by the block timestamp of the indexer's
+// position (owner decision C4, Oct 12; W7-F1 R18): see indexedThroughSec.
 import { addGameDays, dailyClosesAt, gameDayOf } from '@flocked/shared';
 
 /** The cap when the user has set none: 100 USDC per game day (USDC base units). */
@@ -45,12 +46,13 @@ export function effectiveDailyCap(row: LimitsCapRow | null, t: number): bigint {
 }
 
 /**
- * A lower bound on the time (Unix seconds) through which the indexer has processed the escrow's
- * logs, or null when that isn't known yet (no position, or no escrow event mirrored at or below it):
- *   - its stored position (`indexer_state.last_block_number`) is stamped at least the newest
- *     mirrored escrow event at or below it plus one second per block after that one (block times
- *     rise by at least a second per block; Base's rise by two, so the bound trails by up to half
- *     the time since that event);
+ * The time (Unix seconds) through which the indexer has processed the escrow's logs, or null when
+ * that isn't known yet (no position):
+ *   - its stored position is stamped `indexer_state.last_block_timestamp`, the block timestamp of
+ *     `last_block_number` (W7-F1 R18). A position stored before migration 0020 has none until the
+ *     indexer next advances; for it, the lower bound W6-F1 O2 used: the newest mirrored escrow event
+ *     at or below the position plus one second per block after it (block times rise by at least a
+ *     second per block), null with no such event;
  *   - and every mirrored event before the oldest one not yet handed to its handlers is handled
  *     (dispatch runs in chain order), so it is processed only to one second before that event's
  *     block: an `Entered` there has not marked its ticket used yet.
@@ -63,6 +65,7 @@ export async function indexedThroughSec(
   const row = await db
     .prepare(
       `SELECT
+         s.last_block_timestamp AS block_sec,
          (SELECT e.block_timestamp + (s.last_block_number - e.block_number) FROM chain_events e
           WHERE e.chain_id = s.chain_id AND e.contract = s.contract AND e.removed = 0
             AND e.block_number <= s.last_block_number
@@ -72,11 +75,10 @@ export async function indexedThroughSec(
        FROM indexer_state s WHERE s.chain_id = ?1 AND s.contract = ?2`,
     )
     .bind(chainId, escrow.toLowerCase())
-    .first<{ position_sec: number | null; pending_sec: number | null }>();
-  if (row?.position_sec == null) return null;
-  return row.pending_sec == null
-    ? row.position_sec
-    : Math.min(row.position_sec, row.pending_sec - 1);
+    .first<{ block_sec: number | null; position_sec: number | null; pending_sec: number | null }>();
+  const through = row?.block_sec ?? row?.position_sec ?? null;
+  if (through === null) return null;
+  return row?.pending_sec == null ? through : Math.min(through, row.pending_sec - 1);
 }
 
 /**

@@ -8,6 +8,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import type { Env } from '../../src/env.js';
 import { seedFixture } from '../helpers/index.js';
 import { call, errorCode, siweBody } from '../auth/fixtures.js';
+import { raceBefore } from './race.js';
 import {
   DAY,
   account,
@@ -186,7 +187,13 @@ describe('DELETE /me', () => {
       .run();
     res = await del(t, a);
     expect([res.status, await errorCode(res)]).toEqual([409, 'deletion_blocked']);
-    await env.DB.prepare('UPDATE stakes_tickets SET expiry = 1 WHERE user_id = ?1')
+    // Used: its entry is in (no deployment here, so an unused ticket would block until the indexer
+    // passes its expiry; test/identity/cap.test.ts covers that, W7-F1 R8).
+    await env.DB.prepare(
+      "UPDATE stakes_tickets SET expiry = 1, used_tx = '0x" +
+        'ee'.repeat(32) +
+        "' WHERE user_id = ?1",
+    )
       .bind(a.id)
       .run();
 
@@ -202,5 +209,55 @@ describe('DELETE /me', () => {
 
     expect((await userRow(a.id))?.status).toBe('active');
     expect((await del(t, a)).status).toBe(200);
+  });
+});
+
+// W7-F1 R7: the deletion acts on the rows as its batch sees them. The race seam runs a change after
+// every read, just before the batch.
+describe('DELETE /me: W7-F1 R7 races', () => {
+  it('a person ID bound since the read is tombstoned with the cap state, not lost', async () => {
+    const t = await withCards();
+    const a = await account(t);
+    const personId = `0x${'7d'.repeat(32)}`;
+    await env.DB.prepare('INSERT INTO limits (user_id, daily_stake_cap) VALUES (?1, ?2)')
+      .bind(a.id, 30_000_000)
+      .run();
+    const race = raceBefore(t.env, { batchOf: 8 }, () =>
+      env.DB.prepare("UPDATE users SET person_id = ?2, kyc_status = 'verified' WHERE id = ?1")
+        .bind(a.id, personId)
+        .run(),
+    );
+    const res = await del(t, a);
+    race.restore();
+    expect(race.fired()).toBe(true);
+    expect(res.status, await res.clone().text()).toBe(200);
+    expect(await userRow(a.id)).toMatchObject({ status: 'deleted', person_id: null });
+    expect(
+      await env.DB.prepare(
+        'SELECT daily_stake_cap, user_id FROM person_tombstones WHERE person_id = ?1',
+      )
+        .bind(personId)
+        .first(),
+    ).toEqual({ daily_stake_cap: 30_000_000, user_id: a.id });
+  });
+
+  it('an account merged into the user since the read rolls the deletion back', async () => {
+    const t = await withCards();
+    const a = await account(t);
+    const other = await account(t);
+    const race = raceBefore(t.env, { batchOf: 8 }, () =>
+      env.DB.prepare("UPDATE users SET status = 'merged', merged_into = ?1 WHERE id = ?2")
+        .bind(a.id, other.id)
+        .run(),
+    );
+    const res = await del(t, a);
+    race.restore();
+    expect(race.fired()).toBe(true);
+    expect([res.status, await errorCode(res)]).toEqual([409, 'conflict']);
+    expect((await userRow(a.id))?.status).toBe('active');
+    expect((await userRow(other.id))?.handle).not.toBeNull();
+    // Tried again, the deletion anonymizes the merged account too.
+    expect((await del(t, a)).status).toBe(200);
+    expect(await userRow(other.id)).toMatchObject({ status: 'merged', handle: null });
   });
 });

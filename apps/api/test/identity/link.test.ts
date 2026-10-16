@@ -327,3 +327,44 @@ describe('POST /me/email + /me/email/verify', () => {
     });
   });
 });
+
+// W7-F1 (optional): signing in with Farcaster refreshes the offers too, best effort.
+describe('Farcaster sign-in offers the verified wallets', () => {
+  it('POST /auth/farcaster offers them (at most once a day); a failed refresh never fails sign-in', async () => {
+    const base = await identityEnv();
+    const a = await account(base);
+    const offered = privateKeyToAccount(generatePrivateKey()).address.toLowerCase();
+    const lookups: string[] = [];
+    let fail = false;
+    const t = {
+      ...base,
+      env: withFarcasterWallets(base.env, (f) => {
+        lookups.push(f);
+        // A failing refresh: the offer insert itself throws (no address), past the lookup's catch.
+        return Promise.resolve(fail ? [null as unknown as string] : [offered]);
+      }),
+    };
+    const signIn = async () =>
+      call(t.env, 'POST', '/auth/farcaster', { token: await t.fc.mint(a.fid) });
+    const res = await signIn();
+    expect(await res.json()).toMatchObject({ user: { id: a.id }, created: false });
+    expect(lookups).toEqual([String(a.fid)]);
+    expect(await identitiesOf(a.id)).toContainEqual(
+      expect.objectContaining({ provider: 'wallet', external_id: offered, verified_at: null }),
+    );
+    // Within the day: no second lookup.
+    expect((await signIn()).status).toBe(200);
+    expect(lookups).toHaveLength(1);
+
+    // A day later the refresh fails: the sign-in still succeeds.
+    fail = true;
+    await env.DB.prepare(
+      "UPDATE identities SET data_json = '{}' WHERE user_id = ?1 AND provider = 'farcaster'",
+    )
+      .bind(a.id)
+      .run();
+    const after = await signIn();
+    expect(after.status, await after.clone().text()).toBe(200);
+    expect(lookups).toHaveLength(2);
+  });
+});

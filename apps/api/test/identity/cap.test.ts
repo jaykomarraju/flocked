@@ -3,7 +3,7 @@
 // person who deletes an account and verifies a new one the same game day keeps the day's stakes
 // (person_tombstones.user_id, migration 0015). Without the carry each would start from zero.
 import { env } from 'cloudflare:test';
-import { newUlid } from '@flocked/shared';
+import { newUlid, type StakesPrepareResponse } from '@flocked/shared';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { applyVerification } from '../../src/personhood/verify.js';
@@ -15,6 +15,7 @@ import {
   addWallet,
   clockAt,
   codeOf,
+  indexedAt,
   player,
   prepare,
   round,
@@ -149,5 +150,29 @@ describe('the daily cap and one live ticket per person', () => {
     expect((await ticketsOf(fresh.id)).map((x) => x.round_id)).toEqual([a.locked.roundId]);
     const res = await prepare(t, fresh, b.locked.roundId, wallet);
     expect(await codeOf(res)).toBe('stake_cap_reached');
+  });
+});
+
+// W7-F1 R8: an unused ticket blocks DELETE /me as it counts against the cap (src/stakes/cap.ts):
+// while live, and after that until the indexer has processed past its expiry, since an entry made
+// with it at the last second may be onchain but not yet indexed.
+describe('DELETE /me waits for the indexer to pass an unused ticket’s expiry', () => {
+  it('past expiry + 30 s it still blocks; once a processed block is stamped after it, not', async () => {
+    const r = await round(t);
+    const p = await player(t);
+    const issued = await prepare(t, p, r.locked.roundId, p.wallet);
+    expect(issued.status, await issued.clone().text()).toBe(200);
+    const { ticket } = await issued.json<StakesPrepareResponse>();
+    clockAt(t, (ticket.expiry + 120) * 1000);
+    const del = () => call(t.env, 'DELETE', '/me', undefined, p.headers);
+
+    // No indexer position yet, then one stamped at the expiry: an entry may still be unseen.
+    expect(await codeOf(await del())).toBe('deletion_blocked');
+    await indexedAt(ticket.expiry);
+    expect(await codeOf(await del())).toBe('deletion_blocked');
+    // Processed past the expiry: the ticket can no longer have been used unseen.
+    await indexedAt(ticket.expiry + 1);
+    const res = await del();
+    expect(res.status, await res.clone().text()).toBe(200);
   });
 });

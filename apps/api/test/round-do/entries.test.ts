@@ -224,7 +224,8 @@ describe('DO-2: missing or insufficient balance rejected atomically; non-member 
     const r = await openRound();
     const scope = r.locked.roomId as string;
     const outsider = await createUser(500, scope, { member: false });
-    expect(errCode(await enter(r, outsider, '25'))).toBe('not_member');
+    // The unknown round's answer, never `not_member` (Reveal gating; W7-F1).
+    expect(errCode(await enter(r, outsider, '25'))).toBe('not_found');
     expect(await balance(outsider, scope)).toBe(500);
     expect(await entryCount(r.locked.roundId)).toBe(0);
   });

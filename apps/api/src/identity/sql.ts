@@ -68,13 +68,21 @@ export function hasOpenEntrySql(userSql: string): string {
 }
 
 /**
- * SQL: user `userSql` holds a live Stakes ticket (unused, expiry + 30 s not passed at `nowSecSql`;
- * src/stakes/cap.ts). An entry may still land from it.
+ * SQL: user `userSql` holds an unused Stakes ticket an entry may still come from: live (expiry +
+ * 30 s not passed at `nowSecSql`), or past that while the indexer has not processed past its
+ * expiry (`throughSecSql`, from `indexedThroughSec`; NULL counts every unused ticket), since an
+ * entry made at the last second may be onchain but not yet indexed. The same condition as
+ * src/stakes/cap.ts `stakedOnGameDay` (W7-F1 R8).
  */
-export function hasLiveTicketSql(userSql: string, nowSecSql: string): string {
+export function hasLiveTicketSql(
+  userSql: string,
+  nowSecSql: string,
+  throughSecSql: string,
+): string {
   return (
     'EXISTS (SELECT 1 FROM stakes_tickets st WHERE st.user_id = ' +
-    `${userSql} AND st.used_tx IS NULL AND st.expiry + ${TICKET_REISSUE_GRACE_SEC} > ${nowSecSql})`
+    `${userSql} AND st.used_tx IS NULL AND (st.expiry + ${TICKET_REISSUE_GRACE_SEC} > ${nowSecSql}` +
+    ` OR ${throughSecSql} IS NULL OR st.expiry >= ${throughSecSql}))`
   );
 }
 
