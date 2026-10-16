@@ -148,7 +148,7 @@ export const AdminQuestionsQuerySchema = z.object({
 });
 export type AdminQuestionsQuery = z.infer<typeof AdminQuestionsQuerySchema>;
 
-/** A queued question with its moderation JSON and predicted split (option 0 share, 0..1). */
+/** A question with its moderation JSON and predicted split (the larger option's share, 0.5–1). */
 export const AdminQuestionSchema = QuestionSchema.extend({
   moderation: z.record(z.string(), z.unknown()).nullable(),
   predictedSplit: z.number().min(0).max(1).nullable(),

@@ -61,7 +61,17 @@
             "myVote": null
           }
         ],
-        "nextCursor": null
+        "nextCursor": null,
+        "quota": null
+      },
+      {
+        "questions": [],
+        "nextCursor": null,
+        "quota": {
+          "remainingToday": 2,
+          "rejectionsLast7Days": 3,
+          "blockedUntil": null
+        }
       }
     ],
     "SubmitQuestionRequestSchema": [
@@ -121,6 +131,11 @@
         "moderation": {
           "outcome": "queued",
           "reason": null
+        },
+        "quota": {
+          "remainingToday": 1,
+          "rejectionsLast7Days": 0,
+          "blockedUntil": null
         }
       },
       {
@@ -151,6 +166,11 @@
         "moderation": {
           "outcome": "rejected",
           "reason": "Has a factual answer."
+        },
+        "quota": {
+          "remainingToday": 1,
+          "rejectionsLast7Days": 0,
+          "blockedUntil": null
         }
       }
     ],
@@ -247,6 +267,46 @@
         "why": "two",
         "value": {
           "value": 2
+        }
+      }
+    ],
+    "SubmitQuestionResponseSchema": [
+      {
+        "why": "more than 3 left today",
+        "value": {
+          "question": {
+            "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CG",
+            "prompt": "Pineapple on pizza?",
+            "options": [
+              {
+                "label": "Pineapple",
+                "emoji": "🍍"
+              },
+              {
+                "label": "No pineapple",
+                "emoji": ""
+              }
+            ],
+            "category": "food",
+            "status": "queued",
+            "score": 14,
+            "author": {
+              "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
+              "handle": "woolly",
+              "displayName": "Woolly",
+              "avatarUrl": "https://img.example/u/woolly.png"
+            },
+            "createdAt": 1791468191250
+          },
+          "moderation": {
+            "outcome": "queued",
+            "reason": null
+          },
+          "quota": {
+            "remainingToday": 4,
+            "rejectionsLast7Days": 0,
+            "blockedUntil": null
+          }
         }
       }
     ]
