@@ -3,10 +3,10 @@
 // the active tab from the path. /__sheets (the design sheets the `ui` screenshot tests compare with
 // the Paper exports) exists outside production builds.
 import type { RouteObject } from 'react-router';
+import { Today } from './features/today/Today';
 import { AppShell } from './layout/AppShell';
 import { RouteError } from './layout/RouteError';
 import { NotFound, Placeholder } from './screens/Placeholder';
-import { Today } from './screens/Today';
 
 export { TABS, YOU_LINKS, type TabId } from './nav';
 

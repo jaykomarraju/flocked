@@ -113,7 +113,7 @@ const IMPLEMENTED = new Set([
   'POST /rooms/join',
   'GET /rooms/:id',
   'POST /rooms/:id/questions',
-  // W9-A
+  // W9-A (test/notify/)
   'POST /push/subscribe',
 ]);
 

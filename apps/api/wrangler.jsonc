@@ -17,7 +17,8 @@
 //   BASE_RPC_URL, BASE_RPC_URL_FALLBACK  RPC providers (W4-B); W3-A's SIWE also uses them for
 //                         ERC-1271/6492 smart-wallet signatures (EOA sign-in works without them)
 //   ANTHROPIC_API_KEY     moderation (W8-A)
-//   VAPID_PRIVATE_KEY     web push (W9-A)
+//   VAPID_PRIVATE_KEY     web push (W9-A; OA-12); `node scripts/gen-vapid.mjs` makes a pair
+//   NEYNAR_API_KEY, FARCASTER_CAST_SIGNER_UUID  the daily cast through Neynar (W9-A; OA-11)
 //   PAYMASTER_URL, BUNDLER_URL  paymaster proxy (W10-D)
 //   ATTESTATION_RPC_URL   Base mainnet RPC for Coinbase Verifications reads (W5-B); a secret when it
 //                         embeds a key. Defaults to BASE_RPC_URL on chain 8453
@@ -26,7 +27,11 @@
 //                         attester only; W5-B)
 //   DRAND_RELAYS          comma-separated drand relays; quicknet defaults to the public ones (W5-A)
 //   WS_VIEWER_SHARDS      viewer shards per round, 1–256; 16 when unset (src/ws/shards.ts; W7-A)
-//   FARCASTER_HUB_URL     Farcaster hub for wallet offers; unset, nothing is offered (W7-B)
+//   FARCASTER_HUB_URL     Farcaster hub for wallet offers (W7-B) and the mini app webhook's app-key
+//                         check (W9-A); unset, nothing is offered and the webhook answers 503
+//   VAPID_PUBLIC_KEY, VAPID_SUBJECT  web push (W9-A; OA-12): the pair's public half and the contact;
+//                         unset, web push is off. Per deployment, like APP_ORIGIN (W14-A)
+//   NOTIFY_EMAIL_FROM     sender of notification emails; EMAIL_FROM when unset (W9-A; OA-07)
 // The ticket signer key (TICKET_SIGNER_KEY) lives only in apps/signer.
 // Local only, written by `pnpm stack:up` into e2e/stack/.dev.vars (never deployed):
 //   LOCAL_DEPLOYMENT      JSON of contracts/deployments/31337.json (receipt domain on anvil; W3-B)
@@ -38,6 +43,10 @@
 //   ANTHROPIC_BASE_URL    the moderation mock (e2e/mocks/anthropic; W8-A); ANTHROPIC_API_KEY is the
 //                         mock's placeholder there
 //   DRAND_RELAYS          the stack's drand HTTP endpoint (W5-A)
+//   EMAIL_MOCK_URL        the email mock (e2e/mocks/email; W9-A); notification emails go there
+//   FARCASTER_CAST_API_URL, FARCASTER_HUB_URL  the Farcaster notification mock (e2e/mocks/farcaster-notify;
+//                         W9-A), with its placeholder NEYNAR_API_KEY and FARCASTER_CAST_SIGNER_UUID;
+//                         VAPID_* are a fresh pair every run
 //   FLOCKED_TEST_CLOCK    fixed game clock, epoch ms (src/lib/clock.ts)
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
