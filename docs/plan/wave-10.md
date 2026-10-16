@@ -32,7 +32,7 @@
   - void and `refundTooFew`.
 
   Signed verdicts; paging on mismatch, unable, or a missing verdict 30 minutes after a proposal.
-- **Read first.** `plan.md` §2, §4. `docs/sessions/W9-Z.md`. This section. `packages/verify/README.md`. Spec: "Smart contract" (only "Challenge window, watcher and guardian").
+- **Read first.** `plan.md` §2, §4. `docs/sessions/W9-Z.md`. This section. `docs/sessions/W9-B.md` and `packages/verify/src/index.ts` (no README yet), `docs/bundle-format.md`. Spec: "Smart contract" (only "Challenge window, watcher and guardian").
 - **Owns.** `apps/watcher/**`.
 - **Required tests.** PIPE-5 (Stakes: match and mismatch, using tampered fixtures and an anvil round with a wrong proposal). AC-4 (VOID recompute part). ALERT-7 detection (mismatch).
 
@@ -52,18 +52,28 @@
 
 ## W10-D: Paymaster proxy + Stakes UI e2e (+ merges W9-F1)
 
-- **Role / size:** integrate, M.
-- **Objective.** Merge A, B, C and W9-F1 (`wave-9.md` "W9-F1"; owner decision, Oct 16, 2026) as a fourth branch. Build the paymaster proxy:
-  - sponsor only `enter`/`enterWithPermit` with a valid ticket, plus a USDC `approve(FlockedEscrow, stake)` only as the call immediately before `enter` in the same user operation;
-  - `claim`, `claimRefund`, `finalize` and `withdraw`;
-  - 10 sponsored user operations per user per day;
-  - forward to the provider (a local bundler/paymaster mock on the stack).
+Split up front into W10-D and W10-D.2 (plan.md 2.8, W9-Z, Oct 16, 2026: it merges four branches, then builds the proxy and four Stakes UI e2e rows).
 
-  Then Stakes UI e2e: verify personhood (mock Coinbase), enter Stakes (E2E-1 Stakes UI), claim after the challenge window in the UI (E2E-4 UI), a settlement veto turning into refunds in the UI (E2E-5), and the paymaster accept/reject/cap rules (E2E-11).
-- **Read first.** `plan.md` §2, §3.4. Handoffs W10-A, B, C and W9-F1. Spec: "Smart contract" (only "Gas and UX").
-- **Owns.** Registry files; `apps/api/src/paymaster/**`; `apps/api/src/routes/paymaster.ts`; migration `0024`; `e2e/mocks/bundler/**`; `e2e/ui/{stakes-round,stakes-veto}.spec.ts`; `e2e/tests/paymaster.spec.ts`; `packages/shared/src/watcher.ts`.
-- **Required tests.** E2E-1 (Stakes UI), E2E-4 (UI), E2E-5, E2E-11, AC-5 (UI parts).
-- **Emits.** W10-Z prompt.
+- **W10-D.**
+  - **Role / size:** integrate, M.
+  - **Objective.** Merge A, B, C and W9-F1 (`wave-9.md` "W9-F1"; owner decision, Oct 16, 2026) as a fourth branch; register routes and bindings; copy the watcher verdict schema into `packages/shared/src/watcher.ts`. Build the paymaster proxy:
+    - sponsor only `enter`/`enterWithPermit` with a valid ticket, plus a USDC `approve(FlockedEscrow, stake)` only as the call immediately before `enter` in the same user operation;
+    - `claim`, `claimRefund`, `finalize` and `withdraw`;
+    - 10 sponsored user operations per user per day;
+    - forward to the provider (a local bundler/paymaster mock on the stack).
+
+    Then the paymaster accept/reject/cap rules end to end (E2E-11, `e2e/tests/paymaster.spec.ts`). Re-run a sample of W9-F1's mutations on the merged tree.
+  - **Read first.** `plan.md` §2, §3.4. Handoffs W10-A, B, C and W9-F1. Spec: "Smart contract" (only "Gas and UX").
+  - **Owns.** Registry files; `apps/api/src/paymaster/**`; `apps/api/src/routes/paymaster.ts`; migration `0024`; `e2e/mocks/bundler/**`; `e2e/tests/paymaster.spec.ts`; `packages/shared/src/watcher.ts`.
+  - **Required tests.** E2E-11; `pnpm check` and `pnpm e2e` green.
+  - **Emits.** `docs/prompts/W10-D.2.md`.
+- **W10-D.2: Stakes UI e2e.**
+  - **Role / size:** integrate, M. On `w10-integration`, after W10-D.
+  - **Objective.** In the browser on the stack: verify personhood (mock Coinbase) and enter Stakes (E2E-1 Stakes UI), claim after the challenge window (E2E-4 UI), a settlement veto turning into refunds (E2E-5), in `e2e/ui/{stakes-round,stakes-veto}.spec.ts` from `e2e/fixtures/browser.ts` and the shape of `free-round.spec.ts`.
+  - **Read first.** `plan.md` §2, §3.4. Handoffs W10-C and W10-D. `e2e/ui/README.md`.
+  - **Owns.** `e2e/ui/{stakes-round,stakes-veto}.spec.ts`, `e2e/fixtures/**` (shared helpers), and the registry files only for a fix the specs need.
+  - **Required tests.** E2E-1 (Stakes UI), E2E-4 (UI), E2E-5, AC-5 (UI parts); `pnpm e2e:ui` green on its own fresh stack.
+  - **Emits.** W10-Z prompt.
 
 ## W10-Z checklist
 

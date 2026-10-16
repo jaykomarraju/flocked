@@ -533,7 +533,8 @@ Legend: ⬜ not started · 🟡 in progress · ✅ complete · ⛔ blocked. Z se
 | W10-A | Share cards | M | ⬜ |
 | W10-B | Watcher I (Stakes) | M | ⬜ |
 | W10-C | Web: Stakes entry + Claims | M | ⬜ |
-| W10-D | Paymaster proxy + Stakes UI e2e (+ merges W9-F1) | M | ⬜ |
+| W10-D | Paymaster proxy + E2E-11 (+ merges W9-F1) | M | ⬜ |
+| W10-D.2 | Stakes UI e2e, W10-Z prompt | M | ⬜ |
 | W10-Z | Consolidate wave 10 | S | ⬜ |
 | W11-A | Admin API | M | ⬜ |
 | W11-B | Watcher II (Free, paging, dead-man) | M | ⬜ |
