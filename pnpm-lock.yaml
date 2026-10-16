@@ -274,6 +274,34 @@ importers:
         specifier: 4.23.15
         version: 4.23.15
 
+  packages/verify:
+    dependencies:
+      '@flocked/abi':
+        specifier: workspace:*
+        version: link:../abi
+      '@flocked/settle':
+        specifier: workspace:*
+        version: link:../settle
+      '@flocked/shared':
+        specifier: workspace:*
+        version: link:../shared
+      '@flocked/tlock':
+        specifier: workspace:*
+        version: link:../tlock
+      tsx:
+        specifier: 4.23.15
+        version: 4.23.15
+      viem:
+        specifier: 2.57.3
+        version: 2.57.3(bufferutil@4.1.0)(typescript@6.0.3)(utf-8-validate@6.0.6)(zod@4.6.5)
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
+    devDependencies:
+      esbuild:
+        specifier: 0.28.2
+        version: 0.28.2
+
 packages:
 
   '@adobe/css-tools@4.5.0':

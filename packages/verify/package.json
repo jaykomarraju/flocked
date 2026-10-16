@@ -1,0 +1,42 @@
+{
+  "name": "@flocked/verify",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Reproduces a Flocked settlement from public data: the bundle, the chain and drand.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./browser": {
+      "types": "./src/browser.ts",
+      "default": "./src/browser.ts"
+    }
+  },
+  "bin": {
+    "flocked-verify": "./bin/flocked-verify.mjs"
+  },
+  "files": [
+    "bin",
+    "src"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "verify": "node bin/flocked-verify.mjs"
+  },
+  "dependencies": {
+    "@flocked/abi": "workspace:*",
+    "@flocked/settle": "workspace:*",
+    "@flocked/shared": "workspace:*",
+    "@flocked/tlock": "workspace:*",
+    "tsx": "4.23.15",
+    "viem": "2.57.3",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}
