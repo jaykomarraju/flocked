@@ -1,0 +1,175 @@
+/* The reveal fills the shell's content column; its own sections keep the column's 32 gap. */
+.reveal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-8);
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.date {
+  color: var(--color-muted);
+}
+
+.toggle {
+  flex-shrink: 0;
+  width: 176px;
+}
+
+.status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-1);
+}
+
+.counting {
+  color: var(--color-ink);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-8);
+}
+
+.note {
+  color: var(--color-ink);
+}
+
+.notPlayed {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-3);
+}
+
+/* The result card springs up from the bottom once the bars have landed (motion.spring). */
+.result {
+  animation: spring-up var(--motion-spring-duration) var(--motion-spring-easing) both;
+}
+
+/* Win: the lone sheep walks off-screen and back into its place; loss: the flock slides in. */
+.result[data-result='unflocked'] :global(svg) {
+  animation: walk-off var(--motion-walk-off-duration) var(--motion-walk-off-easing)
+    var(--motion-spring-duration) both;
+}
+
+.result[data-result='got-flocked'] :global(svg) {
+  animation: flock-in var(--motion-flock-duration) var(--motion-flock-easing)
+    var(--motion-spring-duration) both;
+}
+
+/* The share preview, Share and the next question fade in last. */
+.late,
+.next {
+  animation: fade-in var(--motion-fade-duration) var(--motion-fade-easing) both;
+}
+
+.reveal[data-motion='full'] .late,
+.reveal[data-motion='full'] .next {
+  animation-delay: calc(var(--motion-spring-duration) + 200ms);
+}
+
+/* Without motion (played before, or the sheets) nothing animates. */
+.reveal[data-motion='none'] .result,
+.reveal[data-motion='none'] .result :global(svg),
+.reveal[data-motion='none'] .late,
+.reveal[data-motion='none'] .next {
+  animation: none;
+}
+
+/* Reduced motion: the end state fades in (motion.fade), past the theme's global 1ms clamp. */
+.body[data-fade='true'] {
+  animation: fade-in var(--motion-fade-duration) var(--motion-fade-easing) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .body[data-fade='true'] {
+    animation-duration: var(--motion-fade-duration) !important;
+  }
+
+  .result,
+  .result :global(svg),
+  .late,
+  .next {
+    animation: none;
+  }
+}
+
+.next {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+  padding-top: var(--spacing-8);
+  border-top: var(--border-default) solid var(--color-line);
+}
+
+.nextCard {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-1);
+  padding: var(--spacing-5) var(--spacing-8);
+  border: var(--border-strong) solid var(--color-ink);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  color: var(--color-ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.nextCloses {
+  color: var(--color-muted);
+}
+
+@keyframes spring-up {
+  from {
+    opacity: 0;
+    transform: translateY(48px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes walk-off {
+  0% {
+    transform: none;
+  }
+  60% {
+    transform: translateX(150%);
+    opacity: 0;
+  }
+  61% {
+    transform: none;
+    opacity: 0;
+  }
+  100% {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes flock-in {
+  from {
+    transform: translateX(-120%);
+  }
+  to {
+    transform: none;
+  }
+}

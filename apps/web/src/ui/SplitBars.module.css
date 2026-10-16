@@ -48,3 +48,19 @@
     transition-delay: 0s;
   }
 }
+
+/* The option's text and, on the player's side, the "Your pick" pill (as on the revealed option card). */
+.option {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  min-width: 0;
+}
+
+.pick {
+  flex-shrink: 0;
+  padding: 2px var(--spacing-3);
+  border-radius: var(--radius-pill);
+  background: var(--color-ink);
+  color: var(--color-bg);
+}

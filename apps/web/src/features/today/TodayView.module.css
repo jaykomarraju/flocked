@@ -72,3 +72,26 @@
   margin-top: -12px;
   text-align: center;
 }
+
+/* A read-only notice above the question (the DST day): 1.5px line border, no accent. */
+.notice {
+  display: flex;
+  gap: var(--spacing-3);
+  padding: var(--spacing-4) var(--spacing-5);
+  border: 1.5px solid var(--color-line);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+}
+
+.noticeIcon {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+}
+
+.noticeBody {
+  font-family: var(--font-body);
+  font-size: var(--text-label);
+  line-height: 20px;
+  font-variation-settings: 'opsz' 28;
+}

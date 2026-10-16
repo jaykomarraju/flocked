@@ -1,0 +1,15 @@
+/* Read-only: 1.5px line border on the surface, the result and the link on one row. */
+.strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-3);
+  padding: var(--spacing-3) var(--spacing-4);
+  border: var(--border-default) solid var(--color-line);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+}
+
+.label {
+  color: var(--color-muted);
+}

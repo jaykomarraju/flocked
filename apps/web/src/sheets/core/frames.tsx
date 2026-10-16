@@ -8,7 +8,7 @@
 // Modal gets that from its own `scrimClassName`.
 import type { ReactNode } from 'react';
 import { ShellFrame } from '../../layout/ShellFrame';
-import { TodayView } from '../../screens/TodayView';
+import { TodayView } from '../../features/today/TodayView';
 import type { SheetBreakpoint } from '../types';
 
 const noop = () => undefined;
