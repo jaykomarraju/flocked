@@ -6,8 +6,10 @@
 //      deleted account nothing;
 //   3. render the copy (render.ts) and send it on each of the event's channels that is on in the
 //      user's prefs, configured here and reachable for the user (a subscription, a token, an email);
-//   4. record each channel reached and finish the key. A transient failure keeps what was reached,
-//      gives up the lease and throws, so the queue retries only the rest.
+//   4. record each channel reached and finish the key, each write fenced by the claim's lease
+//      (dedupe.ts), so a delivery that ran past its lease writes nothing to a key another one holds.
+//      A transient failure keeps what was reached, gives up the lease and throws, so the queue
+//      retries only the rest.
 // `notifyBatch` runs steps 1–2 per message, then step 3 once per channel for the whole queue batch
 // (so Farcaster can put identical notifications into one request), then step 4 per message.
 import {
@@ -21,7 +23,7 @@ import {
 import { now as clockNow } from '../lib/clock.js';
 import { log } from '../lib/log.js';
 import { channelsFor, type NotifyEnv } from './channels/index.js';
-import { claimKey, finishKey, markDelivered, releaseKey } from './dedupe.js';
+import { claimKey, finishKey, markDelivered, releaseKey, type Lease } from './dedupe.js';
 import { loadRecipient, prefEnabled } from './recipient.js';
 import { DEFAULT_ORIGIN, prepare, renderCopy } from './render.js';
 import type { Channel, ChannelSet, Delivery } from './types.js';
@@ -31,13 +33,17 @@ type OutcomeMessage = Extract<NotifyMessage, { event: 'outcome' }>;
 /**
  * Whether an `outcome` refund that arrives after the day's outcome was sent is a later event, told
  * as `refunded` (spec "Notifications": a Stakes refund becoming final, or a rule-7/8 refund after the
- * outcome was sent). Stakes reasons 1 and 6 are final when they happen (`refundTooFew`,
- * `refundTimeout`); 2 and 3 arrive as a provisional proposal first, and their finalization is a
- * `refunded` of its own (src/notify/outcomes.ts). A Free rule 1–4 refund at the reveal stays app-only.
+ * outcome was sent). A Stakes refund with no proposal is final when it happens (`refundTooFew`,
+ * reason 1, and `refundTimeout`, 6). A proposed one (`provisional`, any reason: VOID entries can
+ * leave too few valid ones for rule 1) is not a later event at the proposal — 2 h before claims open,
+ * with a veto still possible — and goes out as `refunded` when it becomes final, enqueued by
+ * `notifyOnModeFinal` under its own key (src/notify/outcomes.ts; W9-F1 R2). A Free rule 1–4 refund at
+ * the reveal stays app-only.
  */
 export function laterRefund(p: OutcomeMessage['payload']): boolean {
   if (p.result !== 'refund' || p.refundReason === null) return false;
   if (p.refundReason === 7 || p.refundReason === 8) return true;
+  if (p.provisional === true) return false;
   return p.mode === 'stakes' && (p.refundReason === 1 || p.refundReason === 6);
 }
 
@@ -81,6 +87,8 @@ export type NotifyResult = 'ok' | 'retry';
 interface Planned {
   index: number;
   key: string;
+  /** The claim's fence: every write on the key carries it (dedupe.ts). */
+  lease: Lease;
   deliveries: Map<NotificationChannel, Delivery>;
 }
 
@@ -96,15 +104,17 @@ export async function notifyBatch(
   deps: NotifyDeps = defaultNotifyDeps(env),
 ): Promise<NotifyResult[]> {
   const db = env.DB;
-  const t = deps.now();
   const results: NotifyResult[] = inputs.map(() => 'ok');
   const planned: Planned[] = [];
   for (const [index, input] of inputs.entries()) {
+    // The clock is read per message, not once per batch: a batch can take longer than a lease, so a
+    // claim stamped from the batch's start would hold a lease that is already in the past (R3).
+    const t = deps.now();
     try {
       const p = await plan(env, deps, input, t);
       if (p === 'retry') results[index] = 'retry';
       else if (p !== null) {
-        if (p.deliveries.size === 0) await finishKey(db, p.key, t);
+        if (p.deliveries.size === 0) await finishKey(db, p.key, t, p.lease);
         else planned.push({ index, ...p });
       }
     } catch (err) {
@@ -140,21 +150,33 @@ export async function notifyBatch(
   }
 
   for (const p of planned) {
+    const t = deps.now();
     let ok = true;
+    let lost = false;
     try {
       for (const name of p.deliveries.keys()) {
         if (failed.has(`${name}\n${p.key}`)) ok = false;
-        else await markDelivered(db, p.key, name);
+        else if (!(await markDelivered(db, p.key, name, p.lease))) lost = true;
+        if (lost) break;
       }
-      if (ok) await finishKey(db, p.key, t);
-      else await releaseKey(db, p.key);
+      if (!lost) {
+        lost = ok
+          ? !(await finishKey(db, p.key, t, p.lease))
+          : !(await releaseKey(db, p.key, p.lease));
+      }
     } catch (err) {
       log.warn('notify_record_failed', {
         dedupeKey: p.key,
         error: err instanceof Error ? err.message : String(err),
       });
-      await releaseKey(db, p.key).catch(() => undefined);
+      await releaseKey(db, p.key, p.lease).catch(() => undefined);
       ok = false;
+    }
+    if (lost) {
+      // This delivery took longer than its lease and another one holds the key now: that one records
+      // and finishes it, so nothing is written here and this message isn't retried either (R3).
+      log.warn('notify_lease_lost', { dedupeKey: p.key, event: inputs[p.index]?.event });
+      continue;
     }
     if (!ok) results[p.index] = 'retry';
   }
@@ -215,7 +237,15 @@ async function plan(
   deps: NotifyDeps,
   input: NotifyMessage,
   t: number,
-): Promise<{ key: string; deliveries: Map<NotificationChannel, Delivery> } | 'retry' | null> {
+): Promise<
+  | {
+      key: string;
+      lease: Lease;
+      deliveries: Map<NotificationChannel, Delivery>;
+    }
+  | 'retry'
+  | null
+> {
   const db = env.DB;
   let msg = input;
   let claim = await claimKey(
@@ -242,10 +272,11 @@ async function plan(
     return null;
   }
   if (claim.kind === 'busy') return 'retry';
+  const { lease } = claim;
   try {
-    return await render(env, deps, msg, new Set(claim.delivered), t);
+    return { lease, ...(await render(env, deps, msg, new Set(claim.delivered), t)) };
   } catch (err) {
-    await releaseKey(db, msg.dedupeKey).catch(() => undefined);
+    await releaseKey(db, msg.dedupeKey, lease).catch(() => undefined);
     throw err;
   }
 }
@@ -279,7 +310,10 @@ async function render(
   }
   if (ready.length === 0) return { key, deliveries };
 
-  const prepared = await prepare(db, msg, recipient.userId);
+  // Rendered from the account the payload names, not the one it is delivered to: a merge never
+  // re-points `entries`, so an outcome enqueued before a merge (or retried after one) must still
+  // find its entry and tally (W9-F1 R4).
+  const prepared = await prepare(db, msg, msg.userId);
   if (!prepared) {
     log.warn('notify_unrenderable', { event: msg.event, dedupeKey: key });
     return { key, deliveries };

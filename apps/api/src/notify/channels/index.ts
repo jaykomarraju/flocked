@@ -7,6 +7,10 @@
 //     events, https only outside local);
 //   * email: the `EMAIL` binding and a sender (NOTIFY_EMAIL_FROM, else EMAIL_FROM); locally,
 //     EMAIL_MOCK_URL sends to the e2e email mock instead, so a stack test can read what was sent.
+// Every send that leaves the Worker goes through `timedFetch`: a push service or notification host
+// that accepts the connection and then stalls would otherwise hold the batch past its dedupe lease
+// (W9-F1 R3), so each request is given at most SEND_TIMEOUT_MS and then aborted, which the channels
+// report as a transient failure and the queue retries.
 import type { Env } from '../../env.js';
 import type { ChannelSet } from '../types.js';
 import { emailChannel, type OutgoingEmail } from './email.js';
@@ -27,10 +31,26 @@ export type NotifyVars = {
 
 export type NotifyEnv = Env & NotifyVars;
 
+/** How long one channel request may take before it is aborted. */
+export const SEND_TIMEOUT_MS = 10_000;
+
+/**
+ * `f` with a timeout: each call is aborted after `ms` (added to the caller's own signal, if any), so
+ * a host that never answers fails instead of stalling the batch.
+ */
+export function timedFetch(f: typeof fetch, ms: number = SEND_TIMEOUT_MS): typeof fetch {
+  return (input, init) => {
+    const timeout = AbortSignal.timeout(ms);
+    const signal = init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
+    return f(input, { ...init, signal });
+  };
+}
+
 /** Sends through the e2e email mock (local only). */
 function mockEmailSender(origin: string) {
+  const send = timedFetch((input, init) => fetch(input, init));
   return async (email: OutgoingEmail) => {
-    const res = await fetch(new URL('/send', origin), {
+    const res = await send(new URL('/send', origin), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(email),
@@ -50,7 +70,7 @@ export function channelsFor(env: NotifyEnv, now: () => number): ChannelSet {
         subject: env.VAPID_SUBJECT,
       },
       {
-        fetch: (input, init) => fetch(input, init),
+        fetch: timedFetch((input, init) => fetch(input, init)),
         now,
         dropSubscription: async (id) => {
           await env.DB.prepare('DELETE FROM push_subscriptions WHERE id = ?1').bind(id).run();
@@ -59,7 +79,7 @@ export function channelsFor(env: NotifyEnv, now: () => number): ChannelSet {
     );
   }
   set.farcaster = farcasterChannel({
-    fetch: (input, init) => fetch(input, init),
+    fetch: timedFetch((input, init) => fetch(input, init)),
     disableTokens: async (tokens) => {
       const t = now();
       await env.DB.batch(

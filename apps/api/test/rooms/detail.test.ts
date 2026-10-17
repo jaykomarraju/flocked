@@ -124,7 +124,9 @@ describe('members and the current round', () => {
       ],
     });
     const d = await detail(member, r.id);
-    expect(d.room).toMatchObject({ id: r.id, ownerUserId: owner.id, memberCount: 4 });
+    // `memberCount` is the cap's count, so the deleted member is left out of it (W9-F1); every
+    // member row is still listed below.
+    expect(d.room).toMatchObject({ id: r.id, ownerUserId: owner.id, memberCount: 3 });
     expect(d.members).toEqual([
       { user: publicUser(owner), role: 'owner', joinedAt: T0 - 3 * DAY, balance: '640' },
       {
