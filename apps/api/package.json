@@ -21,8 +21,10 @@
     "@flocked/settle": "workspace:*",
     "@flocked/shared": "workspace:*",
     "@flocked/tlock": "workspace:*",
+    "@resvg/resvg-wasm": "2.6.2",
     "hono": "4.13.13",
     "jose": "6.2.12",
+    "satori": "0.32.0",
     "viem": "2.57.3",
     "zod": "4.6.5"
   }
