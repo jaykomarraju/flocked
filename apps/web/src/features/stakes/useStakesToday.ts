@@ -83,7 +83,10 @@ export function useStakesToday(opts: StakesTodayOptions): StakesToday {
   const { connect } = opts;
   const env = opts.env ?? defaultEnv;
   const offer = stakesOffer(me, round.modes.stakes !== undefined);
-  const [check, setCheck] = useState<ConfigCheck | null>(null);
+  // Keyed by round, so a result never carries over to a different one, and a refetch of the same
+  // round replaces its result in place instead of blanking it (which would disable the CTA).
+  const [checked, setChecked] = useState<{ roundId: string; result: ConfigCheck } | null>(null);
+  const check = checked?.roundId === round.id ? checked.result : null;
   const [showDetails, setShowDetails] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const entry = useStakesEntry(client, wagmi, onEntered, env);
@@ -102,17 +105,18 @@ export function useStakesToday(opts: StakesTodayOptions): StakesToday {
   useEffect(() => {
     if (!selected || offer.kind !== 'play') return;
     let live = true;
-    setCheck(null);
     setShowDetails(false);
+    const roundId = round.id;
     void (async () => {
+      let result: ConfigCheck;
       try {
         const e = env();
-        const result = await checkRoundConfig({ round, chain: e.chain, reader: e.reader });
-        if (live) setCheck(result);
+        result = await checkRoundConfig({ round, chain: e.chain, reader: e.reader });
       } catch {
         // No trusted chain, or the RPC is down: the client refuses rather than trust the API.
-        if (live) setCheck({ ok: false, reason: 'unreadable' });
+        result = { ok: false, reason: 'unreadable' };
       }
+      if (live) setChecked({ roundId, result });
     })();
     return () => {
       live = false;
