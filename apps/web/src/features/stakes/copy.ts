@@ -49,6 +49,24 @@ export const INELIGIBLE_LINES: Record<IneligibleReason, string> = {
   stakes_disabled: 'Stakes is off right now. Free is still on.',
 };
 
+/**
+ * Today while the player is on a self-exclusion break (Paper `core/global/self-excluded/*`; spec
+ * "Compliance and responsible play" › Responsible play): the question stays, both options are
+ * disabled and there is no stake selector and no CTA, because a break blocks entries in both modes.
+ * Claims and refunds are unaffected, which the link says.
+ */
+export function breakNotice(until: string): {
+  title: string;
+  body: string;
+  link: { label: string; href: string };
+} {
+  return {
+    title: `You're on a break until ${until}.`,
+    body: 'No picks in either mode until then, and no game notifications.',
+    link: { label: 'Claims and refunds still work', href: '/claims' },
+  };
+}
+
 /** The mini app sends verification to an external browser and waits for `/me` to catch up. */
 export const VERIFY_WAITING = 'Finish in your browser. This page is waiting.';
 
@@ -58,7 +76,8 @@ export const VERIFY_WAITING = 'Finish in your browser. This page is waiting.';
 export const CONFIG_NOTICE_TITLE = 'Special rules today';
 
 const NON_DEFAULT_PHRASE: Record<NonDefault['field'], (v: string, usual: string) => string> = {
-  stake: (v, usual) => `Stake ${plain(v)} (usually ${plain(usual)})`,
+  // Paper names the unit once: "Stake 10 USDC (usually 5)".
+  stake: (v, usual) => `Stake ${plain(v)} (usually ${bare(usual)})`,
   minEntrants: (v, usual) => `At least ${v} players (usually ${usual})`,
   feeBps: (v, usual) => `${bps(v)} house fee (usually ${bps(usual)})`,
   creatorBps: (v, usual) => `${bps(v)} to the author (usually ${bps(usual)})`,
@@ -67,6 +86,8 @@ const NON_DEFAULT_PHRASE: Record<NonDefault['field'], (v: string, usual: string)
 
 /** "10.00 USDC" reads as "10 USDC" in a sentence. */
 const plain = (usdc: string) => usdc.replace(/\.00 /, ' ');
+/** The same amount without its unit, for the "(usually 5)" the unit before it already covers. */
+const bare = (usdc: string) => plain(usdc).replace(/ USDC$/, '');
 const bps = (v: string) => `${Number(v) / 100}%`;
 
 /** "Stake 10 USDC (usually 5). At least 30 players (usually 20)." */

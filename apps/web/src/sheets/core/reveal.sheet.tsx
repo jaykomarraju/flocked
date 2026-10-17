@@ -9,6 +9,9 @@
 //              ink, the GOT FLOCKED card (−25 points), the share preview (640 points)
 //   refund     a headcount tie: 50/50, no accent, the Refunded card with rule 3's line, the stake
 //              returned, the share preview (665 points)
+//   provisional  a Stakes win before the challenge window ends: 59/41, the accent on the player's
+//              side, the UNFLOCKED card with the "Provisional. Final at 11:03pm" chip, "Stake 5 USDC"
+//              and "Payout, once final 11.75 USDC", the share preview (the 30-day net in the header)
 //   mode-toggle  a Free player on Stakes: 59/41, no "Your pick", "You didn't play Stakes this round.",
 //              the Stakes totals and the way back; no card, no Share (the 30-day net in the header)
 //   next-live  Today for the next round (Friday, Oct 9, nothing picked, the CTA disabled) under the
@@ -114,6 +117,16 @@ const NOTES: Record<string, Omit<NotesBandProps, 'breakpoint'>> = {
         '8 · Beacon unavailable (Free): "The timelock never opened, so the picks stay sealed. Points returned."',
       ],
     },
+  },
+  provisional: {
+    title: 'Motion notes',
+    notes: [
+      BARS_GROW,
+      '2. As the bars land, the winning bar fills with the accent (motion.fade).',
+      '3. Then the result card springs up from the bottom (motion.spring) and the lone sheep walks off-screen (motion.walkOff).',
+      REDUCED,
+      '5. Stakes shows the result once the proposal confirms, with Final at (end of the challenge window). At final the chip leaves and the payout moves to Claims. A guardian veto re-renders this card as refunded (rule 5).',
+    ],
   },
   'mode-toggle': {
     title: 'Mode toggle notes',
@@ -227,6 +240,29 @@ const REVEAL: Record<string, (breakpoint: SheetBreakpoint) => ReactNode> = {
           figure: { label: 'Returned', value: '25 points' },
         },
         share: share(breakpoint, { counts: [50, 50], winner: null, result: 'refunded' }),
+      },
+    ),
+  provisional: (breakpoint) =>
+    settled(
+      'provisional',
+      breakpoint,
+      { mode: 'stakes', net: 12_000_000n },
+      {
+        phase: 'revealed',
+        mode: 'stakes',
+        entrants: 212,
+        pool: 1_060_000_000n,
+        counts: [59, 41],
+        winner: 1,
+        result: {
+          result: 'unflocked',
+          count: 41,
+          total: 100,
+          stake: '5 USDC',
+          figure: { label: 'Payout, once final', value: '11.75 USDC' },
+          finalAt: '11:03pm',
+        },
+        share: share(breakpoint, { counts: [59, 41], winner: 1, result: 'unflocked' }),
       },
     ),
   'mode-toggle': (breakpoint) =>

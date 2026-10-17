@@ -116,6 +116,13 @@
   border: var(--border-strong) solid var(--color-ink);
 }
 
+/* Paper sets the loud notices' lines 6 apart, not 4: the body and the link each sit a little lower
+   than in the read-only DST notice (W10-C measured `config-warning` and `stakes-entry/mismatch`). */
+.notice[data-variant='strong'] .noticeText,
+.notice[data-variant='refusal'] .noticeText {
+  gap: 6px;
+}
+
 /* "See the change log (#A1F3, #A1F4)" / "See what doesn't match": the body role, underlined. */
 .noticeLink {
   align-self: flex-start;

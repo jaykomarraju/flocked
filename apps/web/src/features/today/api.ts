@@ -49,3 +49,10 @@ export function formatClockTime(epochMs: number): string {
     .format(new Date(epochMs))
     .replace(/\s?([AP])M$/i, (_, p: string) => p.toLowerCase() + 'm');
 }
+
+/** A break's end date as the notice names it: "Nov 7". */
+export function formatBreakEnd(epochMs: number): string {
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(
+    new Date(epochMs),
+  );
+}

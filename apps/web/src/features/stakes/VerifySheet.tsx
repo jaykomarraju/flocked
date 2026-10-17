@@ -47,7 +47,7 @@ export function VerifySheet({
   const ready = age && terms;
   return (
     <div className={s.sheet}>
-      <DialogTitle className="type-section">{VERIFY_SHEET.title}</DialogTitle>
+      <DialogTitle className={s.title}>{VERIFY_SHEET.title}</DialogTitle>
       <p className="type-body">{VERIFY_SHEET.body}</p>
       <div className={s.checks}>
         <Checkbox checked={age} onChange={(e) => setAge(e.currentTarget.checked)}>

@@ -391,7 +391,6 @@ export async function mockWorld(
     }),
   );
   await page.route(RPC_URL, (route) => answerRpc(route, world, signer.address, stakes));
-  if (opts.stakes) await installSmartWallet(page, stakes);
   await page.routeWebSocket(/\/api\/v1\/rounds\/[^/]+\/ws$/, (ws) => {
     socket = ws;
     ws.onMessage((m) => {
@@ -458,6 +457,9 @@ export async function mockWorld(
     }
     return json(404, { error: { code: 'not_found', message: 'Not found' } });
   });
+  // After the `/api/v1/` catch-all, so its own `/paymaster` route wins (Playwright takes the most
+  // recently added handler first).
+  if (opts.stakes) await installSmartWallet(page, stakes);
   return world;
 }
 
@@ -728,18 +730,8 @@ async function installSmartWallet(page: Page, stakes: StakesWorld): Promise<void
 
   await page.exposeFunction(
     '__flockedSendCalls',
-    async (batch: { calls: { to: string; data: string }[]; capabilities: unknown }) => {
+    (batch: { calls: { to: string; data: string }[]; capabilities: unknown }) => {
       stakes.sent.push(batch);
-      // The wallet is what talks to the paymaster service, so the mock does it here.
-      const url = (batch.capabilities as { paymasterService?: { url?: string } } | undefined)
-        ?.paymasterService?.url;
-      if (url) {
-        for (const method of ['pm_getPaymasterStubData', 'pm_getPaymasterData']) {
-          await page.request.post(url, {
-            data: { jsonrpc: '2.0', id: 1, method, params: [{}, '0x', '0x7a69', null] },
-          });
-        }
-      }
       return `0x${stakes.sent.length.toString(16).padStart(64, '0')}`;
     },
   );
@@ -755,6 +747,7 @@ async function installSmartWallet(page: Page, stakes: StakesWorld): Promise<void
         ethereum?: unknown;
         __flockedSendCalls: (batch: unknown) => Promise<string>;
         __flockedCallsReverted: () => Promise<boolean>;
+        fetch: (url: string, init: unknown) => Promise<unknown>;
         addEventListener: (type: string, fn: () => void) => void;
         dispatchEvent: (event: unknown) => boolean;
         CustomEvent: new (type: string, init: { detail: unknown }) => unknown;
@@ -791,6 +784,22 @@ async function installSmartWallet(page: Page, stakes: StakesWorld): Promise<void
                 calls: p.calls,
                 capabilities: p.capabilities,
               });
+              // A sponsored operation is the wallet asking the paymaster service the app named.
+              // From the page, so the spec's route answers it as the real proxy would.
+              const url = (p.capabilities as { paymasterService?: { url?: string } } | undefined)
+                ?.paymasterService?.url;
+              for (const method of url ? ['pm_getPaymasterStubData', 'pm_getPaymasterData'] : []) {
+                await g.fetch(url as string, {
+                  method: 'POST',
+                  headers: { 'content-type': 'application/json' },
+                  body: JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: 1,
+                    method,
+                    params: [{}, '0x', '0x7a69', null],
+                  }),
+                });
+              }
               return { id };
             }
             case 'wallet_getCallsStatus': {

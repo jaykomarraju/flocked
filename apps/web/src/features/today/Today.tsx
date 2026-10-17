@@ -34,6 +34,7 @@ import detailStyles from '../stakes/details.module.css';
 import { showsStakes } from '../stakes/eligibility';
 import type { StoredStakesPick } from '../stakes/picks';
 import { useStakesToday } from '../stakes/useStakesToday';
+import { breakNotice } from '../stakes/copy';
 import { VerifyCallout } from '../stakes/VerifyCallout';
 import { VerifyOverlay } from '../stakes/VerifyOverlay';
 import { markRevealPlayed, revealPlayed } from '../reveal/played';
@@ -44,6 +45,7 @@ import { SealedView } from '../sealed/SealedView';
 import { formatUsdc } from '../../ui/amounts';
 import {
   ROUNDS_TODAY_KEY,
+  formatBreakEnd,
   formatClockTime,
   formatGameDay,
   roundKey,
@@ -283,6 +285,17 @@ function OpenRound({
   const remainingMs = round.closesAt * 1000 - now;
   const userId = me?.user.id;
   const stakesShown = STAKES_UI_ENABLED && showsStakes(stakes.offer);
+  // A self-exclusion break blocks entries in BOTH modes (spec "Compliance and responsible play"),
+  // so the screen keeps the question and takes away everything there is to press.
+  const exclusion = me?.limits.selfExclusion;
+  const onBreak =
+    me?.limits.excluded === true
+      ? breakNotice(
+          exclusion?.permanent || !exclusion?.until
+            ? 'further notice'
+            : formatBreakEnd(exclusion.until),
+        )
+      : null;
   // Stakes hidden by region, age, a break or a suspension: the toggle goes back to Free (AC-8).
   useEffect(() => {
     if (isStakes && !stakesShown) setMode('free');
@@ -325,6 +338,7 @@ function OpenRound({
         }
         stakesStake={isStakes ? stakes.stakesStake : null}
         callout={isStakes && stakes.offer.kind === 'verify' ? <VerifyCallout /> : null}
+        onBreak={onBreak}
         notice={(isStakes ? stakes.notice : null) ?? dstNotice(round.opensAt, round.closesAt)}
         lastRound={lastRound}
         remainingMs={remainingMs}

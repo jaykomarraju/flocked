@@ -1,10 +1,11 @@
 /* The verify callout (Paper `core/today/open-stakes-unverified`): read-only, so the 1.5px line
-   border like the DST notice; padding 16, the 24px shield 12 from the text, title and body 4 apart. */
+   border like the DST notice, but roomier than it — padding 20, the 24px shield 16 from the text,
+   title and body 4 apart (W10-C measured the export; it was 16 and 12). */
 .callout {
   display: flex;
   align-items: flex-start;
-  gap: var(--spacing-3);
-  padding: var(--spacing-4);
+  gap: var(--spacing-4);
+  padding: var(--spacing-5);
   border: 1.5px solid var(--color-line);
   border-radius: var(--radius-card);
   background: var(--color-surface);

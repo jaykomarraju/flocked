@@ -123,6 +123,11 @@ export interface TodayViewProps {
   notice?: TodayNotice | null;
   /** Between the hint and the countdown, where the stake selector sits: the verify callout. */
   callout?: ReactNode;
+  /**
+   * The player is on a self-exclusion break: the notice sits under the question, both options are
+   * disabled, and there is no stake selector and no CTA (Paper `core/global/self-excluded/*`).
+   */
+  onBreak?: { title: string; body: string; link: { label: string; href: string } } | null;
   /** The "Last round" strip above everything (the previous round still revealing). */
   lastRound?: ReactNode;
   /** Time left until entries close (ms). */
@@ -173,6 +178,7 @@ export function TodayView({
   stakesStake = null,
   notice = null,
   callout = null,
+  onBreak = null,
   lastRound,
   remainingMs,
   entrants,
@@ -222,18 +228,28 @@ export function TodayView({
       <h1 id={questionId} className={breakpoint === 'mobile' ? 'type-question' : 'type-display'}>
         {question}
       </h1>
+      {onBreak ? (
+        <div className={s.break} role="note">
+          <p className="type-body-strong">{onBreak.title}</p>
+          <p className={`type-body ${s.breakBody}`}>{onBreak.body}</p>
+          <a className={`type-body-strong ${s.breakLink}`} href={onBreak.link.href}>
+            {onBreak.link.label}
+          </a>
+        </div>
+      ) : null}
       <div className={s.options}>
         <OptionGroup
           options={options}
           value={pick}
           onChange={onPick}
-          disabled={sealing}
+          disabled={sealing || onBreak !== null}
           labelledBy={questionId}
           className={s.cards}
         />
-        {crowdHint ? <p className={s.hint}>{crowdHint}</p> : null}
+        {/* On a break there is nothing to pick, so the crowd hint has nothing to inform. */}
+        {crowdHint && !onBreak ? <p className={s.hint}>{crowdHint}</p> : null}
       </div>
-      {signedIn && mode === 'free' && stake ? (
+      {!onBreak && signedIn && mode === 'free' && stake ? (
         <StakeSelector
           mode="free"
           value={stake.value}
@@ -244,7 +260,7 @@ export function TodayView({
           balance={stake.balance}
         />
       ) : null}
-      {mode === 'stakes' && stakesStake ? (
+      {!onBreak && mode === 'stakes' && stakesStake ? (
         <StakeSelector
           mode="stakes"
           stake={stakesStake.stake}
@@ -252,7 +268,7 @@ export function TodayView({
           overCap={stakesStake.overCap}
         />
       ) : null}
-      {callout}
+      {onBreak ? null : callout}
       <div className={s.status} data-breakpoint={breakpoint}>
         <Countdown label="Closes in" remainingMs={remainingMs} className={s.countdown} />
         <EntrantCounter
@@ -264,7 +280,7 @@ export function TodayView({
         />
       </div>
       {error ? <ErrorBox message={error.message} onRetry={error.onRetry} /> : null}
-      {signedIn ? (
+      {onBreak ? null : signedIn ? (
         <Button
           className={s.cta}
           disabled={(pick === null && !callout) || sealDisabled}
@@ -279,7 +295,7 @@ export function TodayView({
           Sign in to play
         </Button>
       )}
-      {sealing ? (
+      {onBreak ? null : sealing ? (
         <p className={s.note}>{workingNote}</p>
       ) : !signedIn && mode === 'free' ? (
         <p className={`${s.note} ${s.freeNote}`}>{FREE_NOTE}</p>
