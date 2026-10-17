@@ -47,6 +47,10 @@ export interface SplitBarsProps {
   counts?: readonly number[];
   /** The winning option's index; null or omitted when nobody won (a headcount tie or a refund). */
   winner?: number | null;
+  /** The player's option: an ink "Your pick" pill after its text (W9-C, the Reveal screens). */
+  pick?: number | null;
+  /** Share text to show instead of the counts' (the reveal's count-up, W9-C); widths still follow `counts`. */
+  display?: readonly string[];
   /** The list's accessible name. */
   label?: string;
   className?: string;
@@ -56,6 +60,8 @@ export function SplitBars({
   options,
   counts,
   winner = null,
+  pick = null,
+  display,
   label = 'How the crowd split',
   className,
 }: SplitBarsProps) {
@@ -67,14 +73,16 @@ export function SplitBars({
         const won = counts !== undefined && winner === i;
         const share = !counts
           ? null
-          : total > 0
-            ? formatShare(count, total, shareSide(i, counts, winner))
-            : '0%';
+          : (display?.[i] ??
+            (total > 0 ? formatShare(count, total, shareSide(i, counts, winner)) : '0%'));
         const width = counts ? splitFillWidth(count, total) : '50%';
         return (
           <li key={i} className={s.bar}>
             <div className={s.head}>
-              <span className="type-body-strong">{option}</span>
+              <span className={s.option}>
+                <span className="type-body-strong">{option}</span>
+                {pick === i && <span className={s.pick}>Your pick</span>}
+              </span>
               {share !== null && <span className="type-number">{share}</span>}
               {won && <span className="visually-hidden">, the winning side</span>}
             </div>

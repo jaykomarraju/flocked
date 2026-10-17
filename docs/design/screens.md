@@ -91,6 +91,12 @@ conventions that came with them.
   dark (spec "Client app › Navigation" lists no Profile under You).
 - Re-exported: result-card dark, navigation light and dark. New: checkbox light and dark.
 
+### Components fixes (W9-Z, Oct 16, 2026)
+
+- **Avatar ring at 32:** the feedback sheet's offline-banner header drew its avatar ring at 2px; it is now 1.5px, light
+  and dark, like every other 32px avatar (README, "Kit conventions confirmed (W8-Z)") and the app.
+- Re-exported: `exports/components/feedback__{light,dark}__desktop.png` (sizes unchanged).
+
 ## Core flow
 
 Paper page `Core flow`. Freeze: OA-D2. Each state has `mobile` (380), `tablet` (768) and `desktop` (1120)
@@ -120,7 +126,7 @@ Exports are at `exports/core/<screen>__<state>__<breakpoint>.png`.
 | `core/sealed/pick-lost/{mobile,tablet,desktop}` | Client app (Sealed); Entry flow (Free) step 2 (local storage) | `/` (state) | sealed entry whose plaintext isn't on this device: "Pick not on this device" | `exports/core/sealed__pick-lost__{mobile,tablet,desktop}.png` | frozen |
 | `core/reveal/unsealing/{mobile,tablet,desktop}` | Real-time and the reveal (Reveal choreography); Client app (Reveal) | `/` (state) | after close, before the beacon: "Unsealing in 1:42", final count (no live dot), equal ink bars with "Your pick", note | `exports/core/reveal__unsealing__{mobile,tablet,desktop}.png` | frozen |
 | `core/reveal/counting/{mobile,tablet,desktop}` | Real-time and the reveal (Reveal choreography) | `/` (state) | after the beacon, until `revealed`: "Counting the flock…", equal bars, note | `exports/core/reveal__counting__{mobile,tablet,desktop}.png` | frozen |
-| `core/reveal/win/{mobile,tablet,desktop}` | Client app (Reveal); Design_Language (Motion, Voice) | `/` (state) | Free win, end state: 62/38 split, accent on the winning bar, UNFLOCKED card (winLine(38)), share-card preview, Share, "The next question is already live"; motion notes band | `exports/core/reveal__win__{mobile,tablet,desktop}.png` | frozen |
+| `core/reveal/win/{mobile,tablet,desktop}` | Client app (Reveal); Design_Language (Motion, Voice) | `/` (state) | Free win, end state: 62/38 split, accent on the winning bar, UNFLOCKED card (winLine(38)), share-card preview, Share, "The next question is already live"; motion notes band. The end state is the last frame: the sheep walks off and fades back into place (W9-Z, README) | `exports/core/reveal__win__{mobile,tablet,desktop}.png` | frozen |
 | `core/reveal/loss/{mobile,tablet,desktop}` | Client app (Reveal); Design_Language (Motion, Voice) | `/` (state) | Free loss: winning bar still gets the accent, your side ink, GOT FLOCKED card (lossLine(62)), shocked sheep; motion notes (flock slides in) | `exports/core/reveal__loss__{mobile,tablet,desktop}.png` | frozen |
 | `core/reveal/refund/{mobile,tablet,desktop}` | Settlement and payout math (Refund rules); `reasons.ts` | `/` (state) | headcount tie: 50/50, no accent, "Refunded" card with rule 3's line, stake returned; notes band with motion notes and all 8 refund lines | `exports/core/reveal__refund__{mobile,tablet,desktop}.png` | frozen |
 | `core/reveal/provisional/{mobile,tablet,desktop}` | Real-time and the reveal (Stakes "Final at"); Compliance (30-day net) | `/` (state) | Stakes win before final: 59/41, "Provisional. Final at 11:03pm" chip, "Payout, once final 11.75 USDC", 30-day net in the header; notes (veto re-renders as refunded) | `exports/core/reveal__provisional__{mobile,tablet,desktop}.png` | frozen |
@@ -213,6 +219,36 @@ Owner decisions of Oct 16 (Decision log), applied through Z on the frozen page.
   `core/sign-in/email-address/*` (y 50400) and `core/sign-in/farcaster-wait/*` (y 51600). Both end in a "Not now"
   style text button ("Not now" and "Cancel"), as `SignInPanel` does; the choose, code and mini-app states have none.
 - Re-exported: the 39 artboards above. New: the 6 sign-in artboards.
+
+### Core flow fixes (W9-Z, Oct 16, 2026)
+
+Owner-approved fixes applied through Z on the frozen page, from W9-C's notes (handoff `docs/sessions/W9-C.md`, spec
+issues 2, 3 and 6). Where the app followed a decision and Paper lagged, Paper now draws what the app draws; the
+conventions that needed no change are in the README ("Kit and screen conventions (W9-Z)").
+
+- **Mode toggle check** (Oct 12 decision), finishing W8-Z's pass: the remaining 45 toggles get the Components check
+  exactly as on Today (16px, stroked in `bg` at 2.2, 6px from the label; the toggle stays 176 wide): Sealed
+  pick-known and pick-lost; Reveal unsealing, counting, win, loss, refund, provisional, mode-toggle (Stakes selected)
+  and next-live; Stakes entry verify-sheet, pending, error and mismatch (Stakes selected); global offline; each at
+  three breakpoints. Every toggle on the page now has the check. Blocked region and self-excluded keep the static
+  "Free" label without one; loading, error, empty and the Claims screens have no toggle.
+- **Stake slider** (Oct 12 caption decision): the fill runs to the value instead of a fixed 49px, and the end labels
+  use the caption role (Inter 500 `muted`; they were Inter 400 ink). With 25 of 10–100 the fill is 54 on mobile and
+  89.33 from tablet up. On every artboard that draws the Free slider: Today open-free, sealing and dst-notice, Reveal
+  next-live, global offline and blocked-region (18).
+- **"Refunded"** on `core/reveal/refund/*`: 0 tracking, as the kit and the app draw it (was 0.02em).
+- **Refund notes band, line 2:** "Stakes returned." was wrong for the Free refund the band annotates (a Free refund
+  returns points). It now quotes the shipped line, `REFUND_LINES[2]`: "Everyone picked the same side. No strays, no
+  round. Everyone gets their stake back." The wrap is unchanged, so the artboards keep their height.
+- **Decided without a Paper change** (README): the win end state is the last frame of the walk-off (the sheep walks
+  off and fades back into place); the counter row is 40 on the kit sheet and 28 in a screen's status block; the
+  Free note sits 12 under the CTA and the sealing note at the content gap; the DST notice's 24-grid clock is a
+  screen icon; a disabled pick keeps its selected look; the Sealed and Reveal question (28/32, 32/36 up) and
+  "Counting the flock…" (Fredoka 600 28/36) are screen type without a token.
+- Re-exported (57; sizes unchanged), each at `exports/core/<screen>__<state>__{mobile,tablet,desktop}.png`:
+  `today__{open-free,sealing,dst-notice}`, `sealed__{pick-known,pick-lost}`,
+  `reveal__{unsealing,counting,win,loss,refund,provisional,mode-toggle,next-live}`,
+  `stakes-entry__{verify-sheet,pending,error,mismatch}`, `global__{offline,blocked-region}`.
 
 ## Social
 
@@ -341,6 +377,16 @@ active; tablet and desktop show no active header link (Settings is reached from 
 - **Share sheets' viewer avatar** (decision F5): the share sheets live on the Cards and notifications page (fixed
   there, see its W8-Z notes). No share sheet is drawn on this page.
 
+### Social and settings fixes (W9-Z, Oct 16, 2026)
+
+- **Mode toggle check** (Oct 12 decision): the 27 Free/Stakes toggles on this page get the Components check as on
+  Core flow (16px, stroked in `bg` at 2.2, 6px from the label; the toggle stays 200 wide): Verify overview,
+  entry-passed, entry-failed and no-receipt; Boards strays, streaks, weekly, creators and empty (Stakes selected);
+  each at three breakpoints. Settings' notification-channel segment (Farcaster, Push, Email) already had its check
+  and isn't a mode toggle.
+- Re-exported (27; sizes unchanged): `exports/social/verify__{overview,entry-passed,entry-failed,no-receipt}__*` and
+  `exports/social/boards__{strays,streaks,weekly,creators,empty}__*`, `{mobile,tablet,desktop}`.
+
 ## Cards and notifications
 
 Paper page `Cards and notifications`. Freeze: OA-D4. Cards are light only (they are images on other apps' feeds).
@@ -442,7 +488,7 @@ copy of Farcaster's or an OS's UI.
 
 | Artboard | Spec heading | Route or component | States covered | Export | Freeze |
 | --- | --- | --- | --- | --- | --- |
-| `notifications/farcaster/all-events/mobile` | Notifications | Farcaster mini app notification | every event and variant in `NOTIFICATION_EVENTS` order: question_live; closing_soon; outcome win, win without amount, loss, void, refund by rules 4, 7 and 8 (with "The next question is live."); payout_claimable marked not sent; refunded Free (rule 8) and Stakes (rule 5); question_used scheduled and settled; streak_at_risk; question_edited; security_notice × 4 kinds | `exports/notifications/farcaster__all-events__mobile.png` | frozen |
+| `notifications/farcaster/all-events/mobile` | Notifications | Farcaster mini app notification | every event and variant in `NOTIFICATION_EVENTS` order: question_live; closing_soon; outcome win, win without amount, loss, void, refund by rules 4, 7 and 8 (with "The next question is live."); payout_claimable marked not sent; refunded Free (rule 8) and Stakes (rule 5); question_used scheduled and settled; streak_at_risk; question_edited; question_rejected with its note (W9-Z); security_notice × 4 kinds | `exports/notifications/farcaster__all-events__mobile.png` | frozen |
 | `notifications/webpush/all-events/mobile` | Notifications | web push | the same list, payout_claimable included | `exports/notifications/webpush__all-events__mobile.png` | frozen |
 | `notifications/farcaster/question-rejected/mobile` | Notifications (`question_rejected`) | Farcaster mini app notification | built like the `question_edited` row: title "Your question was rejected", body the admin's reason (sample "It's a yes-or-no question with an obvious answer."); note: the body is `{reason}`, cut to 128 characters with "…", push only, no email (W8-Z) | `exports/notifications/farcaster__question-rejected__mobile.png` | frozen |
 | `notifications/webpush/question-rejected/mobile` | Notifications (`question_rejected`) | web push | the same notification and note on web push (W8-Z) | `exports/notifications/webpush__question-rejected__mobile.png` | frozen |
@@ -503,6 +549,17 @@ The page stays frozen (OA-D4); these are the owner's Oct 16 changes only.
   and that it goes by push only (no email), as `NOTIFICATION_COPY` has it. The all-events sheets are unchanged and
   don't list `question_rejected`.
 - Re-exported: the 7 share-sheet artboards. New: the 2 `question_rejected` artboards.
+
+### Cards and notifications fixes (W9-Z, Oct 16, 2026)
+
+- **`question_rejected` on the all-events sheets:** `notifications/{farcaster,webpush}/all-events/mobile` now list it
+  in `NOTIFICATION_EVENTS` order, after `question_edited`, cloned from the W8-Z `question-rejected` artboards: the
+  "question_rejected · default" caption, the notification (title "Your question was rejected", the sample reason
+  as the body) and the note ("The body is the admin's reason ({reason}), cut to 128 characters with "…" if longer.
+  Push only: no email."). Each sheet grows by 237 (exports 760×7928 and 760×8224, were 760×7454 and 760×7750).
+- Not in this pass: the `security_notice` kind `identity_unlinked` (decision B6, W9-A) is in `SECURITY_NOTICE_KINDS`
+  but not on the all-events sheets, which still show four kinds.
+- Re-exported: `exports/notifications/{farcaster,webpush}__all-events__mobile.png`.
 
 ## Admin
 

@@ -100,9 +100,23 @@ export interface Env {
   /** Viewer shards per round, an integer 1–256; 16 when unset (src/ws/shards.ts). */
   WS_VIEWER_SHARDS?: string;
   /**
-   * Farcaster hub HTTP origin for wallet offers (src/identity/offers.ts); unset, nothing is offered.
+   * Farcaster hub HTTP origin for wallet offers (src/identity/offers.ts; unset, nothing is offered) and
+   * the mini app webhook's app-key check (src/notify/farcaster-webhook.ts; unset, it answers 503).
    */
   FARCASTER_HUB_URL?: string;
+
+  // Notification vars (W9-A; src/notify/channels/index.ts, src/notify/cast.ts). A channel, or the
+  // daily cast, whose configuration is missing is off (logged), never mocked.
+  /** Uncompressed P-256 public key, base64url (scripts/gen-vapid.mjs); VAPID_PRIVATE_KEY is a secret. */
+  VAPID_PUBLIC_KEY?: string;
+  /** RFC 8292 contact, e.g. `mailto:ops@flocked.xyz`. */
+  VAPID_SUBJECT?: string;
+  /** Sender of notification emails, e.g. `hello@flocked.xyz`; defaults to EMAIL_FROM. */
+  NOTIFY_EMAIL_FROM?: string;
+  /** The e2e email mock's origin (e2e/mocks/email); honoured only when ENVIRONMENT is 'local'. */
+  EMAIL_MOCK_URL?: string;
+  /** Neynar cast API origin override (e2e/mocks/farcaster-notify); honoured only when ENVIRONMENT is 'local'. */
+  FARCASTER_CAST_API_URL?: string;
 
   // Settlement and chain vars (W5-A, W4-F1).
   /**
@@ -139,6 +153,9 @@ export interface Env {
   BASE_RPC_URL_FALLBACK?: string;
   ANTHROPIC_API_KEY?: string;
   VAPID_PRIVATE_KEY?: string;
+  /** The daily cast (W9-A, OA-11): Neynar API key and the official account's managed signer. */
+  NEYNAR_API_KEY?: string;
+  FARCASTER_CAST_SIGNER_UUID?: string;
   PAYMASTER_URL?: string;
   BUNDLER_URL?: string;
 }

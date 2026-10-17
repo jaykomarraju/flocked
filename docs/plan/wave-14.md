@@ -80,3 +80,8 @@
 - **W14-B:**
   - the header shows "Sign in" while `/me` loads;
   - the web's main chunk is 581 KB (179 KB gzip: wagmi, viem, React, the router, the schemas): lazy-load the wallets.
+
+## Carry-over from W9-Z (Oct 16, 2026)
+
+- **W14-A:** the web checks every Free round against its onchain lock leaf through the committed deployment: commit `contracts/deployments/84532.json` with the Sepolia deploy (and W16-A `8453.json`), or no Free entry can be sealed in staging.
+- **W14-B:** tlock-js ships in the Today views' chunk (188 KB, 57 KB gzip); the main chunk is 404 KB (131 KB gzip) after W9-C's split.

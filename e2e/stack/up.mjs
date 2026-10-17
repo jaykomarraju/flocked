@@ -41,6 +41,7 @@ import {
   TOS_VERSION,
   TURNSTILE_TEST_SECRET,
   ANTHROPIC_MOCK_KEY,
+  NEYNAR_MOCK,
   WEB_DIST_DIR,
   alive,
   ensureDir,
@@ -69,11 +70,15 @@ const urls = {
   eas: `http://127.0.0.1:${PORTS.eas}`,
   turnstile: `http://127.0.0.1:${PORTS.turnstile}`,
   anthropic: `http://127.0.0.1:${PORTS.anthropic}`,
+  push: `http://127.0.0.1:${PORTS.push}`,
+  'farcaster-notify': `http://127.0.0.1:${PORTS.farcasterNotify}`,
+  email: `http://127.0.0.1:${PORTS.email}`,
 };
 
 /**
  * The service mocks: the Farcaster Quick Auth (W3-A), Coinbase OAuth and API, and EAS (W5-B),
- * Turnstile's siteverify (W7-D) and Anthropic's Messages API for moderation (W8-A).
+ * Turnstile's siteverify (W7-D), Anthropic's Messages API for moderation (W8-A), and the notification
+ * channels (W9-A): a web push service, Farcaster's notification endpoint, hub and cast API, and email.
  */
 const MOCKS = [
   ['farcaster', 'MOCK_FARCASTER_PORT', PORTS.farcaster],
@@ -81,6 +86,9 @@ const MOCKS = [
   ['eas', 'MOCK_EAS_PORT', PORTS.eas],
   ['turnstile', 'MOCK_TURNSTILE_PORT', PORTS.turnstile],
   ['anthropic', 'MOCK_ANTHROPIC_PORT', PORTS.anthropic],
+  ['push', 'MOCK_PUSH_PORT', PORTS.push],
+  ['farcaster-notify', 'MOCK_FARCASTER_NOTIFY_PORT', PORTS.farcasterNotify],
+  ['email', 'MOCK_EMAIL_PORT', PORTS.email],
 ];
 
 /** Runs a command to completion, output to `.run/logs/<name>.log`; rejects with the log's tail. */
@@ -437,7 +445,24 @@ async function main() {
     COINBASE_API_ORIGIN: urls.coinbase,
     ATTESTATION_NETWORK: 'base',
     ATTESTATION_RPC_URL: urls.eas,
+    // Notifications (W9-A): every channel goes to its mock. Web push needs no override (the test
+    // subscribes with a loopback endpoint on the push mock, accepted only locally); the VAPID pair is
+    // added below. The hub also answers wallet offers (W7-B) with nothing to offer.
+    EMAIL_MOCK_URL: urls.email,
+    FARCASTER_HUB_URL: urls['farcaster-notify'],
+    FARCASTER_CAST_API_URL: urls['farcaster-notify'],
+    NEYNAR_API_KEY: NEYNAR_MOCK.apiKey,
+    FARCASTER_CAST_SIGNER_UUID: NEYNAR_MOCK.signerUuid,
   });
+  // A fresh VAPID pair every run, appended to .dev.vars (the script prints only the public key).
+  const vapid = await capture(
+    process.execPath,
+    [join(ROOT, 'scripts', 'gen-vapid.mjs'), DEV_VARS_FILE],
+    {
+      env: { ...process.env, VAPID_SUBJECT: 'mailto:ops@flocked.test' },
+    },
+  );
+  state.vapidPublicKey = /^VAPID_PUBLIC_KEY=([A-Za-z0-9_-]+)$/m.exec(vapid)?.[1] ?? null;
   if (!existsSync(join(WEB_DIST_DIR, 'index.html'))) {
     ensureDir(WEB_DIST_DIR);
     writeFileSync(
@@ -505,6 +530,9 @@ async function main() {
   state.easUrl = urls.eas;
   state.turnstileUrl = urls.turnstile;
   state.anthropicUrl = urls.anthropic;
+  state.pushUrl = urls.push;
+  state.farcasterNotifyUrl = urls['farcaster-notify'];
+  state.emailUrl = urls.email;
   state.devVars = rel(DEV_VARS_FILE);
   state.logs = rel(LOG_DIR);
   save();

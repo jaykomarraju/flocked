@@ -21,6 +21,23 @@
       {
         "id": "01K6Z8Y4N2R7VQ3M5T9W1XB0CQ"
       }
+    ],
+    "FarcasterWebhookRequestSchema": [
+      {
+        "header": "eyJmaWQiOjEyMzQ1LCJ0eXBlIjoiYXBwX2tleSIsImtleSI6IjB4MDAifQ",
+        "payload": "eyJldmVudCI6Im1pbmlhcHBfYWRkZWQifQ",
+        "signature": "c2lnbmF0dXJl"
+      }
+    ],
+    "FarcasterWebhookResponseSchema": [
+      {
+        "ok": true,
+        "result": "stored"
+      },
+      {
+        "ok": true,
+        "result": "ignored"
+      }
     ]
   },
   "invalid": {
@@ -39,6 +56,24 @@
         "why": "missing keys",
         "value": {
           "endpoint": "https://x.example/p"
+        }
+      }
+    ],
+    "FarcasterWebhookRequestSchema": [
+      {
+        "why": "missing signature",
+        "value": {
+          "header": "eyJ9",
+          "payload": "eyJ9"
+        }
+      }
+    ],
+    "FarcasterWebhookResponseSchema": [
+      {
+        "why": "unknown result",
+        "value": {
+          "ok": true,
+          "result": "queued"
         }
       }
     ]

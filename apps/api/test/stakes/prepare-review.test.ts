@@ -76,7 +76,8 @@ describe('R10: a room round is invisible to a non-member', () => {
     }
     expect(await ticketsOf(p.id)).toEqual([]);
     expect(t.signer.calls).toEqual([]);
-    // A member of the later round hears that it isn't open.
+    // A member of the later round hears that it isn't open (Stakes rooms on: W8-F1's kill switch).
+    await setStakesConfig({ rooms: true });
     await join(later, p.id);
     expect(await codeOf(await prepare(t, p, later.locked.roundId, p.wallet))).toBe(
       'round_not_open',

@@ -7,10 +7,9 @@ import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import AxeBuilder from '@axe-core/playwright';
 import type { Page } from '@playwright/test';
-import type { Hex } from 'viem';
-import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { LOG_DIR } from '../stack/env.mjs';
 import { expect, poll, test, type Stack } from '../fixtures';
+import { installWallet } from '../fixtures/browser';
 import { expectArtboard } from '../fixtures/screenshot';
 import { TURNSTILE_TOKEN } from '../fixtures/user';
 
@@ -110,78 +109,6 @@ async function prepare(page: Page): Promise<void> {
         ')); return "w"; }, remove() {} };',
     }),
   );
-}
-
-/**
- * A test EIP-1193 wallet in the page: `window.ethereum`, also announced over EIP-6963, answering for
- * one fresh key that signs in Node (exposed as `__flockedTestSign`).
- */
-async function installWallet(page: Page): Promise<string> {
-  const account = privateKeyToAccount(generatePrivateKey());
-  await page.exposeFunction('__flockedTestSign', (hex: string) =>
-    account.signMessage({ message: { raw: hex as Hex } }),
-  );
-  await page.addInitScript(
-    ({ address }) => {
-      interface RequestArgs {
-        method: string;
-        params?: unknown[];
-      }
-      const g = globalThis as unknown as {
-        ethereum?: unknown;
-        __flockedTestSign: (hex: string) => Promise<string>;
-        addEventListener: (type: string, fn: () => void) => void;
-        dispatchEvent: (event: unknown) => boolean;
-        CustomEvent: new (type: string, init: { detail: unknown }) => unknown;
-        crypto: { randomUUID: () => string };
-      };
-      const rpcError = (code: number, message: string) =>
-        Object.assign(new Error(message), { code });
-      const provider = {
-        isFlockedTest: true,
-        request: async ({ method, params = [] }: RequestArgs): Promise<unknown> => {
-          switch (method) {
-            case 'eth_requestAccounts':
-            case 'eth_accounts':
-              return [address];
-            case 'eth_chainId':
-              return '0x7a69';
-            case 'net_version':
-              return '31337';
-            case 'personal_sign':
-              return g.__flockedTestSign(params[0] as string);
-            case 'wallet_switchEthereumChain':
-              return null;
-            case 'wallet_getPermissions':
-            case 'wallet_requestPermissions':
-              return [{ parentCapability: 'eth_accounts' }];
-            case 'wallet_revokePermissions':
-              return null;
-            default:
-              throw rpcError(4200, `The test wallet does not support ${method}`);
-          }
-        },
-        on: () => provider,
-        removeListener: () => provider,
-      };
-      g.ethereum = provider;
-      const detail = Object.freeze({
-        info: {
-          uuid: g.crypto.randomUUID(),
-          name: 'Flocked test wallet',
-          icon: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"/%3E',
-          rdns: 'test.flocked.wallet',
-        },
-        provider,
-      });
-      const announce = () =>
-        g.dispatchEvent(new g.CustomEvent('eip6963:announceProvider', { detail }));
-      g.addEventListener('eip6963:requestProvider', announce);
-      announce();
-    },
-    { address: account.address },
-  );
-  return account.address;
 }
 
 /** Opens the sign-in dialog from the header's "Sign in". */

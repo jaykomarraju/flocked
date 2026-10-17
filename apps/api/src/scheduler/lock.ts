@@ -60,6 +60,19 @@ export const LOCK_LEAD_MS = 6 * HOUR_MS;
 /** A repeated schedule-gap alert for the same round waits this long. */
 export const GAP_ALERT_EVERY_MS = HOUR_MS;
 
+/** The `rounds` columns read into a RoundRow. */
+export const ROUND_COLUMNS =
+  'id, kind, room_id, question_id, opens_at, closes_at, beacon_round, status, locked_at, config_json';
+
+/**
+ * Attempts at one lock whose round or question changed after it was read (W8-F1 M1, L1): a room
+ * question stored, an Assign or a Reject committing between the read and the lock's batch.
+ */
+const LOCK_ATTEMPTS = 3;
+
+/** What a lock attempt returns when its round or question changed after it was read. */
+const STALE = Symbol('stale');
+
 export interface RoundRow {
   id: string;
   kind: RoundKind;
@@ -302,35 +315,42 @@ export function lockTiming(
  * requires it, `ensureDueRounds` finds the row and creates nothing, and every read of a round
  * requires `locked_at`. The admin is alerted (ALERT-6) once, by the call that closed it.
  */
-async function closeNoRoundDay(env: Env, r: RoundRow, t: number): Promise<void> {
+async function closeNoRoundDay(env: Env, r: RoundRow, t: number): Promise<boolean> {
+  // Only while no question was assigned since the read (W8-F1 L1): otherwise the lock retries.
   const res = await env.DB.prepare(
-    "UPDATE rounds SET status = 'closed' WHERE id = ?1 AND locked_at IS NULL AND status = 'scheduled'",
+    "UPDATE rounds SET status = 'closed' WHERE id = ?1 AND locked_at IS NULL AND status = 'scheduled' AND question_id IS ?2",
   )
-    .bind(r.id)
+    .bind(r.id, r.question_id)
     .run();
-  if (res.meta.changes !== 1) return;
+  if (res.meta.changes !== 1) return false;
   const gameDay = gameDayOf(Math.floor(r.closes_at / 1000));
   log.warn('no_daily_round', { roundId: r.id, gameDay });
   await recordGap(env, t, r.id, 'no_daily_round', { gameDay, opensAt: r.opens_at });
+  return true;
 }
 
 /**
  * Closes a room round unlocked at its lock, without a round: final, like a no-round day, but quiet
  * (no alert and no gap row: an empty custom room or a closed room is not a schedule fault). `closed`
- * when this call closed it; `already_locked` when an overlapping call locked or closed it first.
+ * when this call closed it. It applies only while the round's `question_id` is still the one read,
+ * and `q` (the unusable question read, if any) still has the status read, so a question stored or
+ * approved after the read is locked by the retry instead (W8-F1 M1); STALE otherwise, also when an
+ * overlapping call locked or closed it first.
  */
 async function closeRoomRound(
   db: D1Database,
   r: RoundRow,
   reason: RoomCloseReason,
-): Promise<LockOutcome> {
+  q: QuestionRow | null = null,
+): Promise<LockOutcome | typeof STALE> {
   const res = await db
     .prepare(
-      "UPDATE rounds SET status = 'closed' WHERE id = ?1 AND locked_at IS NULL AND status = 'scheduled'",
+      "UPDATE rounds SET status = 'closed' WHERE id = ?1 AND locked_at IS NULL AND status = 'scheduled' " +
+        'AND question_id IS ?2 AND (?3 IS NULL OR EXISTS (SELECT 1 FROM questions WHERE id = ?3 AND status = ?4))',
     )
-    .bind(r.id)
+    .bind(r.id, r.question_id, q?.id ?? null, q?.status ?? null)
     .run();
-  if (res.meta.changes !== 1) return { status: 'already_locked' };
+  if (res.meta.changes !== 1) return STALE;
   log.info('room_round_closed_unlocked', { roundId: r.id, roomId: r.room_id, reason });
   return { status: 'closed', reason };
 }
@@ -348,7 +368,7 @@ interface RoomRow {
 async function roomQuestion(
   db: D1Database,
   r: RoundRow,
-): Promise<{ q: QuestionRow } | { outcome: LockOutcome }> {
+): Promise<{ q: QuestionRow } | { outcome: LockOutcome | typeof STALE }> {
   const room = await db
     .prepare('SELECT question_source, closed_at FROM rooms WHERE id = ?1')
     .bind(r.room_id)
@@ -382,7 +402,7 @@ async function roomQuestion(
         .first<QuestionRow>()
     : null;
   if (!q || !USABLE.has(q.status)) {
-    return { outcome: await closeRoomRound(db, r, 'no_question') };
+    return { outcome: await closeRoomRound(db, r, 'no_question', q) };
   }
   return { q };
 }
@@ -415,6 +435,11 @@ async function enqueueQuestionUsed(
  * question and alerting, or closing a daily round's game day when there is none; for a room round,
  * see the header), freezes the config, and creates its `round_modes` rows, all in one D1 batch that
  * applies only while the round is unlocked and scheduled. Idempotent: a locked round is left as it is.
+ *
+ * The batch also applies only while the round's `question_id` is still the one in `r` and the
+ * question picked still has the status read (W8-F1 M1, L1): a room question stored, an Assign or a
+ * Reject that commits after the read makes this attempt stale, and the lock re-reads the round and
+ * tries again, so it never overwrites them. It throws after LOCK_ATTEMPTS (the next tick retries).
  */
 export async function lockRound(
   env: Env,
@@ -422,6 +447,29 @@ export async function lockRound(
   r: RoundRow,
   t: number,
 ): Promise<LockOutcome> {
+  let row = r;
+  for (let attempt = 1; ; attempt++) {
+    const outcome = await lockOnce(env, chain, row, t);
+    if (outcome !== STALE) return outcome;
+    const fresh = await env.DB.prepare(`SELECT ${ROUND_COLUMNS} FROM rounds WHERE id = ?1`)
+      .bind(r.id)
+      .first<RoundRow>();
+    // Locked meanwhile, or closed by an overlapping tick.
+    if (!fresh || fresh.locked_at !== null || fresh.status !== 'scheduled') {
+      return { status: 'already_locked' };
+    }
+    if (attempt >= LOCK_ATTEMPTS) throw new Error(`round ${r.id} changed during its lock`);
+    log.info('round_lock_retried', { roundId: r.id, attempt });
+    row = fresh;
+  }
+}
+
+async function lockOnce(
+  env: Env,
+  chain: DrandChain,
+  r: RoundRow,
+  t: number,
+): Promise<LockOutcome | typeof STALE> {
   if (r.locked_at !== null) return { status: 'already_locked' };
   // Only a no-round day (closeNoRoundDay) or a room round's quiet close closes an unlocked round.
   if (r.status === 'closed') return { status: 'refused', reason: 'no_daily_round' };
@@ -440,7 +488,7 @@ export async function lockRound(
     if (!q || !USABLE.has(q.status)) {
       q = await topHouseQuestion(db);
       if (!q) {
-        await closeNoRoundDay(env, r, t);
+        if (!(await closeNoRoundDay(env, r, t))) return STALE;
         return { status: 'refused', reason: 'no_house_question' };
       }
       houseFill = true;
@@ -487,9 +535,10 @@ export async function lockRound(
   const stmts: D1PreparedStatement[] = [
     db
       .prepare(
-        "UPDATE rounds SET question_id = ?2, beacon_round = ?3, config_json = ?4, locked_at = ?5 WHERE id = ?1 AND locked_at IS NULL AND status = 'scheduled'",
+        "UPDATE rounds SET question_id = ?2, beacon_round = ?3, config_json = ?4, locked_at = ?5 WHERE id = ?1 AND locked_at IS NULL AND status = 'scheduled' " +
+          'AND question_id IS ?6 AND EXISTS (SELECT 1 FROM questions WHERE id = ?2 AND status = ?7)',
       )
-      .bind(r.id, q.id, timing.beaconRound, JSON.stringify(config), t),
+      .bind(r.id, q.id, timing.beaconRound, JSON.stringify(config), t, r.question_id, q.status),
     ...modes.map((mode) =>
       db
         .prepare(
@@ -519,8 +568,8 @@ export async function lockRound(
     );
   }
   const results = await db.batch(stmts);
-  // Locked meanwhile, or closed as a no-round day by an overlapping tick.
-  if ((results[0] as D1Result).meta.changes !== 1) return { status: 'already_locked' };
+  // Locked or closed meanwhile, or its question changed since the read: lockRound re-reads.
+  if ((results[0] as D1Result).meta.changes !== 1) return STALE;
 
   log.info('round_locked', {
     roundId: r.id,

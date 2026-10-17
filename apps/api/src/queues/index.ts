@@ -4,8 +4,10 @@
 //   * handler resolves  → ack;
 //   * handler throws    → retry (wrangler.jsonc max_retries, then the queue's DLQ);
 //   * invalid message   → logged and acked: retrying a malformed body can never succeed.
-// settle and decrypt are W5-A's (src/queues/settle.ts, decrypt.ts); cards (W10-A) and notify
-// (W9-A) are stubs until their owners replace them. Each owner edits only its entry in HANDLERS.
+// settle and decrypt are W5-A's (src/queues/settle.ts, decrypt.ts), notify W9-A's (src/notify/); cards
+// (W10-A) is a stub until its owner replaces it. Each owner edits only its entry in HANDLERS. The
+// notify queue runs a whole batch through `notifyQueueBatch`, so each channel sends a batch at once
+// (Farcaster groups identical notifications into one request); HANDLERS.notify is its per-message form.
 import {
   QUEUE_NAMES,
   QueueMessageSchemas,
@@ -15,6 +17,7 @@ import {
 import type { Env } from '../env.js';
 import { NotImplementedError } from '../lib/errors.js';
 import { log } from '../lib/log.js';
+import { notifyHandler, notifyQueueBatch } from '../notify/consumer.js';
 import { decryptHandler } from './decrypt.js';
 import { settleHandler } from './settle.js';
 
@@ -50,7 +53,7 @@ export const HANDLERS: Handlers = {
   'decrypt-daily': (body, _message, env) => decryptHandler(body, env),
   'decrypt-rooms': (body, _message, env) => decryptHandler(body, env),
   cards: stub('cards'),
-  notify: stub('notify'),
+  notify: (body, _message, env) => notifyHandler(body, env),
 };
 
 /** Runs one message through its schema and handler, then acks or retries it. */
@@ -99,6 +102,7 @@ export async function queue(
     batch.retryAll();
     return;
   }
+  if (name === 'notify' && handlers.notify === HANDLERS.notify) return notifyQueueBatch(batch, env);
   // Messages in a batch are independent; acks and retries are per message.
   for (const message of batch.messages) {
     await handleMessage(name, message, env, ctx, handlers);

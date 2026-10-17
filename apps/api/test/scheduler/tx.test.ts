@@ -290,7 +290,9 @@ describe('T4: abandoned operator transactions are cancelled', () => {
     await schedulerTick(env, deps);
     expect((await modeRows(id)).find((m) => m.mode === 'stakes')?.status).toBe('voided');
     const last = fake.sent[fake.sent.length - 1]!;
-    expect(last).toMatchObject({ nonce: fake.sent[0]!.nonce, to: fake.sent[0]!.from, data: '0x' });
+    // This test's createRound (the tick's first sweep may replace an earlier test's leftover first).
+    const created = fake.sent.find((tx) => tx.data !== '0x')!;
+    expect(last).toMatchObject({ nonce: created.nonce, to: created.from, data: '0x' });
 
     fake.mine();
     const report = await schedulerTick(env, deps);
@@ -380,7 +382,9 @@ describe('W5-F1: a cancellation whose first attempt failed is still made (C4)', 
     // The tick's sweep finds it all the same and replaces it at its nonce.
     expect(report.cancellations[`createRound:${id}`]).toBe('pending');
     const last = fake.sent[fake.sent.length - 1]!;
-    expect(last).toMatchObject({ nonce: fake.sent[0]!.nonce, to: fake.sent[0]!.from, data: '0x' });
+    // This test's createRound (the tick's first sweep may replace an earlier test's leftover first).
+    const created = fake.sent.find((tx) => tx.data !== '0x')!;
+    expect(last).toMatchObject({ nonce: created.nonce, to: created.from, data: '0x' });
 
     fake.mine();
     expect((await schedulerTick(env, deps)).cancellations[`createRound:${id}`]).toBe('cancelled');

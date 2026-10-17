@@ -2,15 +2,24 @@
 // tick, idempotently:
 //   1. checks that the open game day's daily round exists, and the next one once its lock is due; a
 //      missing one is a schedule gap (ALERT-6): it alerts and creates the round;
-//   2. locks every round whose question lock (opensAt − 6 h) has passed (src/scheduler/lock.ts), a
-//      slot's daily round before its room rounds (a mirror room's round takes the daily question);
-//   3. for each locked round still before close: Stakes `createRound` through src/chain/operator.ts
+//   2. moves every pending operator cancellation one step (W4-F1 T4), starting any whose first
+//      attempt failed (W5-F1 C4);
+//   3. locks every round whose question lock (opensAt − 6 h) has passed (src/scheduler/lock.ts), the
+//      daily rounds before the room rounds (a mirror room's round takes the daily question);
+//   4. for each locked round still before close: Stakes `createRound` through src/chain/operator.ts
 //      (storing `chain_round_id` from the receipt), and the Free lock leaf through the AnchorDO (one
 //      `submitLock` call for every round still waiting for its leaf);
-//   4. calls `RoundDO.init` for every locked round that hasn't closed and whose modes are ready, so
+//   5. calls `RoundDO.init` for every locked round that hasn't closed and whose modes are ready, so
 //      the RoundDO opens it at `opensAt` (a repeated init is how a stalled alarm chain restarts);
-//   5. moves every pending operator cancellation one step (W4-F1 T4), starting any whose first
-//      attempt failed (W5-F1 C4).
+//      then step 2 runs once more if step 4 abandoned a createRound, to replace it at its nonce now;
+//   6. applies a bounded share of the Stakes stats days a Stakes final's hook left (W8-F1 L5:
+//      src/stats/apply.ts bounds each Stakes call, so the backlog drains here, a minute at a time).
+// The tick is one invocation, and D1 allows 1,000 queries per invocation (W8-F1 H1), so the room
+// rounds are bounded: steps 1–3 run before any room round, the daily rounds go first in steps 3–5,
+// step 3 locks at most ROOM_LOCKS_PER_TICK room rounds (the rest lock on the next ticks, hours before
+// they open), and steps 4–5 visit at most ROOM_ROUNDS_PER_TICK room rounds, a page that rotates every
+// minute. A room round is visited until it opens; after that only while its Free lock leaf is still
+// pending or it is past its close (a stalled alarm chain), so open room rounds cost nothing.
 // A Stakes round that can't be created before `opensAt` (the contract refuses after it) has its
 // Stakes mode voided and alerts; Free goes on. A `createRound` still pending then is cancelled, so it
 // can't land late or hold up the operator's nonce.
@@ -26,9 +35,11 @@ import type { AnchorLockItem } from '../do/types.js';
 import type { Env } from '../env.js';
 import { now } from '../lib/clock.js';
 import { log } from '../lib/log.js';
+import { drainStakesStats } from '../stats/apply.js';
 import { insertDailyRound, slotsAhead } from './create.js';
 import {
   LOCK_LEAD_MS,
+  ROUND_COLUMNS,
   escrowConfigOf,
   freeLockItem,
   lockRound,
@@ -68,8 +79,17 @@ export function drandChainOf(env: Env): DrandChain {
   });
 }
 
-const ROUND_COLUMNS =
-  'id, kind, room_id, question_id, opens_at, closes_at, beacon_round, status, locked_at, config_json';
+/** Room rounds one tick locks at most (about 4 D1 queries each). */
+export const ROOM_LOCKS_PER_TICK = 50;
+/** Live room rounds one tick visits at most (2 D1 reads and a RoundDO call each, Stakes aside). */
+export const ROOM_ROUNDS_PER_TICK = 50;
+const MINUTE_MS = 60_000;
+
+// Room rounds steps 4–5 still visit: unopened, or open with the Free leaf pending or past close.
+const LIVE_ROOM_ROUNDS =
+  "FROM rounds WHERE kind = 'room' AND locked_at IS NOT NULL AND (status = 'scheduled' OR " +
+  "(status = 'open' AND (closes_at <= ?1 OR EXISTS (SELECT 1 FROM round_modes m WHERE " +
+  "m.round_id = rounds.id AND m.mode = 'free' AND m.lock_tx IS NULL))))";
 
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
@@ -122,6 +142,7 @@ async function ensureStakesRound(
   stakes: ModeRow,
   t: number,
   report: TickReport,
+  cancelling: string[],
 ): Promise<boolean> {
   if (stakes.status === 'voided' || stakes.chain_round_id) return true;
   const result = await createRound(env, deps.operator ?? {}, {
@@ -155,6 +176,7 @@ async function ensureStakesRound(
   await recordGap(env, t, r.id, 'stakes_create_round_failed', { error, voided: true });
   if (result.status === 'pending') {
     // Abandoned: replace it at its nonce (the sweep in schedulerTick finishes the cancellation).
+    cancelling.push(r.id);
     try {
       await cancelCreateRound(env, deps.operator ?? {}, r.id);
     } catch (err) {
@@ -162,6 +184,25 @@ async function ensureStakesRound(
     }
   }
   return true;
+}
+
+/**
+ * This minute's page of the live room rounds: ROOM_ROUNDS_PER_TICK of them, the page advancing each
+ * minute, so every live room round is visited at least once every ⌈n / ROOM_ROUNDS_PER_TICK⌉ minutes.
+ */
+async function liveRoomPage(db: D1Database, t: number): Promise<RoundRow[]> {
+  const count = await db
+    .prepare(`SELECT COUNT(*) AS n ${LIVE_ROOM_ROUNDS}`)
+    .bind(t)
+    .first<{ n: number }>();
+  const pages = Math.ceil((count?.n ?? 0) / ROOM_ROUNDS_PER_TICK);
+  if (pages === 0) return [];
+  const offset = (Math.floor(t / MINUTE_MS) % pages) * ROOM_ROUNDS_PER_TICK;
+  const { results } = await db
+    .prepare(`SELECT ${ROUND_COLUMNS} ${LIVE_ROOM_ROUNDS} ORDER BY opens_at, id LIMIT ?2 OFFSET ?3`)
+    .bind(t, ROOM_ROUNDS_PER_TICK, offset)
+    .all<RoundRow>();
+  return results;
 }
 
 /** One scheduler tick (see the header). Never throws for one round's failure. */
@@ -178,13 +219,26 @@ export async function schedulerTick(env: Env, deps: SchedulerDeps = {}): Promise
   };
   await ensureDueRounds(env, t, report);
 
-  // Step 2: lock what is due, each slot's daily round before its room rounds.
-  const { results: due } = await env.DB.prepare(
-    `SELECT ${ROUND_COLUMNS} FROM rounds WHERE locked_at IS NULL AND status = 'scheduled' AND opens_at - ?2 <= ?1 AND closes_at > ?1 ORDER BY opens_at, CASE kind WHEN 'daily' THEN 0 ELSE 1 END, id`,
+  // Step 2, before any per-round work, so no number of rounds can crowd it out.
+  try {
+    report.cancellations = await driveCancellations(env, deps.operator ?? {});
+  } catch (err) {
+    log.error('operator_cancellations_failed', { error: message(err) });
+  }
+
+  // Step 3: lock what is due, the daily rounds first, then a bounded batch of room rounds.
+  const dueSql = `SELECT ${ROUND_COLUMNS} FROM rounds WHERE locked_at IS NULL AND status = 'scheduled' AND opens_at - ?2 <= ?1 AND closes_at > ?1`;
+  const { results: dueDaily } = await env.DB.prepare(
+    `${dueSql} AND kind = 'daily' ORDER BY opens_at, id`,
   )
     .bind(t, LOCK_LEAD_MS)
     .all<RoundRow>();
-  for (const r of due) {
+  const { results: dueRooms } = await env.DB.prepare(
+    `${dueSql} AND kind = 'room' ORDER BY opens_at, id LIMIT ?3`,
+  )
+    .bind(t, LOCK_LEAD_MS, ROOM_LOCKS_PER_TICK)
+    .all<RoundRow>();
+  for (const r of [...dueDaily, ...dueRooms]) {
     try {
       const outcome = await lockRound(env, chain, r, t);
       report.locks[r.id] =
@@ -196,12 +250,14 @@ export async function schedulerTick(env: Env, deps: SchedulerDeps = {}): Promise
     }
   }
 
-  // Steps 3 and 4 for every live locked round.
-  const { results: live } = await env.DB.prepare(
-    `SELECT ${ROUND_COLUMNS} FROM rounds WHERE locked_at IS NOT NULL AND status IN ('scheduled', 'open') ORDER BY opens_at, id`,
+  // Steps 4 and 5 for every live locked daily round and this minute's page of live room rounds.
+  const { results: liveDaily } = await env.DB.prepare(
+    `SELECT ${ROUND_COLUMNS} FROM rounds WHERE kind = 'daily' AND locked_at IS NOT NULL AND status IN ('scheduled', 'open') ORDER BY opens_at, id`,
   ).all<RoundRow>();
+  const live = [...liveDaily, ...(await liveRoomPage(env.DB, t))];
   const leaves: AnchorLockItem[] = [];
   const ready: { r: RoundRow; modes: ModeRow[] }[] = [];
+  const cancelling: string[] = [];
   for (const r of live) {
     try {
       const q = await questionOf(env.DB, r);
@@ -209,7 +265,7 @@ export async function schedulerTick(env: Env, deps: SchedulerDeps = {}): Promise
       const stakes = modes.find((m) => m.mode === 'stakes');
       let stakesReady = true;
       if (stakes && r.closes_at > t) {
-        stakesReady = await ensureStakesRound(env, deps, r, q, stakes, t, report);
+        stakesReady = await ensureStakesRound(env, deps, r, q, stakes, t, report, cancelling);
         modes = await modesOf(env.DB, r.id);
       }
       const free = modes.find((m) => m.mode === 'free');
@@ -246,11 +302,21 @@ export async function schedulerTick(env: Env, deps: SchedulerDeps = {}): Promise
     }
   }
 
-  // Step 5.
+  // Step 2 again for a createRound abandoned in step 4 this tick, so it is replaced at its nonce now.
+  if (cancelling.length > 0) {
+    try {
+      const moved = await driveCancellations(env, deps.operator ?? {});
+      report.cancellations = { ...report.cancellations, ...moved };
+    } catch (err) {
+      log.error('operator_cancellations_failed', { error: message(err) });
+    }
+  }
+
+  // Step 6.
   try {
-    report.cancellations = await driveCancellations(env, deps.operator ?? {});
+    await drainStakesStats(env, t);
   } catch (err) {
-    log.error('operator_cancellations_failed', { error: message(err) });
+    log.error('stakes_stats_drain_failed', { error: message(err) });
   }
   return report;
 }

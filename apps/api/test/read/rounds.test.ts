@@ -565,6 +565,36 @@ describe('GET /rounds/:id', () => {
     expect(round.question.prompt).toMatch(/^Cats or dogs\?/);
   });
 
+  it('past beacon time a closed round’s pending modes read revealing, as in the WebSocket state (W8-F1)', async () => {
+    const beaconMs = (n: number) =>
+      (Number(env.DRAND_GENESIS) + (n - 1) * Number(env.DRAND_PERIOD)) * 1000;
+    const closed = async (closesAt: number) => {
+      const beaconRound = beaconRoundAtOrAfter(closesAt / 1000 + 120);
+      const r = await insertRound({
+        opensAt: closesAt - DAY_MS,
+        closesAt,
+        beaconRound,
+        status: 'closed',
+        modes: { free: {}, stakes: { status: 'refunded', refundReason: 2 } },
+      });
+      return { ...r, beaconMs: beaconMs(beaconRound) };
+    };
+    const past = await closed(CLOSES + 20 * DAY_MS);
+    const ahead = await closed(CLOSES + 21 * DAY_MS);
+    setClock(past.beaconMs);
+    expect(ahead.beaconMs).toBeGreaterThan(past.beaconMs);
+    const modesOf = async (id: string) => (await getRound(id)).modes;
+    // A final mode keeps its status; only `pending` moves, and only past beacon time.
+    expect(await modesOf(past.id)).toMatchObject({
+      free: { status: 'revealing' },
+      stakes: { status: 'refunded' },
+    });
+    expect(await modesOf(ahead.id)).toMatchObject({
+      free: { status: 'pending' },
+      stakes: { status: 'refunded' },
+    });
+  });
+
   it('404 for a round that is not locked yet, and for an unknown round', async () => {
     const unlocked = await insertRound({
       opensAt: CLOSES + DAY_MS,

@@ -6,9 +6,19 @@
 // room ID), so the balance row and its ledger row commit with the room or not at all (spec "Data
 // model" › Atomic points movements). An invite code that collides with an existing one fails the
 // unique index `rooms_invite_code`, which rolls the whole batch back; it is retried with a new code.
+// The room is inserted only while the owner's account is active and owns fewer than ROOM_MAX_OWNED
+// open rooms, both read inside the insert (W8-F1 H1, L3: a `DELETE /me` or another `POST /rooms`
+// committing first can't be raced); the owner's membership row takes its user ID from the inserted
+// room, so a refused insert fails that row's NOT NULL and rolls the whole batch back. Past the cap →
+// 409 `conflict`; an owner no longer active → 403 `account_suspended`.
 // Then the room's rounds for the daily slots ahead are inserted (src/rooms/schedule.ts), so the owner
 // of a custom room can set the next round's question at once.
-import { newUlid, type CreateRoomRequest, type CreateRoomResponse } from '@flocked/shared';
+import {
+  ROOM_MAX_OWNED,
+  newUlid,
+  type CreateRoomRequest,
+  type CreateRoomResponse,
+} from '@flocked/shared';
 import { HttpError } from '../lib/errors.js';
 import { log } from '../lib/log.js';
 import { POINTS, applyMovement, grantMovement } from '../points/index.js';
@@ -56,6 +66,23 @@ function isInviteCodeConflict(err: unknown): boolean {
   return msg.includes('UNIQUE constraint failed: rooms.invite_code');
 }
 
+/** The owner's row failed its NOT NULL: the guarded room insert was refused (see the header). */
+function isRefusedRoom(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg.includes('NOT NULL constraint failed: room_members.user_id');
+}
+
+const ownedOpenRooms = (db: D1Database, ownerId: string) =>
+  db
+    .prepare('SELECT COUNT(*) AS n FROM rooms WHERE owner_user_id = ?1 AND closed_at IS NULL')
+    .bind(ownerId)
+    .first<{ n: number }>()
+    .then((row) => row?.n ?? 0);
+
+function overOwnedCap(): HttpError {
+  return new HttpError('conflict', `You can own at most ${ROOM_MAX_OWNED} open rooms`);
+}
+
 /** The batch for one attempt: room, owner membership and the join grant. */
 async function insertRoom(
   db: D1Database,
@@ -73,14 +100,17 @@ async function insertRoom(
     db
       .prepare(
         'INSERT INTO rooms (id, name, owner_user_id, invite_code, question_source, created_at) ' +
-          'VALUES (?1, ?2, ?3, ?4, ?5, ?6)',
+          'SELECT ?1, ?2, ?3, ?4, ?5, ?6 ' +
+          "WHERE EXISTS (SELECT 1 FROM users WHERE id = ?3 AND status = 'active') " +
+          'AND (SELECT COUNT(*) FROM rooms WHERE owner_user_id = ?3 AND closed_at IS NULL) < ?7',
       )
-      .bind(room.id, room.name, room.ownerId, room.code, room.source, room.t),
+      .bind(room.id, room.name, room.ownerId, room.code, room.source, room.t, ROOM_MAX_OWNED),
     db
       .prepare(
-        "INSERT INTO room_members (room_id, user_id, role, joined_at) VALUES (?1, ?2, 'owner', ?3)",
+        'INSERT INTO room_members (room_id, user_id, role, joined_at) ' +
+          "VALUES (?1, (SELECT owner_user_id FROM rooms WHERE id = ?1), 'owner', ?2)",
       )
-      .bind(room.id, room.ownerId, room.t),
+      .bind(room.id, room.t),
   ];
   const outcome = await applyMovement(db, {
     statements: [...head, ...grant.statements],
@@ -100,6 +130,7 @@ export async function createRoom(
   t: number,
 ): Promise<CreateRoomResponse> {
   const name = cleanRoomName(body.name);
+  if ((await ownedOpenRooms(db, ownerId)) >= ROOM_MAX_OWNED) throw overOwnedCap();
   const id = newUlid(t);
   for (let attempt = 1; ; attempt++) {
     try {
@@ -113,6 +144,10 @@ export async function createRoom(
       });
       break;
     } catch (err) {
+      if (isRefusedRoom(err)) {
+        if ((await ownedOpenRooms(db, ownerId)) >= ROOM_MAX_OWNED) throw overOwnedCap();
+        throw new HttpError('account_suspended', 'This account can’t create rooms');
+      }
       if (!isInviteCodeConflict(err) || attempt >= INVITE_CODE_ATTEMPTS) throw err;
       log.warn('room_invite_code_collision', { roomId: id, attempt });
     }

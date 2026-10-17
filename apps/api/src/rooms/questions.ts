@@ -30,7 +30,6 @@ import {
   QUESTIONS_PER_DAY,
   newUlid,
   type ModerationOutcome,
-  type QuestionQuota,
   type SetRoomQuestionRequest,
   type SetRoomQuestionResponse,
 } from '@flocked/shared';
@@ -52,6 +51,7 @@ import {
   gameDayWindow,
   quotaOf,
 } from '../questions/quota.js';
+import { refuseOverQuota } from '../questions/submit.js';
 import {
   QUESTION_SELECT,
   questionAuthor,
@@ -72,24 +72,6 @@ const OUTCOMES: Record<ModerationDecision, ModerationOutcome['outcome']> = {
   reject: 'rejected',
   review: 'review',
 };
-
-/** As POST /questions refuses a submission over the allowance (src/questions/submit.ts). */
-function refuseOverQuota(c: Ctx, quota: QuestionQuota, t: number): void {
-  if (quota.blockedUntil !== null) {
-    throw new HttpError(
-      'submission_blocked',
-      `Too many of your questions were rejected recently; you can submit again after ${new Date(quota.blockedUntil).toISOString()}`,
-    );
-  }
-  if (quota.remainingToday === 0) {
-    const { end } = gameDayWindow(t);
-    c.header('Retry-After', String(Math.max(1, Math.ceil((end - t) / 1000))));
-    throw new HttpError(
-      'rate_limited',
-      `You can submit ${QUESTIONS_PER_DAY} questions a day; try again after the next round opens`,
-    );
-  }
-}
 
 /**
  * Moderation as it applies to a room question: a duplicate of a public question is no reason to
@@ -126,10 +108,11 @@ async function targetRound(db: D1Database, roomId: string, t: number): Promise<s
   return row?.id ?? null;
 }
 
-// ?15 room, ?16 round, ?17 LOCK_LEAD_MS (with ?10 now): the round can still take a question.
+// ?15 room, ?16 round, ?17 LOCK_LEAD_MS, ?18 the time after moderation: the round can still take a
+// question (a fresh clock: moderation can take tens of seconds, W8-F1 M1).
 const ROUND_OPEN_FOR_QUESTION =
   "EXISTS (SELECT 1 FROM rounds WHERE id = ?16 AND kind = 'room' AND room_id = ?15 " +
-  "AND locked_at IS NULL AND status = 'scheduled' AND opens_at - ?17 > ?10)";
+  "AND locked_at IS NULL AND status = 'scheduled' AND opens_at - ?17 > ?18)";
 
 /**
  * The insert (guarded by the allowance like POST /questions', and for a pass by the round), the
@@ -137,7 +120,7 @@ const ROUND_OPEN_FOR_QUESTION =
  */
 async function store(
   db: D1Database,
-  q: { id: string; authorId: string; roomId: string; roundId: string; t: number },
+  q: { id: string; authorId: string; roomId: string; roundId: string; t: number; storeAt: number },
   input: ModerationInput,
   result: ModerationResult,
 ): Promise<QuestionWithAuthorRow | null> {
@@ -162,7 +145,7 @@ async function store(
     QUESTIONS_PER_DAY,
     q.roomId,
   ];
-  if (passed) args.push(q.roundId, LOCK_LEAD_MS);
+  if (passed) args.push(q.roundId, LOCK_LEAD_MS, q.storeAt);
   const insert = db
     .prepare(
       'INSERT INTO questions (id, author_user_id, prompt, options_json, category, status, ' +
@@ -217,7 +200,8 @@ export async function setRoomQuestion(
 
   const result = roomModeration(await moderateQuestion(c.env, input, t));
   const id = newUlid(t);
-  const row = await store(db, { id, authorId: userId, roomId, roundId, t }, input, result);
+  const storeAt = now(c.env);
+  const row = await store(db, { id, authorId: userId, roomId, roundId, t, storeAt }, input, result);
   if (!row) {
     refuseOverQuota(c, await quotaOf(db, userId, t), t);
     if (result.decision === 'pass') {

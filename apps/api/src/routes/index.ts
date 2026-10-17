@@ -3,6 +3,7 @@
 import { ROUTE_MODULES, type RouteModule } from '@flocked/shared';
 import { Hono } from 'hono';
 import type { AppEnv } from '../lib/auth-context.js';
+import { farcasterWebhook } from '../notify/farcaster-webhook.js';
 import { admin } from './admin.js';
 import { auth } from './auth.js';
 import { boards } from './boards.js';
@@ -19,6 +20,9 @@ import { rounds } from './rounds.js';
 import { stakes } from './stakes.js';
 import { users } from './users.js';
 
+/** Module `push`: web push subscriptions and the Farcaster mini app webhook (W9-A). */
+const notifications = new Hono<AppEnv>().route('/', push).route('/', farcasterWebhook);
+
 export const ROUTE_APPS: Record<RouteModule, Hono<AppEnv>> = {
   auth,
   me,
@@ -31,7 +35,7 @@ export const ROUTE_APPS: Record<RouteModule, Hono<AppEnv>> = {
   users,
   rooms,
   cards,
-  push,
+  push: notifications,
   limits,
   admin,
   paymaster,

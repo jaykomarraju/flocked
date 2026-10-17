@@ -56,7 +56,7 @@ const OUTCOMES: Record<ModerationDecision, ModerationOutcome['outcome']> = {
 };
 
 /** Throws the refusal for a quota that allows no submission now; returns otherwise. */
-function refuseOverQuota(c: Ctx, quota: QuestionQuota, t: number): void {
+export function refuseOverQuota(c: Ctx, quota: QuestionQuota, t: number): void {
   if (quota.blockedUntil !== null) {
     throw new HttpError(
       'submission_blocked',

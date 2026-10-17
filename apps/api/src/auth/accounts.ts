@@ -161,7 +161,7 @@ export function sessionUserView(user: UserRow): SessionUserView {
 }
 
 export type SecurityNoticeKind =
-  'email_sign_in' | 'identity_linked' | 'merge_pending' | 'merge_completed';
+  'email_sign_in' | 'identity_linked' | 'identity_unlinked' | 'merge_pending' | 'merge_completed';
 
 /**
  * Enqueues a `security_notice` on the notify queue (spec "API" › Rate limits: every new email

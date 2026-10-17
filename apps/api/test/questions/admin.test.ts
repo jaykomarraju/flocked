@@ -10,6 +10,7 @@ import {
   EditQuestionResponseSchema,
   NotifyMessageSchema,
   RejectQuestionResponseSchema,
+  addGameDays,
   dailyClosesAt,
   newUlid,
   type NotifyMessage,
@@ -419,6 +420,55 @@ describe('assignQuestion', () => {
     );
   });
 
+  it('refuses a day closed as a no-round day, also when it closes during the assign (W8-F1 L1)', async () => {
+    const insertRound = async (gameDay: string, status: string) => {
+      const id = newUlid();
+      await env.DB.prepare(
+        "INSERT INTO rounds (id, kind, opens_at, closes_at, status) VALUES (?1, 'daily', ?2, ?3, ?4)",
+      )
+        .bind(
+          id,
+          dailyClosesAt(addGameDays(gameDay, -1)) * 1000,
+          dailyClosesAt(gameDay) * 1000,
+          status,
+        )
+        .run();
+      return id;
+    };
+    const id = await insertQuestion({ status: 'queued' });
+    const t = testEnv();
+    // Closed (unlocked) before the assign reads it.
+    await insertRound('2026-10-27', 'closed');
+    expect(await refusal(assignQuestion(t.env, ADMIN, '2026-10-27', id, T))).toBe(
+      'question_locked',
+    );
+    // Closed between the assign's read and its batch.
+    const racing = await insertRound('2026-10-28', 'scheduled');
+    const db = new Proxy(env.DB, {
+      get(target, key) {
+        if (key === 'batch') {
+          return async (stmts: D1PreparedStatement[]) => {
+            await target
+              .prepare("UPDATE rounds SET status = 'closed' WHERE id = ?1")
+              .bind(racing)
+              .run();
+            return target.batch(stmts);
+          };
+        }
+        const value: unknown = Reflect.get(target, key);
+        return typeof value === 'function'
+          ? (value as (...a: unknown[]) => unknown).bind(target)
+          : value;
+      },
+    });
+    expect(await refusal(assignQuestion({ ...t.env, DB: db }, ADMIN, '2026-10-28', id, T))).toBe(
+      'question_locked',
+    );
+    expect((await questionRow(id))?.status).toBe('queued');
+    expect((await dailyRound('2026-10-28'))?.question_id).toBeNull();
+    expect(await auditRows(id)).toEqual([]);
+  });
+
   it('checks the house backlog after assigning (below 14 it alerts)', async () => {
     // Later than every other action in this file: the alert repeats at most once per 24 h.
     const later = T + 10 * DAY;
@@ -549,6 +599,21 @@ describe('editQuestion', () => {
       expect((await questionRow(id))?.prompt).toBe('Coffee or tea first thing?');
       expect(await auditRows(id)).toEqual([]);
     }
+    expect(t.sent).toEqual([]);
+    expect(t.add).not.toHaveBeenCalled();
+  });
+
+  it('refuses a room question with conflict: it is never indexed (W8-F1 L2)', async () => {
+    const id = await insertQuestion({ author: await insertUser(), status: 'scheduled' });
+    await env.DB.prepare('UPDATE questions SET room_id = ?2 WHERE id = ?1')
+      .bind(id, newUlid())
+      .run();
+    const t = testEnv();
+    expect(
+      await refusal(editQuestion(t.env, ADMIN, id, { prompt: 'Cats or dogs?', reason: 'r' }, T)),
+    ).toBe('conflict');
+    expect((await questionRow(id))?.prompt).toBe('Coffee or tea first thing?');
+    expect(await auditRows(id)).toEqual([]);
     expect(t.sent).toEqual([]);
     expect(t.add).not.toHaveBeenCalled();
   });

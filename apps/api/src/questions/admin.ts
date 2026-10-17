@@ -165,7 +165,10 @@ function reasonOf(raw: string): string {
 
 // Approve -----------------------------------------------------------------------------------------
 
-/** A room's question stays private: Approve and Assign would put it in the public queue or a daily round. */
+/**
+ * A room's question stays private: Approve and Assign would put it in the public queue or a daily
+ * round, and Edit in the duplicate index.
+ */
 function refuseRoomQuestion(row: QuestionWithAuthorRow): void {
   if (row.room_id !== null) {
     throw new HttpError('conflict', "A room's question stays in its room");
@@ -297,6 +300,7 @@ interface DailyRoundRow {
   id: string;
   question_id: string | null;
   locked_at: number | null;
+  status: string;
 }
 
 /**
@@ -324,7 +328,7 @@ export async function assignQuestion(
 
   const selectRound = db
     .prepare(
-      "SELECT id, question_id, locked_at FROM rounds WHERE kind = 'daily' AND closes_at = ?1",
+      "SELECT id, question_id, locked_at, status FROM rounds WHERE kind = 'daily' AND closes_at = ?1",
     )
     .bind(slot.closesAt);
   let round = await selectRound.first<DailyRoundRow>();
@@ -333,7 +337,8 @@ export async function assignQuestion(
     round = await selectRound.first<DailyRoundRow>();
     if (!round) throw new Error(`the daily round of ${gameDay} was not created`);
   }
-  if (round.locked_at !== null) {
+  // Locked, or closed unlocked as a no-round day (W8-F1 L1: never a question on no round).
+  if (round.locked_at !== null || round.status !== 'scheduled') {
     throw new HttpError('question_locked', `The round of ${gameDay} is locked`);
   }
   const replaced = round.question_id !== questionId ? round.question_id : null;
@@ -349,10 +354,10 @@ export async function assignQuestion(
   try {
     await db.batch([
       unchangedGuard(db, row),
-      // The round is still unlocked and points where it did when this was decided.
+      // The round is still unlocked and scheduled, and points where it did when this was decided.
       abortIf(
         db,
-        'NOT EXISTS (SELECT 1 FROM rounds WHERE id = ?1 AND locked_at IS NULL AND question_id IS ?2)',
+        "NOT EXISTS (SELECT 1 FROM rounds WHERE id = ?1 AND locked_at IS NULL AND status = 'scheduled' AND question_id IS ?2)",
         round.id,
         round.question_id,
       ),
@@ -377,7 +382,7 @@ export async function assignQuestion(
     if (!isGuardAbort(err)) throw err;
     refuseAssign(await loadQuestion(db, questionId));
     const current = await selectRound.first<DailyRoundRow>();
-    if (current && current.locked_at !== null) {
+    if (current && (current.locked_at !== null || current.status !== 'scheduled')) {
       throw new HttpError('question_locked', `The round of ${gameDay} is locked`);
     }
     throw new HttpError('conflict', 'The schedule changed meanwhile; reload it and try again');
@@ -404,6 +409,8 @@ export async function assignQuestion(
 // Edit --------------------------------------------------------------------------------------------
 
 function refuseEdit(row: QuestionWithAuthorRow): void {
+  // A room question is never indexed, and an edit would re-index it (W8-F1 L2).
+  refuseRoomQuestion(row);
   if (row.status === 'used') {
     throw new HttpError('question_locked', 'This question was used at question lock');
   }

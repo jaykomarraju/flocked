@@ -45,6 +45,9 @@ export const PORTS = Object.freeze({
   eas: port('STACK_EAS_PORT', 8791),
   turnstile: port('STACK_TURNSTILE_PORT', 8792),
   anthropic: port('STACK_ANTHROPIC_PORT', 8793),
+  push: port('STACK_PUSH_PORT', 8794),
+  farcasterNotify: port('STACK_FARCASTER_NOTIFY_PORT', 8795),
+  email: port('STACK_EMAIL_PORT', 8796),
   inspector: port('STACK_INSPECTOR_PORT', 19229),
 });
 
@@ -67,6 +70,11 @@ export const TURNSTILE_TEST_SECRET = '1x0000000000000000000000000000000AA';
  * API sends it only to `ANTHROPIC_BASE_URL`, which is honoured only locally.
  */
 export const ANTHROPIC_MOCK_KEY = 'mock-anthropic-key';
+/**
+ * The Farcaster notification mock's Neynar values (e2e/mocks/farcaster-notify; W9-A). Not secrets: the
+ * daily cast goes to `FARCASTER_CAST_API_URL`, which is honoured only locally.
+ */
+export const NEYNAR_MOCK = Object.freeze({ apiKey: 'mock-neynar-key', signerUuid: 'mock-signer' });
 export const TOS_VERSION = '2026-10-01';
 
 export const rel = (p) => relative(ROOT, p);

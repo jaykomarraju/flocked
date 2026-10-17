@@ -1,0 +1,73 @@
+/* The date line and the mode toggle on one row (as on Today). */
+.meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.date {
+  color: var(--color-muted);
+}
+
+.toggle {
+  flex-shrink: 0;
+  width: 176px;
+}
+
+/* Paper draws the question smaller once it's answered: Fredoka 700 28/32 on mobile, 32/36 from tablet
+   up (Today's question and display roles are 36/40 and 40/44). */
+.question {
+  color: var(--color-ink);
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 32px;
+  letter-spacing: -0.01em;
+}
+
+.question:not([data-breakpoint='mobile']) {
+  font-size: 32px;
+  line-height: 36px;
+}
+
+/* The badge, the locked pick and the voice line, 12 apart. */
+.sealed {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-3);
+}
+
+.sealed > :not(:first-child) {
+  align-self: stretch;
+}
+
+.line {
+  color: var(--color-ink);
+}
+
+/* Countdown over counter on mobile; one row from tablet up. */
+.status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-1);
+}
+
+.status:not([data-breakpoint='mobile']) {
+  flex-direction: row;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+
+/* Paper draws the counter row 28 tall here. */
+.status .counter {
+  height: 28px;
+}
+
+/* "Remind me" and "Invite friends", side by side. */
+.actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-3);
+}

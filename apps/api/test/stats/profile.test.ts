@@ -133,6 +133,25 @@ describe('GET /users/:handle', () => {
     expect(p.questions.map((q) => q.splitQuality)).toEqual([0, expect.closeTo(2 / 3, 10), null]);
   });
 
+  it('gives a refunded mode no split quality: settled modes only (W8-F1 L6)', async () => {
+    await seedUser(6, { handle: 'tied' });
+    await seedDay({
+      day: '2026-10-02',
+      author: u(6),
+      modes: {
+        free: {
+          status: 'refunded',
+          entries: [
+            { user: u(10), option: 0 },
+            { user: u(11), option: 1 },
+          ],
+        },
+      },
+    });
+    const p = UserProfileResponseSchema.parse(await (await get('/users/tied')).json());
+    expect(p.questions.map((q) => [q.status, q.splitQuality])).toEqual([['used', null]]);
+  });
+
   it('answers 404 for deleted, merged and unknown accounts; a suspended one is still public', async () => {
     for (const h of ['gone', 'merged', 'nobody']) {
       const res = await get(`/users/${h}`);

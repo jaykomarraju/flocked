@@ -7,8 +7,13 @@ import { env } from 'cloudflare:test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { refundFree, type FreeApplyDeps } from '../../src/settlement/apply/free.js';
 import { onModeFinal, runModeFinal, type ModeFinalEvent } from '../../src/settlement/hooks.js';
+import { schedulerTick } from '../../src/scheduler/tick.js';
 import { STATS_SIZES, applyFinalDays } from '../../src/stats/apply.js';
 import { resetTables, seedDay, seedUser, statsOf, userId } from './helpers.js';
+
+/** Pins the shared env's clock (the scheduler reads it). */
+const setTestClock = (ms: number) =>
+  Object.assign(env, { ENVIRONMENT: 'local', FLOCKED_TEST_CLOCK: String(ms) });
 
 const T = Date.UTC(2027, 5, 1);
 const USERS = [1, 2, 3, 4, 5, 6, 7].map(userId);
@@ -226,5 +231,39 @@ describe('Free apply wiring', () => {
       .first<{ outcome: string; done_at: number | null }>();
     expect(day?.outcome).toBe('refunded');
     expect(day?.done_at).not.toBeNull();
+  });
+});
+
+describe('a Stakes call is bounded (W8-F1 L5)', () => {
+  it(`applies at most ${STATS_SIZES.stakesBatches} batches; the scheduler tick drains the rest`, async () => {
+    for (const day of ['2027-05-03', '2027-05-04', '2027-05-05']) {
+      await seedDay({
+        day,
+        modes: {
+          stakes: {
+            status: 'settled',
+            winner: 0,
+            entries: USERS.map((u, i) => ({ user: u, option: i < 3 ? 0 : 1 })),
+          },
+        },
+      });
+    }
+    // 7 entrants in chunks of 2: each day is 4 chunks and its closing batch, 15 batches in all.
+    STATS_SIZES.chunk = 2;
+    const doneDays = async () =>
+      (await snapshot()).days.filter((d) => (d as { done_at: number | null }).done_at !== null)
+        .length;
+    expect(await applyFinalDays(env.DB, 'stakes', T)).toBe(1);
+    expect(await doneDays()).toBe(1);
+    // A Free call is not bounded that way (its hook runs outside the indexer's poll).
+    expect(await applyFinalDays(env.DB, 'free', T)).toBe(0);
+
+    setTestClock(T);
+    await schedulerTick(env);
+    expect(await doneDays()).toBe(3);
+    for (const u of USERS) {
+      expect((await statsOf(u, 'stakes'))?.rounds_played).toBe(3);
+    }
+    expect(await statsOf(USERS[0] ?? '', 'stakes')).toMatchObject({ wins: 3, stray_streak: 3 });
   });
 });

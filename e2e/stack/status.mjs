@@ -102,6 +102,9 @@ export async function health(state) {
     eas: mockProbe(state.pids?.eas, state.easUrl),
     turnstile: mockProbe(state.pids?.turnstile, state.turnstileUrl),
     anthropic: mockProbe(state.pids?.anthropic, state.anthropicUrl),
+    push: mockProbe(state.pids?.push, state.pushUrl),
+    'farcaster-notify': mockProbe(state.pids?.['farcaster-notify'], state.farcasterNotifyUrl),
+    email: mockProbe(state.pids?.email, state.emailUrl),
     cron: probe(() => {
       if (!alive(state.pids?.cron)) throw new Error('process not running');
       if (!existsSync(CRON_HEARTBEAT_FILE)) throw new Error('no pass yet');
@@ -135,10 +138,13 @@ export function printStatus(state, h) {
     ['eas', h.results.eas],
     ['turnstile', h.results.turnstile],
     ['anthropic', h.results.anthropic],
+    ['push', h.results.push],
+    ['farcaster-notify', h.results['farcaster-notify']],
+    ['email', h.results.email],
     ['cron', h.results.cron],
   ];
   for (const [name, r] of rows)
-    console.log(`  ${r.ok ? 'ok  ' : 'FAIL'} ${name.padEnd(10)} ${r.detail}`);
+    console.log(`  ${r.ok ? 'ok  ' : 'FAIL'} ${name.padEnd(16)} ${r.detail}`);
   if (state.contracts) {
     console.log(`  anchor ${state.contracts.anchor}, escrow ${state.contracts.escrow}`);
     console.log(`  receipt signer ${state.addresses.receiptSigner}`);

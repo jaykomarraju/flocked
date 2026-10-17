@@ -140,6 +140,7 @@ export const ENDPOINTS: readonly EndpointDef[] = [
   // me (deletion), push, limits
   { method: 'DELETE', path: '/me', module: 'me', auth: 'user', request: null, response: me.DeleteMeResponseSchema },
   { method: 'POST', path: '/push/subscribe', module: 'push', auth: 'user', request: push.PushSubscribeRequestSchema, response: push.PushSubscribeResponseSchema },
+  { method: 'POST', path: '/farcaster/webhook', module: 'push', auth: 'none', request: push.FarcasterWebhookRequestSchema, response: push.FarcasterWebhookResponseSchema },
   { method: 'PUT', path: '/me/limits', module: 'limits', auth: 'user', request: limits.SetLimitsRequestSchema, response: limits.SetLimitsResponseSchema },
   { method: 'POST', path: '/me/limits/exclusion-lift', module: 'limits', auth: 'user', request: null, response: limits.ExclusionLiftResponseSchema },
   // admin: the spec's role row, then the drafted `/admin/*` endpoints

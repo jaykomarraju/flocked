@@ -73,3 +73,7 @@
 - **W12-B** (it may edit the `PATCH /me` handler in `apps/api/src/routes/me.ts` and `routes/limits.ts` for these):
   - creator payout location (owner decision, Oct 16): `PATCH /me` stores `prefs_json.creator_payout_location_ok_at` when the request's location passes `geo.stakes.allow` while the payout wallet is set, and clears it on a wallet change;
   - `PUT /me/limits` doesn't carry `maxDailyCap`; only `/me` does (W7-F1).
+
+## Carry-over from W9-Z (Oct 16, 2026)
+
+- **W12-B:** the notification event defaults (every event on except `streak_at_risk`) live in `apps/api/src/notify/recipient.ts`; the web Settings needs the same list: move it into `packages/shared` when Settings is built. "Remind me" on Sealed then subscribes to push from Settings.
