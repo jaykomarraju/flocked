@@ -137,7 +137,9 @@ export type Parsed<T> = { ok: true; value: T } | { ok: false; error: string };
 export function parseCanonical<T>(bytes: Uint8Array, schema: z.ZodType<T>): Parsed<T> {
   let json: unknown;
   try {
-    json = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+    // `ignoreBOM` is spelled out because @cloudflare/workers-types requires both options: without
+    // it this file does not typecheck in a Worker that imports the library (apps/watcher, W10-B).
+    json = JSON.parse(new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(bytes));
   } catch (e) {
     return { ok: false, error: `not UTF-8 JSON: ${(e as Error).message}` };
   }
