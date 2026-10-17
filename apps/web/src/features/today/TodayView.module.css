@@ -132,3 +132,31 @@
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* The self-exclusion break notice (Paper `core/global/self-excluded`), between the question and the
+   two disabled options: the read-only box without a mark — a break is the player's own choice, not a
+   warning — padded 20, with the title, body and the link to Claims all at the body size in ink, 6
+   and 12 apart as Paper draws them. The screen that will own this state is not built yet, so only
+   the design sheet draws it (docs/sessions/W10-C.md). */
+.break {
+  display: flex;
+  flex-direction: column;
+  padding: var(--spacing-5);
+  border: var(--border-default) solid var(--color-line);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+}
+
+.breakBody {
+  margin-top: 6px;
+}
+
+/* "Claims and refunds still work": the body-strong role, underlined like the other inline links. */
+.breakLink {
+  align-self: flex-start;
+  margin-top: var(--spacing-3);
+  color: inherit;
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-underline-position: from-font;
+}

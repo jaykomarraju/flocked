@@ -97,12 +97,10 @@ const ORIGIN = 'https://flocked.xyz';
 
 beforeEach(() => {
   sendCalls.mockReset().mockResolvedValue({ id: '0xbatch' });
-  waitForCallsStatus
-    .mockReset()
-    .mockResolvedValue({
-      status: 'success',
-      receipts: [{ transactionHash: `0x${'77'.repeat(32)}` }],
-    });
+  waitForCallsStatus.mockReset().mockResolvedValue({
+    status: 'success',
+    receipts: [{ transactionHash: `0x${'77'.repeat(32)}` }],
+  });
 });
 
 describe('submitStakesEntry', () => {
