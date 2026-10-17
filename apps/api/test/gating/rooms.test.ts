@@ -84,7 +84,7 @@ const local = () => at(BEACON_TIME_MS + 10_000);
 
 /**
  * Every gated route of a round, with what a member gets (after the gate, the WebSocket answers a plain
- * GET 400 and the card stub 501; test/ws/ upgrades members).
+ * GET 400; test/ws/ upgrades members). The round card is a PNG, private for a room round (W10-A).
  */
 const ROUTES = (id: string) =>
   [
@@ -94,7 +94,7 @@ const ROUTES = (id: string) =>
     [`/rounds/${id}/bundles/free/chunk-0000.json`, 200],
     [`/rounds/${id}/me`, 200],
     [`/rounds/${id}/ws`, 400],
-    [`/rounds/${id}/card/og.png`, 501],
+    [`/rounds/${id}/card/og.png`, 200],
   ] as const;
 
 describe('room rounds are members-only on every gated route', () => {
@@ -154,7 +154,7 @@ describe('room rounds are members-only on every gated route', () => {
     }
   });
 
-  it('a public round’s gated routes answer anyone (the stubs 501), public responses cacheable', async () => {
+  it('a public round’s gated routes answer anyone, public responses cacheable', async () => {
     for (const [template, memberStatus] of ROUTES('DAILY')) {
       const path = template.replace('DAILY', dailyRound);
       if (path.endsWith('/me')) continue;

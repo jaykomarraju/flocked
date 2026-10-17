@@ -12,6 +12,7 @@
 // This module and what it imports also run in Node (the e2e indexer tests import src/indexer/**):
 // never import anything that pulls `cloudflare:workers` here.
 import type { Mode, RoundKind } from '@flocked/shared';
+import { cardsOnModeFinal } from '../cards/enqueue.js';
 import type { Env } from '../env.js';
 import { log } from '../lib/log.js';
 import { notifyOnModeFinal } from '../notify/outcomes.js';
@@ -67,3 +68,6 @@ onModeFinal(referralsOnModeFinal);
 onModeFinal(onQuestionModeFinal);
 // W9-A: Free outcomes, and the Stakes claim and refund notices (daily rounds; src/notify/outcomes.ts).
 onModeFinal(notifyOnModeFinal);
+// W10-A: the share-card fan-out (daily rounds; src/cards/enqueue.ts). A Stakes reveal enqueues from
+// the indexer's proposal handler, so this one only catches a Stakes mode that never had a proposal.
+onModeFinal(cardsOnModeFinal);
