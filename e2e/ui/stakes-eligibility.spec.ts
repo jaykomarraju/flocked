@@ -5,6 +5,7 @@
 // Against the mocked world (world.ts), so the app's own production bundle runs each case with no
 // stack: `/me`'s eligibility is the only thing that changes between them.
 import { INELIGIBLE_REASONS } from '@flocked/shared';
+import type { Page } from '@playwright/test';
 import { expect, test } from '../fixtures';
 import { expectAccessible, mockWorld, QUESTION } from './world';
 
@@ -14,8 +15,7 @@ const VERIFY_TITLE = 'Stakes needs a verified account';
 const SEAL = 'Seal my pick';
 
 /** The toggle is a radiogroup; without Stakes it is a static "Free" label instead. */
-const toggle = (page: import('@playwright/test').Page) =>
-  page.getByRole('radiogroup', { name: 'Mode' });
+const toggle = (page: Page) => page.getByRole('radiogroup', { name: 'Mode' });
 
 test.describe('Stakes eligibility (AC-8)', () => {
   test('an eligible player sees Stakes with the round’s fixed stake', async ({ page }) => {

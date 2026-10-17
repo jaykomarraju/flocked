@@ -149,7 +149,7 @@ export interface World {
 /** The Stakes half of the world: eligibility, the chain's config, the wallet and the paymaster. */
 export interface StakesWorld {
   /** The escrow's `RoundConfig`, as the RPC serves it; edit a field to make the check refuse. */
-  config: Record<string, bigint | number | Address | Hex>;
+  config: Record<string, bigint | number | Hex>;
   /** `wallet_sendCalls` batches the app sent, newest last. */
   sent: { calls: { to: string; data: string }[]; capabilities: unknown }[];
   /** ERC-7677 requests the wallet made to the paymaster URL the app asked it to use. */
@@ -263,12 +263,12 @@ export async function mockWorld(
     capMultiple: STAKES_DEFAULTS.capMultiple,
     minEntrants: STAKES_DEFAULTS.minEntrants,
     creator: TREASURY,
-    questionHash: questionHash(QUESTION_VIEW) as Hex,
+    questionHash: questionHash(QUESTION_VIEW),
   };
   // The published values the API serves are the chain's unless the test moves one of them.
   for (const [key, value] of Object.entries(opts.stakes?.published ?? {})) {
     if (key in stakesConfig) {
-      stakesConfig[key] = typeof value === 'number' ? value : BigInt(value as string);
+      stakesConfig[key] = typeof value === 'number' ? value : BigInt(value);
     }
   }
   for (const [key, value] of Object.entries(opts.stakes?.onchain ?? {})) {
@@ -277,7 +277,7 @@ export async function mockWorld(
         ? (value as Hex)
         : typeof value === 'number'
           ? value
-          : BigInt(value as string | bigint);
+          : BigInt(value);
   }
   const stakes: StakesWorld = {
     config: stakesConfig,
