@@ -10,6 +10,7 @@
 import type { AgeAttestation } from '@flocked/shared';
 import { useState, type ReactNode } from 'react';
 import { Button } from '../../ui/Button';
+import { DialogTitle } from '../../ui/useDialog';
 import { Checkbox } from '../../ui/Checkbox';
 import { ErrorBox } from '../../ui/ErrorBox';
 import { ageCheckboxLabel, VERIFY_CTA, VERIFY_SHEET, VERIFY_WAITING } from './copy';
@@ -46,7 +47,7 @@ export function VerifySheet({
   const ready = age && terms;
   return (
     <div className={s.sheet}>
-      <h2 className="type-section">{VERIFY_SHEET.title}</h2>
+      <DialogTitle className="type-section">{VERIFY_SHEET.title}</DialogTitle>
       <p className="type-body">{VERIFY_SHEET.body}</p>
       <div className={s.checks}>
         <Checkbox checked={age} onChange={(e) => setAge(e.currentTarget.checked)}>

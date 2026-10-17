@@ -55,8 +55,11 @@ import { RECEIPT_MISMATCH, crowdHintLine, dstNotice } from './copy';
 import { TodayView } from './TodayView';
 import { useFreeEntry } from './useFreeEntry';
 
-/** Stakes entry is wave 10's: until then the toggle shows the static "Free" label. */
-export const STAKES_UI_ENABLED = false;
+/**
+ * The build-level switch for the Stakes UI (W9-C hid it until wave 10 built the entry flow). It is
+ * on now; who actually sees Stakes is `/me`'s eligibility, not this (`features/stakes/eligibility`).
+ */
+export const STAKES_UI_ENABLED = true;
 
 /** The "Reconnecting" banner while the round socket is down (decision E7). */
 export const RECONNECTING = 'Reconnecting…';
@@ -374,7 +377,9 @@ function OpenRound({
           ageRequired={me.tos.ageRequired}
           onVerify={(age) => void stakes.verify.verify(age)}
           onClose={stakes.closeVerify}
-          waiting={stakes.verify.state.kind !== 'idle'}
+          waiting={
+            stakes.verify.state.kind === 'starting' || stakes.verify.state.kind === 'waiting'
+          }
           error={stakes.verify.state.kind === 'error' ? stakes.verify.state.message : null}
         />
       ) : null}

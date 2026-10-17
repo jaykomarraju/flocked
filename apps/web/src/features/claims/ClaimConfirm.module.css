@@ -1,0 +1,57 @@
+/* Paper's claim sheet (`core/claims/claim-all/mobile`): 20 between the sheet's blocks, where the
+   kit's bottom sheet has 16. The modal already has 20 between them. */
+.sheet.sheet {
+  gap: var(--spacing-5);
+}
+
+/* Paper's claim modal (tablet and desktop): 32 above, 20 at the sides and 28 below (the kit's
+   modal: 24, 28 and 28). */
+.modal.modal {
+  padding: var(--spacing-8) var(--spacing-5) 28px;
+}
+
+/* Drawn in place over an artboard, the modal's scrim keeps the 16 the page's fixed scrim has. */
+.inlineScrim {
+  padding: var(--spacing-4);
+}
+
+/* The title and its line, 6 apart, as on the page itself. */
+.heading {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* The payouts going out: a read-only box, so a line border. */
+.box {
+  display: flex;
+  flex-direction: column;
+  padding: 14px var(--spacing-4);
+  border: var(--border-default) solid var(--color-line);
+  border-radius: var(--radius-card);
+}
+
+.boxRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-4);
+}
+
+/* Paper puts 10 above and below the rule between two payouts. */
+.boxRow + .boxRow {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: var(--border-default) solid var(--color-line);
+}
+
+.waiting {
+  color: var(--color-muted);
+}
+
+/* The CTA over "Not now", both full width. */
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+}
