@@ -40,20 +40,22 @@ async function roomRow(roomId: string) {
 }
 
 describe('the successor of a deleted owner’s room', () => {
-  it('never a merged account: an active member takes it over the older merged one', async () => {
+  it('never a merged account: a suspended member takes it over the older merged one', async () => {
+    // A suspended member, not the older merged one: `ORDER BY su.status <> 'active'` alone would
+    // take the merged account here, because neither candidate is active.
     const owner = await createUser();
     const keeper = await createUser();
     const merged = await mergedUser(keeper);
-    const active = await createUser();
+    const suspended = await createUser({ status: 'suspended' });
     const room = await seedRoom({
       owner: { user: owner, joinedAt: T0 - 4 * DAY },
       members: [
         { user: merged, joinedAt: T0 - 3 * DAY },
-        { user: active, joinedAt: T0 - DAY },
+        { user: suspended, joinedAt: T0 - DAY },
       ],
     });
     await deleteOwner(owner);
-    expect(await roomRow(room.id)).toEqual({ owner_user_id: active.id, closed_at: null });
+    expect(await roomRow(room.id)).toEqual({ owner_user_id: suspended.id, closed_at: null });
   });
 
   it('closes the room when every other member is merged or deleted', async () => {
