@@ -27,6 +27,7 @@ import { Skeleton } from '../../ui/Skeleton';
 import { modePhase } from '../../ws/live';
 import { roundDetail, useLiveRound } from '../../ws/useLiveRound';
 import { LastRoundStrip, lastRoundSummary } from '../reveal/LastRoundStrip';
+import { useCountingHold } from '../reveal/countingHold';
 import { markRevealPlayed, revealPlayed } from '../reveal/played';
 import { RevealView, type RevealPhase } from '../reveal/RevealView';
 import { refundKeepsSplit, refundLine } from '../reveal/copy';
@@ -352,8 +353,11 @@ function PlayedRound({
   const live = useLiveRound(client, seed);
   const now = useServerNow(live.round?.skewMs);
   const round = live.round;
-  const phase = round ? modePhase(round, 'free', now) : 'open';
-  useOnClose(phase === 'open', onClosed);
+  // "Counting the flock…" is held for 1.5 s, so a result landing a moment after the beacon never
+  // skips it. The close still fires on the unheld phase.
+  const livePhase = round ? modePhase(round, 'free', now) : 'open';
+  const phase = useCountingHold(livePhase);
+  useOnClose(livePhase === 'open', onClosed);
   const [animate] = useState(() => !revealPlayed(seed.id, 'free'));
   const free = round?.modes.free;
   const result = free?.result ?? null;

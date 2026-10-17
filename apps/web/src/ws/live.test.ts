@@ -152,6 +152,97 @@ describe('applyMessage', () => {
     });
     expect(vetoed && modePhase(vetoed, 'stakes', 0)).toBe('refunded');
   });
+
+  // W9-Z review R5: `settle_proposed` and `refund_proposed` share a rank, so without the proposal
+  // time a stale message at that rank wins the tie and buries the result under a refund.
+  describe('a superseded proposal (R5)', () => {
+    const stakesState = (over: Record<string, unknown> = {}) =>
+      state({
+        modes: {
+          stakes: {
+            status: 'pending',
+            entrantCount: 3,
+            pool: '15000000',
+            revealedAt: null,
+            claimsOpenAt: null,
+            refundReason: null,
+            result: null,
+            ...over,
+          },
+        },
+      });
+    /** A refund proposal whose window ends at T1, vetoed and re-proposed as a settlement at T2. */
+    const T1 = 7_200_000;
+    const T2 = 9_000_000;
+    const refundProposal: WsServerMessage = {
+      type: 'refunded',
+      roundId: ID,
+      mode: 'stakes',
+      refundReason: 1,
+      provisional: true,
+      finalAt: T1,
+    };
+    const settleProposal: WsServerMessage = { ...revealed, mode: 'stakes', claimsOpenAt: T2 };
+    const reProposed = () => fold([stakesState(), refundProposal, settleProposal]);
+
+    it('keeps the result when the vetoed refund proposal arrives again', () => {
+      const r = fold([refundProposal], reProposed());
+      expect(r?.modes.stakes).toMatchObject({ status: 'settle_proposed', provisional: false });
+      expect(r?.modes.stakes?.result).not.toBeNull();
+      expect(r && modePhase(r, 'stakes', 0)).toBe('revealed');
+    });
+
+    it('keeps the result when a reconnect sends a state from before the veto', () => {
+      const r = fold(
+        [
+          stakesState({
+            status: 'refund_proposed',
+            claimsOpenAt: T1,
+            refundReason: 1,
+            entrantCount: 4,
+          }),
+        ],
+        reProposed(),
+      );
+      expect(r?.modes.stakes).toMatchObject({ status: 'settle_proposed', provisional: false });
+      expect(r && modePhase(r, 'stakes', 0)).toBe('revealed');
+      // Counts still only grow.
+      expect(r?.modes.stakes?.entrantCount).toBe(4);
+    });
+
+    it('still takes a veto of the settlement, whose own proposal is newer', () => {
+      const T3 = T2 + 1_800_000;
+      const r = fold(
+        [{ ...refundProposal, refundReason: 5, finalAt: T3 }],
+        fold([stakesState(), settleProposal]),
+      );
+      expect(r?.modes.stakes).toMatchObject({
+        status: 'refund_proposed',
+        provisional: true,
+        refundReason: 5,
+        finalAt: T3,
+      });
+      expect(r && modePhase(r, 'stakes', 0)).toBe('refunded');
+    });
+
+    it('still takes the final refund that follows, which supersedes by rank', () => {
+      const r = fold(
+        [
+          {
+            type: 'refunded',
+            roundId: ID,
+            mode: 'stakes',
+            refundReason: 5,
+            provisional: false,
+            finalAt: T1 + 1,
+          },
+        ],
+        reProposed(),
+      );
+      expect(r?.modes.stakes).toMatchObject({ status: 'refunded', provisional: false });
+      expect(r && modePhase(r, 'stakes', 0)).toBe('refunded');
+    });
+  });
 });
 
 describe('applyRoundView (the polling fallback)', () => {
