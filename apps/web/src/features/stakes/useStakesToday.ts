@@ -14,12 +14,7 @@ import type { MiniApp } from '../../auth/miniapp';
 import { clientChain } from '../../crypto/chain';
 import type { Address } from 'viem';
 import type { TodayNotice } from '../today/TodayView';
-import {
-  checkRoundConfig,
-  escrowReader,
-  type ConfigCheck,
-  type EscrowReader,
-} from './configCheck';
+import { checkRoundConfig, escrowReader, type ConfigCheck } from './configCheck';
 import {
   changeLogLine,
   CONFIG_NOTICE_TITLE,
@@ -126,11 +121,7 @@ export function useStakesToday(opts: StakesTodayOptions): StakesToday {
 
   // A refusal the entry flow itself hit (the config changed between the check and the press).
   const refusal =
-    entry.state.kind === 'refused'
-      ? entry.state.check
-      : check && !check.ok
-        ? check
-        : null;
+    entry.state.kind === 'refused' ? entry.state.check : check && !check.ok ? check : null;
 
   const notice = noticeFor(refusal, check, () => setShowDetails((v) => !v));
   // "See what doesn't match" lists every differing field; "See the change log" lists each
@@ -166,8 +157,7 @@ export function useStakesToday(opts: StakesTodayOptions): StakesToday {
   const pending = entry.state.kind === 'pending';
   return {
     offer,
-    stakesStake:
-      offer.kind === 'play' && stakes ? { stake: BigInt(stakes.stake) } : null,
+    stakesStake: offer.kind === 'play' && stakes ? { stake: BigInt(stakes.stake) } : null,
     notice,
     details,
     cta:

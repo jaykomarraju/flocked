@@ -25,7 +25,7 @@ function ciphertextHex(base64url: string): Hex {
   if (!bytes) throw new Error('ciphertext: not base64url');
   let out = '';
   for (const b of bytes) out += b.toString(16).padStart(2, '0');
-  return `0x${out}` as Hex;
+  return `0x${out}`;
 }
 
 /** USDC's ERC-20 `approve`, taken from the MockUSDC ABI the deploy scripts generate. */

@@ -39,3 +39,13 @@ export function formatGameDay(gameDay: string): string {
     timeZone: 'UTC',
   }).format(new Date(Date.UTC(y, m - 1, d)));
 }
+
+/**
+ * A moment as the Stakes reveal's "Final at" chip and the Claims rows show it: "11:03pm", in the
+ * player's own time zone (Paper `core/reveal/provisional/*`, `core/claims/list/*`).
+ */
+export function formatClockTime(epochMs: number): string {
+  return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+    .format(new Date(epochMs))
+    .replace(/\s?([AP])M$/i, (_, p: string) => p.toLowerCase() + 'm');
+}

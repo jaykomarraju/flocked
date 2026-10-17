@@ -41,8 +41,10 @@ import { RevealView, type RevealPhase } from '../reveal/RevealView';
 import { refundKeepsSplit, refundLine } from '../reveal/copy';
 import { ShareBlock, shareLink } from '../reveal/ShareBlock';
 import { SealedView } from '../sealed/SealedView';
+import { formatUsdc } from '../../ui/amounts';
 import {
   ROUNDS_TODAY_KEY,
+  formatClockTime,
   formatGameDay,
   roundKey,
   roundMe,
@@ -102,14 +104,15 @@ function usePlayed(roundId: string | null) {
   });
   const entry = mine.data?.modes.free ?? null;
   const stakesEntry = mine.data?.modes.stakes ?? null;
+  /** The mode whose reveal the player is shown: Stakes if they played it, else Free. */
+  const playedMode: Mode = storedStakes !== null || stakesEntry !== null ? 'stakes' : 'free';
   return {
     userId,
     stored,
     setStored,
     storedStakes,
     setStoredStakes,
-    /** The mode whose reveal the player is shown: Stakes if they played it, else Free. */
-    mode: (storedStakes !== null || stakesEntry !== null ? 'stakes' : 'free') as Mode,
+    mode: playedMode,
     me: mine.data ?? null,
     refetchMe: mine.refetch,
     entered: stored !== null || entry !== null || storedStakes !== null || stakesEntry !== null,
@@ -319,9 +322,7 @@ function OpenRound({
         }
         stakesStake={isStakes ? stakes.stakesStake : null}
         callout={isStakes && stakes.offer.kind === 'verify' ? <VerifyCallout /> : null}
-        notice={
-          (isStakes ? stakes.notice : null) ?? dstNotice(round.opensAt, round.closesAt)
-        }
+        notice={(isStakes ? stakes.notice : null) ?? dstNotice(round.opensAt, round.closesAt)}
         lastRound={lastRound}
         remainingMs={remainingMs}
         entrants={stats?.entrantCount ?? 0}
@@ -333,12 +334,7 @@ function OpenRound({
         ctaLabel={isStakes ? stakes.cta.label : undefined}
         ctaLoadingLabel={isStakes ? stakes.cta.loadingLabel : undefined}
         workingNote={isStakes ? stakes.cta.workingNote : undefined}
-        sealDisabled={
-          !online ||
-          phase !== 'open' ||
-          !userId ||
-          (isStakes ? stakes.blocked : !free)
-        }
+        sealDisabled={!online || phase !== 'open' || !userId || (isStakes ? stakes.blocked : !free)}
         error={
           (isStakes ? stakes.error : null) ??
           (entry.state.kind === 'error'
@@ -386,46 +382,68 @@ function OpenRound({
   );
 }
 
-/** The player's result card for a revealed or refunded Free mode, from what the device and server know. */
-function resultCard(
-  phase: RevealPhase,
-  optionIndex: number | null,
-  winner: number | null,
-  counts: readonly [number, number] | null,
-  stake: bigint,
-  me: RoundMeResponse | null,
-  refundReason: number | null,
-): ResultCardProps | null {
-  const points = (n: bigint) => `${n.toLocaleString('en-US')} points`;
+/**
+ * The player's result card for a revealed or refunded mode, from what the device and the server
+ * know. Free counts in points; Stakes in USDC, and until the challenge window closes it is
+ * provisional: the card carries "Final at" and names the payout as the amount once final (Paper
+ * `core/reveal/provisional/*`). A Free win's amount waits for `/me`'s payouts (decision, Oct 16).
+ */
+function resultCard(i: {
+  mode: Mode;
+  phase: RevealPhase;
+  optionIndex: number | null;
+  winner: number | null;
+  counts: readonly [number, number] | null;
+  stake: bigint;
+  me: RoundMeResponse | null;
+  refundReason: number | null;
+  /** Stakes before final: the end of the challenge window, as the chip shows it. */
+  finalAt?: string;
+}): ResultCardProps | null {
+  const { mode, phase, counts, stake, me, finalAt } = i;
+  const amount = (n: bigint) =>
+    mode === 'stakes' ? `${formatUsdc(n)} USDC` : `${n.toLocaleString('en-US')} points`;
+  const mine = me?.modes[mode] ?? null;
+  const chip = finalAt === undefined ? {} : { finalAt };
   if (phase === 'refunded') {
     return {
       result: 'refunded',
-      stake: points(stake),
-      figure: { label: 'Returned', value: points(stake) },
-      line: refundLine(refundReason),
+      stake: amount(stake),
+      figure: {
+        label: finalAt === undefined ? 'Returned' : 'Returned, once final',
+        value: amount(stake),
+      },
+      line: refundLine(i.refundReason),
+      ...chip,
     };
   }
-  if (phase !== 'revealed' || !counts || winner === null) return null;
-  const mine = optionIndex ?? me?.modes.free?.entry.optionIndex ?? null;
-  if (mine === null) return null;
+  if (phase !== 'revealed' || !counts || i.winner === null) return null;
+  const picked = i.optionIndex ?? mine?.entry.optionIndex ?? null;
+  if (picked === null) return null;
   const total = counts[0] + counts[1];
-  const paid = (me?.modes.free?.payouts ?? []).reduce((a, p) => a + BigInt(p.amount), 0n);
-  const settledMe = me?.modes.free?.result != null;
-  if (mine === winner) {
+  const paid = (mine?.payouts ?? []).reduce((a, p) => a + BigInt(p.amount), 0n);
+  const settledMe = mine?.result != null;
+  if (picked === i.winner) {
     return {
       result: 'unflocked',
-      count: counts[mine] ?? 0,
+      count: counts[picked] ?? 0,
       total,
-      stake: points(stake),
-      figure: { label: 'Won', value: settledMe ? `+${points(paid - stake)}` : '…' },
+      stake: amount(stake),
+      figure: {
+        // Provisional: the whole payout, not the profit, because it is what Claims will pay.
+        label: finalAt === undefined ? 'Won' : 'Payout, once final',
+        value: !settledMe ? '…' : finalAt === undefined ? `+${amount(paid - stake)}` : amount(paid),
+      },
+      ...chip,
     };
   }
   return {
     result: 'got-flocked',
-    count: counts[mine] ?? 0,
+    count: counts[picked] ?? 0,
     total,
-    stake: points(stake),
-    figure: { label: 'Lost', value: settledMe ? `−${points(stake - paid)}` : '…' },
+    stake: amount(stake),
+    figure: { label: 'Lost', value: settledMe ? `−${amount(stake - paid)}` : '…' },
+    ...chip,
   };
 }
 
@@ -448,14 +466,17 @@ function PlayedRound({
   const live = useLiveRound(client, seed);
   const now = useServerNow(live.round?.skewMs);
   const round = live.round;
+  // The reveal opens on the mode the player played; the toggle switches between them.
+  const [mode, setMode] = useState<Mode>(played.mode);
+  const bothModes = seed.modes.free !== undefined && seed.modes.stakes !== undefined;
   // "Counting the flock…" is held for 1.5 s, so a result landing a moment after the beacon never
   // skips it. The close still fires on the unheld phase.
-  const livePhase = round ? modePhase(round, 'free', now) : 'open';
+  const livePhase = round ? modePhase(round, mode, now) : 'open';
   const phase = useCountingHold(livePhase);
   useOnClose(livePhase === 'open', onClosed);
-  const [animate] = useState(() => !revealPlayed(seed.id, 'free'));
-  const free = round?.modes.free;
-  const result = free?.result ?? null;
+  const [animate] = useState(() => !revealPlayed(seed.id, mode));
+  const current = round?.modes[mode];
+  const result = current?.result ?? null;
   // A refunded mode's tally is on GET /rounds/:id only (decision A2): rules 1, 2, 3 and 5 show it.
   const refundDetail = useQuery({
     queryKey: roundKey(seed.id),
@@ -465,15 +486,27 @@ function PlayedRound({
   const tally =
     result?.tally ??
     (phase === 'refunded'
-      ? (refundDetail.data?.round.modes.free?.settlement?.tally ?? null)
+      ? (refundDetail.data?.round.modes[mode]?.settlement?.tally ?? null)
       : null);
   const counts = tally ? ([tally[0].headcount, tally[1].headcount] as const) : null;
-  const { stored, me: mine, refetchMe } = played;
-  const entry = mine?.modes.free ?? null;
-  const optionIndex = stored?.optionIndex ?? entry?.entry.optionIndex ?? null;
-  const stake = BigInt(stored?.stake ?? entry?.entry.stake ?? '0');
+  const { stored, storedStakes, me: mine, refetchMe } = played;
+  const entry = mine?.modes[mode] ?? null;
+  const device = mode === 'stakes' ? storedStakes : stored;
+  const optionIndex = device?.optionIndex ?? entry?.entry.optionIndex ?? null;
+  const stake = BigInt(device?.stake ?? entry?.entry.stake ?? '0');
   const settledForMe = entry?.result != null;
   const settled = phase === 'revealed' || phase === 'refunded';
+  // A Stakes outcome is provisional until the challenge window closes: the card says when, and a
+  // guardian veto turns it into a refund (spec "Real-time and the reveal" › Reveal choreography).
+  const finalMs = current?.finalAt ?? current?.claimsOpenAt ?? null;
+  const provisional =
+    mode === 'stakes' &&
+    settled &&
+    finalMs !== null &&
+    (current?.status === 'settle_proposed' || current?.provisional === true);
+  const finalAt = provisional && finalMs !== null ? formatClockTime(finalMs) : undefined;
+  // The player played this mode if the device or the server has their entry in it.
+  const playedThisMode = device !== null || entry !== null;
 
   // After the reveal the per-entry rows follow: ask again until the player's result is in.
   useEffect(() => {
@@ -495,15 +528,15 @@ function PlayedRound({
         <SealedView
           breakpoint={breakpoint}
           date={date}
-          mode="free"
-          onModeChange={() => undefined}
-          stakesAvailable={false}
+          mode={mode}
+          onModeChange={setMode}
+          stakesAvailable={bothModes}
           question={seed.question.prompt}
           pick={optionIndex === null ? null : (options[optionIndex] ?? null)}
           stake={stake}
           revealInMs={seed.beaconTime * 1000 - now}
-          entrants={free?.entrantCount ?? 0}
-          pool={free?.pool ?? 0n}
+          entrants={current?.entrantCount ?? 0}
+          pool={current?.pool ?? 0n}
           live
           mismatch={stored && stored.mismatches.length > 0 ? RECEIPT_MISMATCH : null}
           onRemind={() => void navigate('/settings')}
@@ -519,18 +552,22 @@ function PlayedRound({
   }
 
   const revealPhase: RevealPhase = phase;
-  const card = resultCard(
-    revealPhase,
-    optionIndex,
-    result?.winningOption ?? null,
-    counts,
-    stake,
-    mine,
-    free?.refundReason ?? null,
-  );
+  const card = playedThisMode
+    ? resultCard({
+        mode,
+        phase: revealPhase,
+        optionIndex,
+        winner: result?.winningOption ?? null,
+        counts,
+        stake,
+        me: mine,
+        refundReason: current?.refundReason ?? null,
+        ...(finalAt === undefined ? {} : { finalAt }),
+      })
+    : null;
   const refunded = revealPhase === 'refunded';
-  const hideSplit = refunded && (!counts || !refundKeepsSplit(free?.refundReason ?? null));
-  const shareId = mine?.cards.find((c) => c.kind === 'result' && c.mode === 'free')?.shareId;
+  const hideSplit = refunded && (!counts || !refundKeepsSplit(current?.refundReason ?? null));
+  const shareId = mine?.cards.find((c) => c.kind === 'result' && c.mode === mode)?.shareId;
   return (
     <>
       {banner}
@@ -539,20 +576,29 @@ function PlayedRound({
         key={revealPhase}
         breakpoint={breakpoint}
         date={date}
-        mode="free"
-        onModeChange={() => undefined}
-        stakesAvailable={false}
+        mode={mode}
+        onModeChange={setMode}
+        stakesAvailable={bothModes}
         question={seed.question.prompt}
         options={options}
         phase={revealPhase}
         unsealingMs={(round?.beaconTime ?? seed.beaconTime) * 1000 - now}
-        entrants={free?.entrantCount ?? 0}
-        pool={free?.pool ?? 0n}
+        entrants={current?.entrantCount ?? 0}
+        pool={current?.pool ?? 0n}
         pick={optionIndex}
         counts={counts}
         winner={refunded ? null : (result?.winningOption ?? null)}
         hideSplit={hideSplit}
         result={card}
+        notPlayed={
+          playedThisMode
+            ? null
+            : {
+                onBack: () => setMode(played.mode),
+                playedMode: played.mode,
+                ...(finalAt === undefined ? {} : { finalAt }),
+              }
+        }
         share={
           // Share with a split to show: a settled result, or a refund that keeps its split (Paper).
           card && counts && (card.result !== 'refunded' || !hideSplit) ? (
@@ -577,7 +623,7 @@ function PlayedRound({
             : null
         }
         animate={animate}
-        onPlayed={() => markRevealPlayed(seed.id, 'free')}
+        onPlayed={() => markRevealPlayed(seed.id, mode)}
       />
     </>
   );

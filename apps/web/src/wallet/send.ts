@@ -19,12 +19,7 @@ export interface WalletCall {
 
 /** Why a user operation did not go through, as the screen tells it. */
 export type WalletErrorKind =
-  | 'rejected'
-  | 'not_sponsored'
-  | 'reverted'
-  | 'timeout'
-  | 'unsupported'
-  | 'failed';
+  'rejected' | 'not_sponsored' | 'reverted' | 'timeout' | 'unsupported' | 'failed';
 
 export class WalletError extends Error {
   constructor(
@@ -87,7 +82,7 @@ export async function sendSponsoredCalls(
   try {
     const sent = await sendCalls(config, {
       account: opts.account,
-      chainId: opts.chainId as never,
+      chainId: opts.chainId,
       calls: opts.calls.map((c) => ({ to: c.to, data: c.data })),
       // One user operation, so the approve can never land without the entry behind it.
       forceAtomic: true,
@@ -105,7 +100,10 @@ export async function sendSponsoredCalls(
       timeout: opts.timeoutMs ?? INCLUSION_TIMEOUT_MS,
     });
   } catch (err) {
-    throw new WalletError(walletErrorKind(err) === 'failed' ? 'timeout' : walletErrorKind(err), err);
+    throw new WalletError(
+      walletErrorKind(err) === 'failed' ? 'timeout' : walletErrorKind(err),
+      err,
+    );
   }
   if (status.status !== 'success') throw new WalletError('reverted', status);
   return { id, txHashes: (status.receipts ?? []).map((r) => r.transactionHash) };

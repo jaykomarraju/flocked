@@ -8,8 +8,10 @@
 import { API_BASE_PATH } from '@flocked/shared';
 
 /** The paymaster proxy, absolute because the wallet fetches it from its own context. */
-export function paymasterUrl(origin: string = window.location.origin): string {
-  return new URL(`${API_BASE_PATH}/paymaster`, origin).toString();
+export function paymasterUrl(origin?: string): string {
+  const base = origin ?? globalThis.location?.origin;
+  if (!base) throw new Error('paymaster: no origin');
+  return new URL(`${API_BASE_PATH}/paymaster`, base).toString();
 }
 
 /** The EIP-5792 capability that points a `wallet_sendCalls` batch at the proxy. */
