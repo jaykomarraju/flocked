@@ -133,6 +133,7 @@ describe('AuthProvider', () => {
       user: { fid: 3, username: 'jay' },
       quickAuthToken: () => Promise.resolve('quick-auth-jwt'),
       ethereumProvider: () => Promise.resolve(undefined),
+    openExternal: () => Promise.resolve(),
     };
     render(
       <AuthProvider

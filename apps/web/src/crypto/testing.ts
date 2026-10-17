@@ -81,10 +81,15 @@ export function testRound(overrides: Partial<RoundView> = {}): RoundView {
   });
 }
 
+export const TEST_ESCROW: Address = '0x00000000000000000000000000000000000e5c20';
+export const TEST_USDC: Address = '0x000000000000000000000000000000000005dc00';
+
 export const TEST_CHAIN: ClientChain = {
   chainId: 31337,
   rpcUrl: 'http://127.0.0.1:8545',
   anchor: TEST_ANCHOR,
+  escrow: TEST_ESCROW,
+  usdc: TEST_USDC,
   drand: QUICKNET,
 };
 

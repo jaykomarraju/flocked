@@ -34,6 +34,11 @@ export interface Auth {
   me: MeResponse | null;
   /** The mini app context, or null in a browser. */
   miniApp: MiniApp | null;
+  /**
+   * The app's one wagmi config: sign-in uses it to connect and sign, and Stakes to send its
+   * sponsored user operations through the same connected wallet (W10-C).
+   */
+  wagmiConfig: Config;
   client: ApiClient;
   /** SIWE with an injected wallet or the smart wallet (in the mini app: the client's wallet). */
   signInWithWallet: () => Promise<void>;
@@ -202,6 +207,7 @@ export function AuthProvider({
       status,
       me,
       miniApp,
+      wagmiConfig,
       client,
       signInWithWallet,
       signInWithFarcaster,
@@ -214,6 +220,7 @@ export function AuthProvider({
       status,
       me,
       miniApp,
+      wagmiConfig,
       client,
       signInWithWallet,
       signInWithFarcaster,

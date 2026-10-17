@@ -19,6 +19,10 @@ export interface ClientChain {
   rpcUrl: string;
   /** The FlockedAnchor address: the lock leaf, the receipt signer and the receipts' EIP-712 domain. */
   anchor: Address;
+  /** The FlockedEscrow address: the Stakes round config check, `enter`, `claim` (W10-C). */
+  escrow: Address;
+  /** The USDC the escrow pulls the stake from: the `approve` or permit before `enter` (W10-C). */
+  usdc: Address;
   drand: DrandChain;
   /**
    * Local chain only: skip the 21:00 New York close check, because the stack's rounds close a minute
@@ -31,6 +35,8 @@ export interface ClientChain {
 export interface LocalChainGlobal {
   rpcUrl: string;
   anchor: Address;
+  escrow: Address;
+  usdc: Address;
   drand: DrandChain;
   /** The stack's rounds close a minute out, not at 21:00 New York (see `ClientChain`). */
   skipDailyClose?: boolean;
@@ -68,17 +74,26 @@ export function clientChain(env: ImportMetaEnv = import.meta.env): ClientChain {
       chainId: chain.id,
       rpcUrl: local.rpcUrl,
       anchor: local.anchor,
+      escrow: local.escrow,
+      usdc: local.usdc,
       drand: local.drand,
       skipDailyClose: local.skipDailyClose === true,
     };
   }
-  let anchor: Address;
+  let deployment: { anchor: Address; escrow: Address; usdc: Address };
   try {
-    anchor = addressesFor(chain.id).anchor;
+    deployment = addressesFor(chain.id);
   } catch {
     throw new ChainConfigError(`No Flocked deployment on chain ${chain.id}`);
   }
   const rpcUrl = env.VITE_PUBLIC_RPC_URL || chain.rpcUrls.default.http[0];
   if (!rpcUrl) throw new ChainConfigError(`No public RPC for chain ${chain.id}`);
-  return { chainId: chain.id, rpcUrl, anchor, drand: QUICKNET };
+  return {
+    chainId: chain.id,
+    rpcUrl,
+    anchor: deployment.anchor,
+    escrow: deployment.escrow,
+    usdc: deployment.usdc,
+    drand: QUICKNET,
+  };
 }

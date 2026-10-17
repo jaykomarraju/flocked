@@ -11,6 +11,12 @@ export interface MiniApp {
   quickAuthToken: () => Promise<string>;
   /** The client's wallet, for the wallet fallback. */
   ethereumProvider: () => Promise<EIP1193Provider | undefined>;
+  /**
+   * Opens a URL outside the mini app's webview. Coinbase's OAuth flow cannot finish inside it, so
+   * Stakes verification goes to the system browser and the app polls `/me` (spec "Client app" ›
+   * Entry flow (Stakes) step 1, W10-C).
+   */
+  openExternal: (url: string) => Promise<void>;
 }
 
 /** True when the page could be a mini app: inside a frame or a React Native webview. */
@@ -30,5 +36,8 @@ export async function detectMiniApp(): Promise<MiniApp | null> {
     quickAuthToken: async () => (await sdk.quickAuth.getToken()).token,
     ethereumProvider: async () =>
       (await sdk.wallet.getEthereumProvider()) as EIP1193Provider | undefined,
+    openExternal: async (url) => {
+      await sdk.actions.openUrl(url);
+    },
   };
 }

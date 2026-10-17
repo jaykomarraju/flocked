@@ -1,0 +1,37 @@
+/* The verification sheet's contents (Paper `core/stakes-entry/verify-sheet/*`): title, body, the two
+   checkboxes, the CTA, "Not now" and the footer, 16 apart; the checkboxes sit 24 below the body and
+   the CTA 24 below them, as Paper draws the three blocks. */
+.sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+  color: var(--color-ink);
+}
+
+.checks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+  padding: var(--spacing-2) 0;
+}
+
+.cta,
+.notNow {
+  width: 100%;
+}
+
+/* "18+ only · Responsible play", centred, caption role. */
+.footer {
+  color: var(--color-muted);
+  font-family: var(--font-body);
+  font-size: var(--text-label);
+  font-weight: 500;
+  line-height: 20px;
+  font-variation-settings: 'opsz' 28;
+  text-align: center;
+}
+
+.link {
+  color: inherit;
+  text-decoration: underline;
+}

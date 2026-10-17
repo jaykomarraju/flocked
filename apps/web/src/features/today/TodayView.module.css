@@ -107,3 +107,28 @@
   line-height: 20px;
   font-variation-settings: 'opsz' 28;
 }
+
+/* The round's non-default rules (Paper `config-warning`): the loudest thing after the question, so a
+   2px ink border, no accent. A refusal (`stakes-entry/mismatch`) uses the same box with the error
+   mark; the CTA under it is disabled. */
+.notice[data-variant='strong'],
+.notice[data-variant='refusal'] {
+  border: var(--border-strong) solid var(--color-ink);
+}
+
+/* "See the change log (#A1F3, #A1F4)" / "See what doesn't match": the body role, underlined. */
+.noticeLink {
+  align-self: flex-start;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-family: var(--font-body);
+  font-size: var(--text-label);
+  line-height: 20px;
+  font-variation-settings: 'opsz' 28;
+  text-align: left;
+  text-decoration: underline;
+  cursor: pointer;
+}

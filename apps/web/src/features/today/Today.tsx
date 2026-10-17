@@ -15,6 +15,7 @@ import { useNavigate } from 'react-router';
 import { api } from '../../api/client';
 import { useAuth } from '../../auth/session';
 import { readPick, type StoredPick } from '../../crypto/picks';
+import { readStakesPick } from '../stakes/picks';
 import { useSignIn } from '../../layout/SignInContext';
 import { useOnline } from '../../lib/online';
 import { useBreakpoint } from '../../theme';
@@ -27,7 +28,14 @@ import { Skeleton } from '../../ui/Skeleton';
 import { modePhase } from '../../ws/live';
 import { roundDetail, useLiveRound } from '../../ws/useLiveRound';
 import { LastRoundStrip, lastRoundSummary } from '../reveal/LastRoundStrip';
+import { useSmartWallet } from '../../wallet/useSmartWallet';
 import { useCountingHold } from '../reveal/countingHold';
+import detailStyles from '../stakes/details.module.css';
+import { showsStakes } from '../stakes/eligibility';
+import type { StoredStakesPick } from '../stakes/picks';
+import { useStakesToday } from '../stakes/useStakesToday';
+import { VerifyCallout } from '../stakes/VerifyCallout';
+import { VerifyOverlay } from '../stakes/VerifyOverlay';
 import { markRevealPlayed, revealPlayed } from '../reveal/played';
 import { RevealView, type RevealPhase } from '../reveal/RevealView';
 import { refundKeepsSplit, refundLine } from '../reveal/copy';
@@ -62,34 +70,49 @@ export function Today() {
   return <TodayScreen data={query.data} />;
 }
 
-/** What this device and the server know about the player's Free entry in a round. */
+/** What this device and the server know about the player's entry in a round, in either mode. */
 function usePlayed(roundId: string | null) {
   const { client, me, status } = useAuth();
   const userId = me?.user.id ?? null;
   const key = userId && roundId ? `${userId}/${roundId}` : null;
   const read = () => (userId && roundId ? readPick(userId, roundId) : null);
+  const readStakes = () => (userId && roundId ? readStakesPick(userId, roundId) : null);
   // Read again in the same render the round or user changes, so a round that just became
   // `previousRoundId` never reads as not entered for a render (which would remount its screen).
-  const [local, setLocal] = useState(() => ({ key, pick: read() }));
+  const [local, setLocal] = useState(() => ({ key, pick: read(), stakes: readStakes() }));
   let stored = local.pick;
+  let storedStakes = local.stakes;
   if (local.key !== key) {
     stored = read();
-    setLocal({ key, pick: stored });
+    storedStakes = readStakes();
+    setLocal({ key, pick: stored, stakes: storedStakes });
   }
-  const setStored = useCallback((pick: StoredPick) => setLocal({ key, pick }), [key]);
+  const setStored = useCallback(
+    (pick: StoredPick) => setLocal((l) => ({ ...l, key, pick })),
+    [key],
+  );
+  const setStoredStakes = useCallback(
+    (pick: StoredStakesPick) => setLocal((l) => ({ ...l, key, stakes: pick })),
+    [key],
+  );
   const mine = useQuery({
     queryKey: roundMeKey(roundId ?? '', userId ?? ''),
     queryFn: ({ signal }) => client.call(roundMe, { params: { id: roundId ?? '' }, signal }),
     enabled: status === 'signed-in' && roundId !== null && userId !== null,
   });
   const entry = mine.data?.modes.free ?? null;
+  const stakesEntry = mine.data?.modes.stakes ?? null;
   return {
     userId,
     stored,
     setStored,
+    storedStakes,
+    setStoredStakes,
+    /** The mode whose reveal the player is shown: Stakes if they played it, else Free. */
+    mode: (storedStakes !== null || stakesEntry !== null ? 'stakes' : 'free') as Mode,
     me: mine.data ?? null,
     refetchMe: mine.refetch,
-    entered: stored !== null || entry !== null,
+    entered: stored !== null || entry !== null || storedStakes !== null || stakesEntry !== null,
     /** Still finding out (no stored pick, and the session or the server hasn't answered). */
     pending:
       stored === null && (status === 'loading' || (mine.isPending && mine.fetchStatus !== 'idle')),
@@ -160,9 +183,14 @@ function TodayScreen({ data }: { data: RoundsTodayResponse }) {
     <OpenRound
       key={round.id}
       round={round}
-      crowdHint={crowdHint?.free ? crowdHintLine(crowdHint.free) : null}
+      crowdHint={(mode) => {
+        // Free and Stakes tallies are counted separately (spec "Client app" › Today).
+        const hint = crowdHint?.[mode];
+        return hint ? crowdHintLine(hint) : null;
+      }}
       lastRound={lastRound}
       onSealed={cur.setStored}
+      onStakesEntered={cur.setStoredStakes}
       onClosed={refetchToday}
     />
   );
@@ -188,20 +216,24 @@ function OpenRound({
   crowdHint,
   lastRound,
   onSealed,
+  onStakesEntered,
   onClosed,
 }: {
   round: RoundView;
-  crowdHint: string | null;
+  /** The crowd-history hint for the mode on screen; each mode is counted separately. */
+  crowdHint: (mode: Mode) => string | null;
   lastRound: ReactNode;
   onSealed: (pick: StoredPick) => void;
+  onStakesEntered: (pick: StoredStakesPick) => void;
   onClosed: () => void;
 }) {
   const breakpoint = useBreakpoint();
-  const { client, status, me, refresh } = useAuth();
+  const { client, status, me, refresh, miniApp } = useAuth();
   const signIn = useSignIn();
   const online = useOnline();
   const live = useLiveRound(client, round);
   const now = useServerNow(live.round?.skewMs);
+  const smartWallet = useSmartWallet();
   const [mode, setMode] = useState<Mode>('free');
   const [pick, setPick] = useState<string | null>(null);
   const free = round.config?.free;
@@ -218,11 +250,37 @@ function OpenRound({
     [refresh, onSealed],
   );
   const entry = useFreeEntry(client, sealed);
+  const entered = useCallback(
+    (p: StoredStakesPick) => {
+      void refresh();
+      onStakesEntered(p);
+    },
+    [refresh, onStakesEntered],
+  );
+  const stakes = useStakesToday({
+    client,
+    wagmi: smartWallet.config,
+    me,
+    round,
+    selected: mode === 'stakes',
+    refresh,
+    miniApp,
+    onEntered: entered,
+    wallet: smartWallet.address,
+    connect: smartWallet.connect,
+  });
+  // Entries close for both modes at once, and the Free mode drives the screen's phase.
   const phase = live.round ? modePhase(live.round, 'free', now) : 'open';
   useOnClose(phase === 'open', onClosed);
-  const stats = live.round?.modes.free;
+  const isStakes = mode === 'stakes';
+  const stats = live.round?.modes[mode];
   const remainingMs = round.closesAt * 1000 - now;
   const userId = me?.user.id;
+  const stakesShown = STAKES_UI_ENABLED && showsStakes(stakes.offer);
+  // Stakes hidden by region, age, a break or a suspension: the toggle goes back to Free (AC-8).
+  useEffect(() => {
+    if (isStakes && !stakesShown) setMode('free');
+  }, [isStakes, stakesShown]);
 
   return (
     <>
@@ -232,7 +290,7 @@ function OpenRound({
         date={formatGameDay(round.gameDay)}
         mode={mode}
         onModeChange={setMode}
-        stakesAvailable={STAKES_UI_ENABLED && round.modes.stakes !== undefined}
+        stakesAvailable={stakesShown}
         question={round.question.prompt}
         options={round.question.options.map((o, i) => ({
           value: String(i),
@@ -243,9 +301,9 @@ function OpenRound({
           setPick(v);
           entry.reset();
         }}
-        crowdHint={crowdHint}
+        crowdHint={crowdHint(mode)}
         stake={
-          free
+          !isStakes && free
             ? {
                 value: stake,
                 onChange: (v) => {
@@ -259,7 +317,11 @@ function OpenRound({
               }
             : null
         }
-        notice={dstNotice(round.opensAt, round.closesAt)}
+        stakesStake={isStakes ? stakes.stakesStake : null}
+        callout={isStakes && stakes.offer.kind === 'verify' ? <VerifyCallout /> : null}
+        notice={
+          (isStakes ? stakes.notice : null) ?? dstNotice(round.opensAt, round.closesAt)
+        }
         lastRound={lastRound}
         remainingMs={remainingMs}
         entrants={stats?.entrantCount ?? 0}
@@ -267,18 +329,34 @@ function OpenRound({
         live={phase === 'open'}
         signedIn={status === 'signed-in'}
         onSignIn={signIn.open}
-        sealing={entry.state.kind === 'sealing'}
-        sealDisabled={!online || phase !== 'open' || !free || !userId}
+        sealing={isStakes ? stakes.pending : entry.state.kind === 'sealing'}
+        ctaLabel={isStakes ? stakes.cta.label : undefined}
+        ctaLoadingLabel={isStakes ? stakes.cta.loadingLabel : undefined}
+        workingNote={isStakes ? stakes.cta.workingNote : undefined}
+        sealDisabled={
+          !online ||
+          phase !== 'open' ||
+          !userId ||
+          (isStakes ? stakes.blocked : !free)
+        }
         error={
-          entry.state.kind === 'error'
+          (isStakes ? stakes.error : null) ??
+          (entry.state.kind === 'error'
             ? {
                 message: entry.state.message,
                 onRetry: entry.state.known ? undefined : () => entry.reset(),
               }
-            : null
+            : null)
         }
         onSeal={() => {
-          if (pick === null || !userId) return;
+          if (!userId) return;
+          if (isStakes) {
+            // "Verify with Coinbase" needs no pick; sealing one does.
+            if (stakes.offer.kind === 'verify') return stakes.act(0);
+            if (pick === null) return;
+            return stakes.act(pick === '1' ? 1 : 0);
+          }
+          if (pick === null) return;
           void entry.seal({
             round,
             optionIndex: pick === '1' ? 1 : 0,
@@ -287,6 +365,23 @@ function OpenRound({
           });
         }}
       />
+      {stakes.details ? (
+        <ul className={detailStyles.details}>
+          {stakes.details.map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
+      ) : null}
+      {stakes.verifying && me ? (
+        <VerifyOverlay
+          breakpoint={breakpoint}
+          ageRequired={me.tos.ageRequired}
+          onVerify={(age) => void stakes.verify.verify(age)}
+          onClose={stakes.closeVerify}
+          waiting={stakes.verify.state.kind !== 'idle'}
+          error={stakes.verify.state.kind === 'error' ? stakes.verify.state.message : null}
+        />
+      ) : null}
     </>
   );
 }
