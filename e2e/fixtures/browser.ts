@@ -48,6 +48,9 @@ export async function preparePage(page: Page, stack: Stack): Promise<void> {
     {
       rpcUrl: stack.rpcUrl,
       anchor: stack.contracts.anchor,
+      // The Stakes round config check and `enter` read these (W10-C, apps/web/src/crypto/chain.ts).
+      escrow: stack.contracts.escrow,
+      usdc: stack.contracts.usdc,
       drand: stack.drandChain,
       skipDailyClose: true,
     },
