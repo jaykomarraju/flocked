@@ -28,6 +28,15 @@ export interface LiveMode {
   provisional: boolean;
   /** When a refund became (or becomes) final, epoch ms. */
   finalAt: number | null;
+  /**
+   * The onchain proposal this mode's state came from, as its `claimsOpenAt` (epoch ms): a settlement
+   * proposal's `claimsOpenAt`, a provisional refund's `finalAt`. Null while no proposal is known.
+   * `FlockedEscrow` sets it to `block.timestamp + CHALLENGE_WINDOW` on every proposal and refuses a
+   * veto once it has passed, so each re-proposal after a veto carries a strictly later one. That
+   * makes it the only thing that tells a new proposal from a stale one at the same rank (see
+   * `stale`, W9-Z review R5).
+   */
+  proposedAt: number | null;
 }
 
 export interface LiveRound {
@@ -54,6 +63,9 @@ const MODE_RANK: Record<ModeStatus, number> = {
   voided: 3,
 };
 
+/** `settle_proposed` and `refund_proposed`: the two statuses a guardian veto can swap between. */
+const PROPOSED_RANK = MODE_RANK.settle_proposed;
+
 const later = <T extends string>(rank: Record<T, number>, a: T, b: T): T =>
   rank[b] >= rank[a] ? b : a;
 const max = (a: bigint, b: bigint) => (b > a ? b : a);
@@ -69,13 +81,43 @@ function emptyMode(): LiveMode {
     result: null,
     provisional: false,
     finalAt: null,
+    proposedAt: null,
   };
+}
+
+/**
+ * Whether `next` describes a proposal the client has already moved past (W9-Z review R5). A
+ * settlement and a refund proposal share a rank, and `later` takes the newer on a tie, so without
+ * this a late duplicate `refunded{provisional}` — or a reconnect `state` built from a snapshot a
+ * second old — would move a mode that has since re-proposed as a settlement back to
+ * `refund_proposed`, and `modePhase` would show a refund over the result. Only the proposal time
+ * separates the two: a veto's re-proposal always carries a later one.
+ */
+function stale(prev: LiveMode, next: LiveMode): boolean {
+  return (
+    MODE_RANK[next.status] === PROPOSED_RANK &&
+    next.proposedAt !== null &&
+    prev.proposedAt !== null &&
+    next.proposedAt < prev.proposedAt
+  );
 }
 
 /** Merges a snapshot of one mode into what the client already knows, never going backwards. */
 function mergeMode(prev: LiveMode | undefined, next: LiveMode): LiveMode {
   if (!prev) return next;
+  // Counts still only grow; everything the superseded proposal says about the outcome is dropped.
+  if (stale(prev, next)) {
+    return {
+      ...prev,
+      entrantCount: Math.max(prev.entrantCount, next.entrantCount),
+      pool: max(prev.pool, next.pool),
+    };
+  }
   const status = later(MODE_RANK, prev.status, next.status);
+  const proposedAt =
+    next.proposedAt !== null && (prev.proposedAt === null || next.proposedAt > prev.proposedAt)
+      ? next.proposedAt
+      : prev.proposedAt;
   return {
     status,
     entrantCount: Math.max(prev.entrantCount, next.entrantCount),
@@ -86,6 +128,7 @@ function mergeMode(prev: LiveMode | undefined, next: LiveMode): LiveMode {
     result: next.result ?? prev.result,
     provisional: status === 'refund_proposed' ? next.provisional || prev.provisional : false,
     finalAt: next.finalAt ?? prev.finalAt,
+    proposedAt,
   };
 }
 
@@ -131,6 +174,7 @@ export function applyMessage(
         result: m.result,
         provisional: m.status === 'refund_proposed',
         finalAt: m.status === 'refund_proposed' ? m.claimsOpenAt : null,
+        proposedAt: MODE_RANK[m.status] === PROPOSED_RANK ? m.claimsOpenAt : null,
       };
     }
     return merge(prev, {
@@ -186,6 +230,8 @@ export function applyMessage(
             status: msg.mode === 'free' ? 'settled' : 'settle_proposed',
             revealedAt: p.revealedAt ?? nowMs,
             claimsOpenAt: msg.claimsOpenAt ?? p.claimsOpenAt,
+            // Stakes only: Free settles outright and has no proposal to supersede.
+            proposedAt: msg.claimsOpenAt ?? p.proposedAt,
             result: { winningOption: msg.winningOption, tally: msg.tally },
           },
         }),
@@ -202,6 +248,8 @@ export function applyMessage(
             refundReason: msg.refundReason,
             provisional: msg.provisional,
             finalAt: msg.finalAt,
+            // A proposal's `finalAt` is its `claimsOpenAt`; a final refund supersedes by rank.
+            proposedAt: msg.provisional ? msg.finalAt : p.proposedAt,
           },
         }),
       };
@@ -229,6 +277,7 @@ export function applyRoundView(prev: LiveRound | null, round: RoundView): LiveRo
           : null,
       provisional: m.status === 'refund_proposed',
       finalAt: m.finalAt ?? (m.status === 'refund_proposed' ? m.claimsOpenAt : null),
+      proposedAt: MODE_RANK[m.status] === PROPOSED_RANK ? m.claimsOpenAt : null,
     };
   }
   return merge(prev, {

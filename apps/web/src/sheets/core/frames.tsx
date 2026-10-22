@@ -11,6 +11,7 @@
 // Modal gets that from its own `scrimClassName`.
 import type { ReactNode } from 'react';
 import { ShellFrame } from '../../layout/ShellFrame';
+import type { TabId } from '../../nav';
 import { TodayView, type TodayViewProps } from '../../features/today/TodayView';
 import type { Balance } from '../../ui/BalanceSlot';
 import type { HeaderUser } from '../../ui/Header';
@@ -56,6 +57,8 @@ export interface CoreArtboardProps {
   short?: boolean;
   /** The screen in the content column instead of Today (Sealed, the reveal). */
   children?: ReactNode;
+  /** The tab the nav bar marks; Claims and the other You pages are `you` (W10-C). */
+  active?: TabId;
   /** Under the screen, full width: the Reveal artboards' notes band (not part of the screen). */
   notes?: ReactNode;
   /**
@@ -78,6 +81,7 @@ export function CoreArtboard({
   today,
   short = false,
   children,
+  active = 'today',
   notes,
   halfPixel = false,
 }: CoreArtboardProps) {
@@ -95,7 +99,7 @@ export function CoreArtboard({
           onSignIn: noop,
           onSignOut: noop,
         }}
-        active="today"
+        active={active}
         overlay={overlay}
         artboard={
           breakpoint === 'mobile' && (overlay || short) ? { height: MOBILE_OVERLAY_HEIGHT } : {}

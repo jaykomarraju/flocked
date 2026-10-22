@@ -1,0 +1,56 @@
+/* The verification sheet's contents (Paper `core/stakes-entry/verify-sheet/*`). Down the sheet, as
+   Paper draws it: the body 6 under the title, the checkboxes 20 under the body and 12 apart, the CTA
+   20 under them, "Not now" 12 under the CTA and the footer 20 under that, 28 above the sheet's edge
+   (the sign-in sheet's 32). The 16 gap is the base; the margins here are the differences from it. */
+.sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+  color: var(--color-ink);
+}
+
+/* The dialog's title role (Fredoka 600 22/28), as Paper and the sign-in sheet draw it. Paper sets
+   the body 6 under it rather than the sheet's 16, which the negative margin takes back. */
+.title {
+  composes: type-title from global;
+  margin-bottom: -10px;
+}
+
+.checks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+  padding: var(--spacing-1) 0;
+}
+
+.cta,
+.notNow {
+  width: 100%;
+}
+
+.notNow {
+  margin-top: -4px;
+}
+
+/* "18+ only · Responsible play", centred, label role. */
+.footer {
+  margin-top: var(--spacing-1);
+  margin-bottom: -4px;
+  color: var(--color-muted);
+  font-family: var(--font-body);
+  font-size: var(--text-label);
+  font-weight: 500;
+  line-height: 20px;
+  font-variation-settings: 'opsz' 28;
+  text-align: center;
+}
+
+/* Paper sets the dot 10 from each side, where the space in the markup alone gives 4.5. */
+.footer span[aria-hidden='true'] {
+  margin-inline: 5px;
+}
+
+.link {
+  color: inherit;
+  text-decoration: underline;
+}

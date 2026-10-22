@@ -9,7 +9,16 @@ import { enterFree, scheduleRound, waitRound } from '../fixtures/rounds';
 import { expectArtboard } from '../fixtures/screenshot';
 import { QUESTION, expectAccessible, mockWorld, readStoredPick } from './world';
 
-const TODAY_STATES = ['open-signed-out', 'open-free', 'sealing', 'dst-notice'] as const;
+const TODAY_STATES = [
+  'open-signed-out',
+  'open-free',
+  'sealing',
+  'dst-notice',
+  // The Stakes side of the toggle (W10-C).
+  'open-stakes',
+  'open-stakes-unverified',
+  'config-warning',
+] as const;
 const BREAKPOINTS = ['mobile', 'tablet', 'desktop'] as const;
 
 test.describe('Today sheets match Paper', () => {

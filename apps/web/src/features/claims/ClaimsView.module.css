@@ -1,0 +1,117 @@
+/* Paper draws the page title and its line 6 apart, inside the screen's own 24 (28 from tablet up)
+   content gap. */
+.heading {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* A page title without a token role: Fredoka 700 −0.01em, 28/32 on mobile and the question role's
+   36/40 from tablet up (docs/design/README.md "Screen type without a token" draws the Sealed and
+   Reveal questions the same way). */
+.title {
+  color: var(--color-ink);
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 32px;
+  letter-spacing: -0.01em;
+}
+
+.title:not([data-breakpoint='mobile']) {
+  font-size: 36px;
+  line-height: 40px;
+}
+
+/* The empty state sits in Paper's 360-tall box (Components › Feedback › Empty state). */
+.empty {
+  flex-shrink: 0;
+  height: 360px;
+}
+
+/* "Ready to claim": a surface card with a line border, 20 padding, the label over the total. */
+.card {
+  display: flex;
+  flex-direction: column;
+  padding: var(--spacing-5);
+  border: var(--border-default) solid var(--color-line);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+}
+
+/* Secondary lines run at the label's size in Inter 400, not the label role's 500 (W10-C measured
+   the exports; "Ready to claim" above is the 500). */
+.note.note,
+.footer.footer {
+  font-weight: 400;
+}
+
+.note {
+  margin-top: var(--spacing-1);
+  color: var(--color-muted);
+}
+
+.error {
+  margin-top: var(--spacing-4);
+}
+
+.cta {
+  margin-top: var(--spacing-4);
+}
+
+/* The list: a rule above every row and under the last, with 14 of air on each side of it (Paper
+   draws 28 between one row's content and the next, the rule centred). */
+.rows {
+  border-bottom: var(--border-default) solid var(--color-line);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-6);
+  padding: 14px 0;
+  border-top: var(--border-default) solid var(--color-line);
+}
+
+/* The meta line over the question, 2 apart, as Paper draws both of a row's columns. */
+.main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* A row's small text is the caption's size and weight with no tracking: Paper sets these at 0,
+   where the caption role carries 0.01em. */
+.meta.meta,
+.status.status {
+  letter-spacing: 0;
+}
+
+.meta {
+  color: var(--color-muted);
+}
+
+/* The amount over its status word, right-aligned against the content edge. */
+.figure {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  align-items: flex-end;
+  gap: 2px;
+  text-align: right;
+}
+
+/* A payout that is ready (or going out) is ink; one still inside its challenge window is muted. */
+.status {
+  color: var(--color-ink);
+}
+
+.status[data-waiting] {
+  color: var(--color-muted);
+}
+
+.footer {
+  color: var(--color-muted);
+}
