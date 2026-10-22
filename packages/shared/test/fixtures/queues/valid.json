@@ -95,6 +95,21 @@
       }
     },
     {
+      "event": "outcome",
+      "userId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CF",
+      "dedupeKey": "outcome:2026-10-08:01K6Z8Y4N2R7VQ3M5T9W1XB0CF",
+      "payload": {
+        "roundId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CD",
+        "gameDay": "2026-10-08",
+        "mode": "stakes",
+        "result": "refund",
+        "amount": null,
+        "nextRoundId": null,
+        "refundReason": 1,
+        "provisional": true
+      }
+    },
+    {
       "event": "payout_claimable",
       "userId": "01K6Z8Y4N2R7VQ3M5T9W1XB0CE",
       "dedupeKey": "payout_claimable:01K6Z8Y4N2R7VQ3M5T9W1XB0CD:stakes:01K6Z8Y4N2R7VQ3M5T9W1XB0CE",

@@ -99,6 +99,13 @@ export const NotifyMessageSchema = z.discriminatedUnion('event', [
     nextRoundId: UlidSchema.nullable(),
     /** The refund rule when `result` is `refund` (owner decision, Oct 12, 2026); null otherwise. */
     refundReason: RefundReasonCodeSchema.nullable(),
+    /**
+     * The mode's result is a Stakes proposal, not final yet (`settle_proposed` / `refund_proposed`;
+     * W9-F1 R2). A proposed refund is the day's `outcome` only when it is the user's first, and is
+     * told as `refunded` when it becomes final (spec "Notifications"), so it is never a later event
+     * at the proposal. Absent on a final result.
+     */
+    provisional: z.boolean().optional(),
   }),
   notify('payout_claimable', {
     roundId: UlidSchema,
