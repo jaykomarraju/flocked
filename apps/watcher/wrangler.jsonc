@@ -1,0 +1,102 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  // The independent verification watcher (spec "Architecture"; "Smart contract" › Challenge window,
+  // watcher and guardian). It runs in a SECOND Cloudflare account (plan.md 4.4, OA-05), so it shares
+  // nothing with apps/api: its own D1, its own Base RPC, its own drand chain config and its own
+  // paging webhook. Its only shared code is the packages @flocked/{verify,settle,tlock,abi}.
+  //
+  // It reads the game only through public routes on API_BASE_URL (the API origin plus /api/v1):
+  // GET /rounds/today, GET /rounds/:id and GET /rounds/:id/bundles/:mode/:file. It never reads the
+  // backend's D1, R2 or KV, and holds no binding to them.
+  //
+  // Secrets (never in this file; `wrangler secret put <NAME> --env <env>`, locally .dev.vars):
+  //   WATCHER_KEY          the verdict signing key (OA-15; the owner's, generated off this repo)
+  //   PAGER_WEBHOOK_URL    the guardian paging channel (OA-18); a capability URL, so a secret
+  //   PAGER_WEBHOOK_TOKEN  optional bearer token for that webhook
+  //
+  // Local only, from the stack (never deployed): LOCAL_DEPLOYMENT (the JSON of
+  // contracts/deployments/31337.json) and DRAND_INFO_URL (the local drand network's /info).
+  // Never deployed without --env: the placeholder database_id below would fail.
+  "name": "flocked-watcher-local",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  // Verdicts are evidence, so `GET /verdicts/:subject/:id` is public: staging and production are
+  // served on workers.dev until the owner attaches a domain in the watcher account (OA-05).
+  // Locally the stack reaches it directly, so no subdomain is needed.
+  "workers_dev": false,
+  "observability": { "enabled": true },
+
+  // Every minute: snapshot newly locked configs, check RoundCreated, recompute proposals, check
+  // voids and refundTooFew, page on a verdict that is still missing 30 minutes after a proposal.
+  // Keep in sync with src/run.ts.
+  "triggers": { "crons": ["* * * * *"] },
+
+  "vars": {
+    "ENVIRONMENT": "local",
+    "CHAIN_ID": "31337",
+    "API_BASE_URL": "http://127.0.0.1:8787/api/v1",
+    "BASE_RPC_URL": "http://127.0.0.1:8545",
+    "ATTESTATION_NETWORK": "base",
+    // The Verified Country codes legal approved (OA-21), as the watcher knows them. Empty means the
+    // watcher cannot judge a creator's country: that check reports "unable", never a silent pass.
+    "COUNTRY_ALLOW": "US",
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "flocked-watcher-local",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations",
+    },
+  ],
+
+  "env": {
+    "staging": {
+      "name": "flocked-watcher-staging",
+      "workers_dev": true,
+      "triggers": { "crons": ["* * * * *"] },
+      "vars": {
+        "ENVIRONMENT": "staging",
+        "CHAIN_ID": "84532",
+        "API_BASE_URL": "https://staging.flocked.xyz/api/v1",
+        "BASE_RPC_URL": "OWNER_SUPPLIED_STAGING_BASE_SEPOLIA_RPC_URL",
+        // Coinbase attestations live on Base mainnet even when staging runs on Base Sepolia, so the
+        // network and its RPC are set apart from the game chain (spec "Architecture").
+        "ATTESTATION_NETWORK": "base",
+        "ATTESTATION_RPC_URL": "OWNER_SUPPLIED_BASE_MAINNET_RPC_URL",
+        "COUNTRY_ALLOW": "",
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "flocked-watcher-staging",
+          "database_id": "OWNER_SUPPLIED_WATCHER_STAGING_D1_DATABASE_ID",
+          "migrations_dir": "migrations",
+        },
+      ],
+    },
+    "production": {
+      "name": "flocked-watcher",
+      "workers_dev": true,
+      "triggers": { "crons": ["* * * * *"] },
+      "vars": {
+        "ENVIRONMENT": "production",
+        "CHAIN_ID": "8453",
+        "API_BASE_URL": "https://flocked.xyz/api/v1",
+        "BASE_RPC_URL": "OWNER_SUPPLIED_BASE_RPC_URL",
+        "ATTESTATION_NETWORK": "base",
+        "ATTESTATION_RPC_URL": "OWNER_SUPPLIED_BASE_RPC_URL",
+        "COUNTRY_ALLOW": "",
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "flocked-watcher-production",
+          "database_id": "OWNER_SUPPLIED_WATCHER_PRODUCTION_D1_DATABASE_ID",
+          "migrations_dir": "migrations",
+        },
+      ],
+    },
+  },
+}
