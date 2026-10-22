@@ -39,6 +39,7 @@ import { newUlid } from '@flocked/shared';
 import type { Hex } from 'viem';
 import type { ModeResult, ModeTally } from '../../do/types.js';
 import type { Env } from '../../env.js';
+import { enqueueCardsSafely } from '../../cards/enqueue.js';
 import { enqueueModeOutcome } from '../../notify/outcomes.js';
 import { runModeFinal } from '../../settlement/hooks.js';
 import { raiseAlert } from '../../lib/alert.js';
@@ -404,6 +405,11 @@ export const outcomeProposedHandler: EventHandler = async (evt, env) => {
   // W9-A: each entrant's `outcome` at the Stakes reveal, after the D1 commit (the consumer's dedupe
   // key drops a replay's repeat). A failure throws, so the entry retries.
   await enqueueModeOutcome(env, roundId, 'stakes');
+  // W10-A: the share cards for the same reveal, which is where the five-minute target starts
+  // (src/cards/enqueue.ts). A veto is caught by the `RoundRefunded` that follows it (reason 5) and
+  // a vetoed refund proposal by its re-proposal, each of which re-renders at the same keys. This
+  // never throws: a card is not worth replaying a confirmed proposal.
+  await enqueueCardsSafely(env, roundId, 'stakes', 'fan-out');
 };
 
 /** `ProposalVetoed`: a vetoed settlement is refunded by its `RoundRefunded`; a vetoed refund proposal settles again. */
