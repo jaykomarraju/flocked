@@ -246,7 +246,7 @@ describe('ERC-7677 policy', () => {
 
 describe('final-call quota', () => {
   it('reclaims an expired lease and fences the stale owner from releasing or committing it', async () => {
-    const key = `0x${'11'.repeat(32)}` as Hex;
+    const key: Hex = `0x${'11'.repeat(32)}`;
     const first = await acquireSponsorship(env.DB, { key, sender: wallet, now: 1_000 });
     expect(first.kind).toBe('acquired');
     if (first.kind !== 'acquired') throw new Error('first lease was not acquired');
