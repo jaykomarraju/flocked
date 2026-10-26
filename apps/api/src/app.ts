@@ -5,6 +5,7 @@ import { Hono } from 'hono';
 import { sessionMiddleware } from './auth/session.js';
 import type { AppEnv } from './lib/auth-context.js';
 import { notFound, onError } from './lib/errors.js';
+import { cards } from './routes/cards.js';
 import { routes } from './routes/index.js';
 
 export function createApp(): Hono<AppEnv> {
@@ -14,6 +15,8 @@ export function createApp(): Hono<AppEnv> {
   // Resolves the session cookie or Bearer token into `user` and `session` (lib/auth-context.ts).
   app.use(`${API_BASE_PATH}/*`, sessionMiddleware);
   app.route(API_BASE_PATH, routes);
+  // Share pages and their images are public site URLs as well as API endpoints.
+  app.route('/', cards);
   return app;
 }
 

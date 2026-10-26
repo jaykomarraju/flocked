@@ -89,6 +89,7 @@ const IMPLEMENTED = new Set([
   'GET /rounds/:id/verify',
   'GET /rounds/:id/bundles/:mode/:file',
   'GET /claims',
+  'POST /paymaster',
   // W7-A (test/ws/)
   'GET /rounds/:id/ws',
   // W7-B (test/identity/, test/limits/, test/me/)

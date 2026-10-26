@@ -70,13 +70,13 @@
   //   15 8 * * *  nightly point_balances vs points_ledger reconciliation
   "triggers": { "crons": ["* * * * *", "0 * * * *", "15 8 * * *"] },
 
-  // The React SPA from apps/web, served by this Worker; /api/* always reaches the Worker first, and
-  // so does /__test/* (the local-only test seam, which answers 404 outside `local`).
+  // The React SPA from apps/web, served by this Worker; API, local seam and public card URLs always
+  // reach the Worker first (`/__test/*` answers 404 outside `local`).
   "assets": {
     "directory": "../web/dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*", "/__test/*"],
+    "run_worker_first": ["/api/*", "/__test/*", "/s/*", "/cards/*"],
   },
 
   // Durable Objects are SQLite-backed. Bindings are repeated per environment.

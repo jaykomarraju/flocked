@@ -18,6 +18,7 @@ interface ResolvedWranglerConfig {
   vars: Record<string, unknown>;
   triggers: { crons?: string[] };
   limits?: { cpu_ms?: number };
+  assets?: { run_worker_first?: string[] };
   queues: {
     producers?: { binding: string; queue: string }[];
     consumers?: Record<string, unknown>[];
@@ -46,6 +47,7 @@ function wranglerSummary(): string {
           vars: c.vars,
           crons: c.triggers.crons ?? [],
           limits: c.limits ?? null,
+          runWorkerFirst: c.assets?.run_worker_first ?? [],
           producers: (c.queues.producers ?? []).map((p) => ({
             binding: p.binding,
             queue: p.queue,

@@ -24,6 +24,7 @@ import { Hono, type Context } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { authDeps } from '../auth/deps.js';
 import { clientIp, limitUser } from '../auth/rate-limit.js';
+import { enqueueTeaserCard } from '../cards/enqueue.js';
 import { getUser, requireUser, type AppEnv } from '../lib/auth-context.js';
 import { now } from '../lib/clock.js';
 import { HttpError } from '../lib/errors.js';
@@ -130,6 +131,22 @@ app.post(
         result.message,
         ERROR_STATUS[result.code] as ContentfulStatusCode,
       );
+    }
+    // A daily pick can be shared while it is still sealed. Queue only after the RoundDO confirms
+    // the commit; room rounds never have public, pre-rendered cards.
+    if (round?.kind === 'daily') {
+      try {
+        await enqueueTeaserCard(c.env, roundId, 'free', user.id);
+      } catch (err) {
+        // The RoundDO commit is already durable. A card render is repairable and must not turn a
+        // successful entry into a retry that can only answer `already_entered`.
+        log.error('card_enqueue_failed', {
+          roundId,
+          mode: 'free',
+          how: 'teaser',
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
     return c.json(result.value, 201);
   },

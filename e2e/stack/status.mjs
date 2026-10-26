@@ -105,6 +105,14 @@ export async function health(state) {
     push: mockProbe(state.pids?.push, state.pushUrl),
     'farcaster-notify': mockProbe(state.pids?.['farcaster-notify'], state.farcasterNotifyUrl),
     email: mockProbe(state.pids?.email, state.emailUrl),
+    bundler: mockProbe(state.pids?.bundler, state.bundlerUrl),
+    pager: mockProbe(state.pids?.pager, state.pagerUrl),
+    watcher: probe(async () => {
+      if (!alive(state.pids?.watcher)) throw new Error('process not running');
+      const body = await getJson(`${state.watcherUrl}/health`);
+      if (!body.ok || !body.signer || !body.pager) throw new Error('not fully configured');
+      return `${state.watcherUrl}, signer ${body.signer}`;
+    }),
     cron: probe(() => {
       if (!alive(state.pids?.cron)) throw new Error('process not running');
       if (!existsSync(CRON_HEARTBEAT_FILE)) throw new Error('no pass yet');
@@ -141,6 +149,9 @@ export function printStatus(state, h) {
     ['push', h.results.push],
     ['farcaster-notify', h.results['farcaster-notify']],
     ['email', h.results.email],
+    ['bundler', h.results.bundler],
+    ['pager', h.results.pager],
+    ['watcher', h.results.watcher],
     ['cron', h.results.cron],
   ];
   for (const [name, r] of rows)

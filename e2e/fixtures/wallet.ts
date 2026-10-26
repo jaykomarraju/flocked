@@ -1,11 +1,15 @@
 // The `wallet` fixture (W7-D): EOAs on the stack's anvil. A fresh key per player (anvil gives it gas;
 // MockUSDC mints its stakes and the escrow gets the allowance), or one of anvil's own dev accounts.
-// No spec here needs a Coinbase Smart Wallet: Stakes entries are plain `enter` calls from the
-// player's wallet. The paymaster's user operations (W10-D) will add an ERC-4337 stand-in here.
+// API-level Stakes entries usually send plain `enter` calls from the player's wallet. E2E-11 also
+// builds Coinbase Smart Wallet `executeBatch` calldata around those calls, as an ERC-4337 user
+// operation that the paymaster can inspect without broadcasting it.
 import { flockedEscrowAbi, mockUsdcAbi } from '@flocked/abi';
+import type { PaymasterRequest, StakesPrepareResponse } from '@flocked/shared';
 import {
   createWalletClient,
+  encodeFunctionData,
   http as viemHttp,
+  toHex,
   type Address,
   type Hex,
   type TransactionReceipt,
@@ -33,6 +37,141 @@ export interface Wallet {
   client: WalletClient<ReturnType<typeof viemHttp>, typeof foundry, PrivateKeyAccount | HDAccount>;
   /** The private key of a generated wallet (a throwaway test key), so a later phase can reuse it. */
   key?: Hex;
+}
+
+/** Canonical EntryPoint v0.6 used by the pinned Coinbase Smart Wallet package. */
+export const ENTRY_POINT_V06 = '0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789' as Address;
+
+/** The Coinbase Smart Wallet calls the paymaster decodes from `userOperation.callData`. */
+export const coinbaseSmartWalletAbi = [
+  {
+    type: 'function',
+    name: 'execute',
+    stateMutability: 'payable',
+    inputs: [
+      { name: 'target', type: 'address' },
+      { name: 'value', type: 'uint256' },
+      { name: 'data', type: 'bytes' },
+    ],
+    outputs: [],
+  },
+  {
+    type: 'function',
+    name: 'executeBatch',
+    stateMutability: 'payable',
+    inputs: [
+      {
+        name: 'calls',
+        type: 'tuple[]',
+        components: [
+          { name: 'target', type: 'address' },
+          { name: 'value', type: 'uint256' },
+          { name: 'data', type: 'bytes' },
+        ],
+      },
+    ],
+    outputs: [],
+  },
+] as const;
+
+export interface SmartWalletCall {
+  to: Address;
+  data: Hex;
+  value?: bigint;
+}
+
+/** A complete v0.6 user operation with placeholder gas and signature fields for E2E-11. */
+export interface SmartWalletUserOperation {
+  [key: string]: unknown;
+  sender: Address;
+  nonce: Hex;
+  initCode: Hex;
+  callData: Hex;
+  callGasLimit: Hex;
+  verificationGasLimit: Hex;
+  preVerificationGas: Hex;
+  maxFeePerGas: Hex;
+  maxPriorityFeePerGas: Hex;
+  paymasterAndData: Hex;
+  signature: Hex;
+}
+
+/** Coinbase Smart Wallet `executeBatch`, keeping even a one-call operation in the same shape. */
+export function smartWalletUserOperation(
+  sender: Address,
+  calls: readonly SmartWalletCall[],
+  nonce = 0n,
+): SmartWalletUserOperation {
+  return {
+    sender,
+    nonce: toHex(nonce),
+    initCode: '0x',
+    callData: encodeFunctionData({
+      abi: coinbaseSmartWalletAbi,
+      functionName: 'executeBatch',
+      args: [calls.map((call) => ({ target: call.to, value: call.value ?? 0n, data: call.data }))],
+    }),
+    callGasLimit: '0x0',
+    verificationGasLimit: '0x0',
+    preVerificationGas: '0x0',
+    maxFeePerGas: '0x0',
+    maxPriorityFeePerGas: '0x0',
+    paymasterAndData: '0x',
+    signature: `0x${'00'.repeat(65)}`,
+  };
+}
+
+/** An ERC-7677 request exactly as Coinbase's wallet sends it to the app's proxy. */
+export function paymasterRequest(
+  method: PaymasterRequest['method'],
+  userOperation: SmartWalletUserOperation,
+  chainId: number,
+  id: string | number,
+): PaymasterRequest {
+  return {
+    jsonrpc: '2.0',
+    id,
+    method,
+    params: [userOperation, ENTRY_POINT_V06, toHex(chainId), null],
+  };
+}
+
+/** The exact inner calls of a sponsored Stakes entry: approve immediately followed by enter. */
+export function stakesEntryCalls(
+  stack: Stack,
+  prepared: StakesPrepareResponse,
+  ciphertext: Hex,
+): SmartWalletCall[] {
+  const stake = BigInt(prepared.stake);
+  const { ticket } = prepared;
+  return [
+    {
+      to: stack.contracts.usdc,
+      data: encodeFunctionData({
+        abi: mockUsdcAbi,
+        functionName: 'approve',
+        args: [stack.contracts.escrow, stake],
+      }),
+    },
+    {
+      to: stack.contracts.escrow,
+      data: encodeFunctionData({
+        abi: flockedEscrowAbi,
+        functionName: 'enter',
+        args: [
+          BigInt(ticket.roundId),
+          ciphertext,
+          {
+            roundId: BigInt(ticket.roundId),
+            wallet: ticket.wallet as Address,
+            personTag: ticket.personTag as Hex,
+            expiry: BigInt(ticket.expiry),
+          },
+          prepared.signature as Hex,
+        ],
+      }),
+    },
+  ];
 }
 
 function wrap(stack: Stack, account: PrivateKeyAccount | HDAccount, key?: Hex): Wallet {
@@ -72,9 +211,9 @@ export async function mined(stack: Stack, hash: Hex | Promise<Hex>): Promise<Tra
   return receipt;
 }
 
-/** Mints `amount` MockUSDC to the wallet and approves the escrow for it. */
-export async function fundStake(stack: Stack, w: Wallet, amount: bigint): Promise<void> {
-  const { usdc, escrow } = stack.contracts;
+/** Mints `amount` MockUSDC without approving it (the smart-wallet batch does the approval). */
+export async function mintStake(stack: Stack, w: Wallet, amount: bigint): Promise<void> {
+  const { usdc } = stack.contracts;
   await mined(
     stack,
     w.client.writeContract({
@@ -84,6 +223,12 @@ export async function fundStake(stack: Stack, w: Wallet, amount: bigint): Promis
       args: [w.address, amount],
     }),
   );
+}
+
+/** Mints `amount` MockUSDC to the wallet and approves the escrow for it. */
+export async function fundStake(stack: Stack, w: Wallet, amount: bigint): Promise<void> {
+  const { usdc, escrow } = stack.contracts;
+  await mintStake(stack, w, amount);
   await mined(
     stack,
     w.client.writeContract({

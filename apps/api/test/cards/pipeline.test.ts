@@ -38,6 +38,7 @@ const queueEnv = () =>
   }) as unknown as Env;
 
 const get = (path: string) => app.request(`${ORIGIN}${API_BASE_PATH}${path}`, {}, env);
+const getRoot = (path: string) => app.request(`${ORIGIN}${path}`, {}, env);
 
 /** Three Free entries: two on option 0, one (the fixture user) on the minority option 1. */
 const ENTRANTS = [
@@ -251,6 +252,10 @@ describe('AC-7: every settled player has a card', () => {
     expect([...bytes.slice(0, 4)]).toEqual([0x89, 0x50, 0x4e, 0x47]);
     expect(await env.BUCKET.head(key)).not.toBeNull();
 
+    const rootRes = await getRoot(`/cards/${shareId?.share_id ?? ''}/og.png`);
+    expect(rootRes.status).toBe(200);
+    expect(rootRes.headers.get('content-type')).toBe('image/png');
+
     const roundRes = await get(`/rounds/${round}/card/embed.png`);
     expect(roundRes.status).toBe(200);
     expect(roundRes.headers.get('content-type')).toBe('image/png');
@@ -282,6 +287,10 @@ describe('the share page', () => {
     expect(html).toContain('@ewe_one · Free · Oct 8');
     // Revealed, so the page links to the round.
     expect(html).toContain(`/r/${round}`);
+
+    const rootRes = await getRoot(`/s/${shareId}`);
+    expect(rootRes.status).toBe(200);
+    expect(rootRes.headers.get('content-type')).toContain('text/html');
   });
 
   it('is 404 for an unknown share ID', async () => {

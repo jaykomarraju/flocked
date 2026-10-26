@@ -7,10 +7,12 @@ import {
   ERROR_STATUS,
   ErrorEnvelopeSchema,
   newUlid,
+  type CardsMessage,
 } from '@flocked/shared';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { app } from '../../src/app.js';
 import { withAuthDeps } from '../../src/auth/deps.js';
+import type { Env } from '../../src/env.js';
 import { fakeUser, withSession } from '../helpers/index.js';
 import {
   BASE_OPENS_AT,
@@ -24,11 +26,14 @@ import {
 } from './helpers.js';
 
 let r: TestRound;
+let daily: TestRound;
 beforeAll(async () => {
   useTestSigner();
   setClock(BASE_OPENS_AT + HOUR);
   r = await createRound();
   await r.stub.init(r.locked);
+  daily = await createRound({ kind: 'daily' });
+  await daily.stub.init(daily.locked);
 });
 
 /** Turnstile (first Free entry of the game day, W4-A) passes; test/anti-abuse covers it. */
@@ -36,7 +41,12 @@ const passTurnstile = withAuthDeps(env, {
   turnstileFetch: () => Promise.resolve(Response.json({ success: true })),
 });
 
-function post(userId: string | null, roundId: string, body: unknown): Promise<Response> {
+function post(
+  userId: string | null,
+  roundId: string,
+  body: unknown,
+  requestEnv: Env = passTurnstile,
+): Promise<Response> {
   const client = withSession(app, userId ? fakeUser({ id: userId }) : undefined);
   return Promise.resolve(
     client.request(
@@ -46,7 +56,7 @@ function post(userId: string | null, roundId: string, body: unknown): Promise<Re
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ turnstileToken: 'XXXX.DUMMY.TOKEN.XXXX', ...(body as object) }),
       },
-      passTurnstile,
+      requestEnv,
     ),
   );
 }
@@ -61,6 +71,89 @@ describe('POST /rounds/:id/entries', () => {
     expect(res.status).toBe(201);
     const body = CreateEntryResponseSchema.parse(await res.json());
     expect(body.receipt).toMatchObject({ roundId: r.locked.roundId, seq: 0, stake: '25' });
+  });
+
+  it('enqueues a teaser only after a daily entry commits', async () => {
+    const sent: CardsMessage[] = [];
+    const requestEnv = withAuthDeps(
+      {
+        ...env,
+        QUEUE_CARDS: {
+          send: () => Promise.reject(new Error('send is not used')),
+          sendBatch: (batch: { body: CardsMessage }[]) =>
+            Promise.resolve(void sent.push(...batch.map(({ body }) => body))),
+        } as unknown as Env['QUEUE_CARDS'],
+      },
+      { turnstileFetch: () => Promise.resolve(Response.json({ success: true })) },
+    );
+    const u = await createUser(500);
+    const res = await post(
+      u,
+      daily.locked.roundId,
+      { stake: '25', ciphertext: await sealedPick(daily.locked) },
+      requestEnv,
+    );
+    expect(res.status).toBe(201);
+    expect(sent).toEqual([
+      {
+        roundId: daily.locked.roundId,
+        mode: 'free',
+        userId: u,
+        kind: 'teaser',
+        variants: ['og', 'embed', 'square'],
+      },
+    ]);
+  });
+
+  it('does not enqueue a public teaser for a room entry', async () => {
+    const sent: CardsMessage[] = [];
+    const requestEnv = withAuthDeps(
+      {
+        ...env,
+        QUEUE_CARDS: {
+          send: () => Promise.reject(new Error('send is not used')),
+          sendBatch: (batch: { body: CardsMessage }[]) =>
+            Promise.resolve(void sent.push(...batch.map(({ body }) => body))),
+        } as unknown as Env['QUEUE_CARDS'],
+      },
+      { turnstileFetch: () => Promise.resolve(Response.json({ success: true })) },
+    );
+    const room = await createRound();
+    await room.stub.init(room.locked);
+    const u = await createUser(500, room.locked.roomId as string);
+    const res = await post(
+      u,
+      room.locked.roundId,
+      { stake: '25', ciphertext: await sealedPick(room.locked) },
+      requestEnv,
+    );
+    expect(res.status).toBe(201);
+    expect(sent).toEqual([]);
+  });
+
+  it('keeps the committed entry successful when teaser enqueue fails', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const requestEnv = withAuthDeps(
+      {
+        ...env,
+        QUEUE_CARDS: {
+          send: () => Promise.reject(new Error('queue unavailable')),
+          sendBatch: () => Promise.reject(new Error('queue unavailable')),
+        } as unknown as Env['QUEUE_CARDS'],
+      },
+      { turnstileFetch: () => Promise.resolve(Response.json({ success: true })) },
+    );
+    const u = await createUser(500);
+    const res = await post(
+      u,
+      daily.locked.roundId,
+      { stake: '25', ciphertext: await sealedPick(daily.locked) },
+      requestEnv,
+    );
+    expect(res.status).toBe(201);
+    expect(errors.mock.calls.some(([line]) => String(line).includes('card_enqueue_failed'))).toBe(
+      true,
+    );
   });
 
   it('401 without a session', async () => {

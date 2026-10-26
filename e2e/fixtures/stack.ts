@@ -31,6 +31,9 @@ interface StackState {
   pushUrl?: string;
   farcasterNotifyUrl?: string;
   emailUrl?: string;
+  bundlerUrl: string;
+  watcherUrl: string;
+  pagerUrl: string;
   drand: { url: string; chainHash: string; publicKey: string; genesis: number; period: number };
   anvil: { rpcUrl: string; chainId: number };
   contracts: { escrow: Address; usdc: Address; anchor: Address };
@@ -105,6 +108,11 @@ export class Stack {
   readonly farcasterUrl: string;
   /** The notification mocks (W9-A): a web push service, Farcaster's endpoint and hub, and email. */
   readonly notifyMocks: { push: string; farcaster: string; email: string } | null;
+  /** The stack's combined ERC-4337 bundler and ERC-7677 paymaster provider. */
+  readonly bundlerUrl: string;
+  /** Independent verifier and its local pager sink (PIPE-5). */
+  readonly watcherUrl: string;
+  readonly pagerUrl: string;
   readonly rpcUrl: string;
   readonly chainId: number;
   readonly contracts: StackState['contracts'];
@@ -134,6 +142,9 @@ export class Stack {
       state.pushUrl && state.farcasterNotifyUrl && state.emailUrl
         ? { push: state.pushUrl, farcaster: state.farcasterNotifyUrl, email: state.emailUrl }
         : null;
+    this.bundlerUrl = state.bundlerUrl;
+    this.watcherUrl = state.watcherUrl;
+    this.pagerUrl = state.pagerUrl;
     this.rpcUrl = state.anvil.rpcUrl;
     this.chainId = state.anvil.chainId;
     this.contracts = state.contracts;
@@ -161,6 +172,15 @@ export class Stack {
   seam<T = unknown>(path: string, body?: unknown, init: HttpInit = {}): Promise<HttpResult<T>> {
     this.seamCalls += 1;
     return http<T>(`${this.apiUrl}/__test${path}`, { ...init, body, token: this.#seamKey });
+  }
+
+  /** A raw local seam response (bundle bytes in watcher/verification tests). */
+  seamRaw(path: string): Promise<Response> {
+    this.seamCalls += 1;
+    return fetch(`${this.apiUrl}/__test${path}`, {
+      headers: { authorization: `Bearer ${this.#seamKey}` },
+      signal: AbortSignal.timeout(10_000),
+    });
   }
 
   /** The seam's view of a round, or null before it is locked. */

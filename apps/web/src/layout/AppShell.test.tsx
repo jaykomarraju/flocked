@@ -60,6 +60,8 @@ describe('AppShell on mobile', () => {
   it('keeps You current on a You page', async () => {
     renderApp({ path: '/claims' });
     expect(await screen.findByRole('heading', { name: 'Claims' })).toBeVisible();
+    // This is the real Claims screen, not the route table's former title-only placeholder.
+    expect(screen.getByRole('button', { name: 'Connect a wallet' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'You' })).toHaveAttribute('aria-current', 'page');
   });
 

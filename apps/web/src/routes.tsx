@@ -3,6 +3,7 @@
 // the active tab from the path. /__sheets (the design sheets the `ui` screenshot tests compare with
 // the Paper exports) exists outside production builds.
 import type { RouteObject } from 'react-router';
+import { Claims } from './features/claims/Claims';
 import { Today } from './features/today/Today';
 import { AppShell } from './layout/AppShell';
 import { RouteError } from './layout/RouteError';
@@ -42,7 +43,7 @@ export const routes: RouteObject[] = [
           { path: 'rooms/:id', element: <Placeholder title="Room" /> },
           { path: 'submit', element: <Placeholder title="Submit a question" /> },
           { path: 'queue', element: <Placeholder title="Queue" /> },
-          { path: 'claims', element: <Placeholder title="Claims" /> },
+          { path: 'claims', element: <Claims /> },
           { path: 'settings', element: <Placeholder title="Settings" /> },
           { path: 'u/:handle', element: <Placeholder title="Profile" /> },
           { path: 'r/:id', element: <Placeholder title="Round" /> },

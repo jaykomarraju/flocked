@@ -16,8 +16,12 @@ const HOURLY = '0 * * * *';
 
 const api = process.env.STACK_CRON_API;
 const key = process.env.STACK_CRON_KEY;
+const watcher = process.env.STACK_CRON_WATCHER;
 const intervalMs = Number(process.env.STACK_CRON_INTERVAL_MS ?? 5_000);
 const hourlyMs = Number(process.env.STACK_CRON_HOURLY_MS ?? 600_000);
+// The deployed watcher runs once a minute. Locally one startup pass proves the cron seam, then E2E
+// drives proposal checks explicitly so it can construct a veto/re-proposal between observations.
+const watcherMs = Number(process.env.STACK_WATCHER_INTERVAL_MS ?? 600_000);
 
 async function run(cron) {
   const res = await fetch(`${api}/__test/cron`, {
@@ -31,9 +35,20 @@ async function run(cron) {
   return res.json();
 }
 
+async function runWatcher() {
+  if (!watcher) return null;
+  const res = await fetch(`${watcher}/__test/tick`, {
+    method: 'POST',
+    signal: AbortSignal.timeout(60_000),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
 async function main() {
   if (!api || !key) throw new Error('STACK_CRON_API and STACK_CRON_KEY are required');
   let lastHourly = 0;
+  let lastWatcher = 0;
   for (;;) {
     const started = Date.now();
     const due = [EVERY_MINUTE];
@@ -49,6 +64,17 @@ async function main() {
       } catch (err) {
         results.push({ cron, ok: false, error: err.message });
         console.log(`${new Date().toISOString()} cron ${cron} failed: ${err.message}`);
+      }
+    }
+    if (started - lastWatcher >= watcherMs) {
+      lastWatcher = started;
+      try {
+        const summary = await runWatcher();
+        if (summary)
+          results.push({ cron: 'watcher', ok: true, verdicts: summary.verdicts?.length });
+      } catch (err) {
+        results.push({ cron: 'watcher', ok: false, error: err.message });
+        console.log(`${new Date().toISOString()} watcher tick failed: ${err.message}`);
       }
     }
     writeFileSync(

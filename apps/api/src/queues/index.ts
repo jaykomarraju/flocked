@@ -5,7 +5,7 @@
 //   * handler throws    → retry (wrangler.jsonc max_retries, then the queue's DLQ);
 //   * invalid message   → logged and acked: retrying a malformed body can never succeed.
 // settle and decrypt are W5-A's (src/queues/settle.ts, decrypt.ts), notify W9-A's (src/notify/); cards
-// (W10-A) is a stub until its owner replaces it. Each owner edits only its entry in HANDLERS. The
+// (W10-A) renders and stores share cards. Each owner edits only its entry in HANDLERS. The
 // notify queue runs a whole batch through `notifyQueueBatch`, so each channel sends a batch at once
 // (Farcaster groups identical notifications into one request); HANDLERS.notify is its per-message form.
 import {
@@ -14,8 +14,8 @@ import {
   type QueueMessage,
   type QueueName,
 } from '@flocked/shared';
+import { cardsHandler } from '../cards/consumer.js';
 import type { Env } from '../env.js';
-import { NotImplementedError } from '../lib/errors.js';
 import { log } from '../lib/log.js';
 import { notifyHandler, notifyQueueBatch } from '../notify/consumer.js';
 import { decryptHandler } from './decrypt.js';
@@ -42,17 +42,12 @@ export type QueueHandler<Q extends QueueName> = (
 
 type Handlers = { [Q in QueueName]: QueueHandler<Q> };
 
-const stub =
-  (queue: QueueName): QueueHandler<QueueName> =>
-  () =>
-    Promise.reject(new NotImplementedError(`queue ${queue}`));
-
 /** One handler per logical queue. */
 export const HANDLERS: Handlers = {
   settle: (body, _message, env) => settleHandler(body, env),
   'decrypt-daily': (body, _message, env) => decryptHandler(body, env),
   'decrypt-rooms': (body, _message, env) => decryptHandler(body, env),
-  cards: stub('cards'),
+  cards: (body, _message, env) => cardsHandler(body, env),
   notify: (body, _message, env) => notifyHandler(body, env),
 };
 
