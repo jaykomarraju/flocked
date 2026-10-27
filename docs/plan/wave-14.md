@@ -85,3 +85,8 @@
 
 - **W14-A:** the web checks every Free round against its onchain lock leaf through the committed deployment: commit `contracts/deployments/84532.json` with the Sepolia deploy (and W16-A `8453.json`), or no Free entry can be sealed in staging.
 - **W14-B:** tlock-js ships in the Today views' chunk (188 KB, 57 KB gzip); the main chunk is 404 KB (131 KB gzip) after W9-C's split.
+
+## Carry-over from W10-Z (Oct 26, 2026)
+
+- **W14-A:** the e2e smart wallet is a stand-in (`e2e/fixtures/browser.ts` `installSmartWallet`): it sends a batch's calls one by one on anvil, not as one atomic user operation through an EntryPoint. On Base Sepolia, enter and claim once with a real Coinbase Smart Wallet through the paymaster proxy and the real provider (OA-08), including a refused batch. Check the deployed API bundle size (resvg is about 2.4 MiB raw; W10-D measured 7.7 MiB raw, 2.1 MiB gzip).
+- **W14-B:** the Coinbase Wallet SDK's telemetry (W10-D.2) if W11-D doesn't turn it off; axe on the pending Stakes entry (skipped on the stack: injecting axe outlasted the 90 s inclusion wait).

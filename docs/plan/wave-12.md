@@ -2,7 +2,7 @@
 
 **Goal.** Every screen in the spec's Client app table exists and matches the frozen design, and the admin console works. Analytics events flow to Workers Analytics Engine, with a dashboard. Every remaining e2e scenario passes.
 
-**Base.** Tag `wave-11`. **Hold points:** OA-D3 and OA-D5 frozen; OA-21 ToS/privacy/responsible-play text available for W12-B (if not, W12-B uses clearly marked placeholder text, and the item stays open in PR-11). **Migrations reserved:** W12-D `0027` (shifted by W7-Z, Oct 12: W7-F1 took `0020`).
+**Base.** Tag `wave-11`. **Hold points:** OA-D3 and OA-D5 frozen; OA-21 ToS/privacy/responsible-play text available for W12-B (if not, W12-B uses clearly marked placeholder text, and the item stays open in PR-11). **Migrations reserved:** W12-D `0028` (shifted by W7-Z, Oct 12: W7-F1 took `0020`; and by W10-Z, Oct 26: W10-F1 may take `0027`).
 
 ## W12-A: Web submit, queue, rooms
 
@@ -44,7 +44,7 @@
 - **Role / size:** integrate, M.
 - **Objective.** Merge A, B and C. Analytics: server events (`signup`, `entry_submitted`, `share_landing`, `share_conversion`, `question_submitted`, `question_voted`, `personhood_verified`, `claim_completed`, `notification_sent`) and client beacon events (`page_view`, `reveal_viewed`, `share_clicked`, `notification_opened`) to Analytics Engine, with no plaintext picks. The admin analytics tab shows the spec's dashboard metrics via the AE SQL API, plus the Free extra-accounts flag query (Anti-abuse). Remaining e2e: E2E-7 / AC-9 (question → moderation → vote → approve → schedule → settle → creator award/fee), E2E-9 (UI), E2E-12, E2E-13.
 - **Read first.** `plan.md` §2, §3.4. Handoffs W12-A, B, C. Spec: "Analytics", "Anti-abuse" (Free-mode extra accounts bullet).
-- **Owns.** Registry files; `apps/api/src/analytics/**`; `apps/web/src/analytics/**`; `apps/web/src/features/admin/analytics/**`; migration `0027` if needed; `e2e/ui/{question-flow,exclusion,delete-account,question-block}.spec.ts`.
+- **Owns.** Registry files; `apps/api/src/analytics/**`; `apps/web/src/analytics/**`; `apps/web/src/features/admin/analytics/**`; migration `0028` if needed; `e2e/ui/{question-flow,exclusion,delete-account,question-block}.spec.ts`.
 - **Required tests.** E2E-7, E2E-9, E2E-12, E2E-13, AC-9. Analytics payloads never include option data (test).
 - **Emits.** W12-Z prompt.
 
@@ -77,3 +77,8 @@
 ## Carry-over from W9-Z (Oct 16, 2026)
 
 - **W12-B:** the notification event defaults (every event on except `streak_at_risk`) live in `apps/api/src/notify/recipient.ts`; the web Settings needs the same list: move it into `packages/shared` when Settings is built. "Remind me" on Sealed then subscribes to push from Settings.
+
+## Carry-over from W10-Z (Oct 26, 2026)
+
+- **W12-B:** the personhood callback returns to the screen the flow began on (decision, Oct 26; W10-F1 carries `from` through the OAuth state). Settings shows the outcome (`?personhood=verified|failed&reason=…`) when verification starts there, and the re-accept steps (terms, age) when `/me` lists only `tos_not_accepted` or `age_unattested`.
+- **W12-D:** migration `0028` (W10-F1 may take `0027`).
