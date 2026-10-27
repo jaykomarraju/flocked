@@ -45,7 +45,7 @@
 - **Read first.** `plan.md` §2, §3.4. Handoffs W11-A, B, C. `docs/design/screens.md` (share sheet rows). Spec: "Share cards and distribution" (only "Share surfaces").
 - **Owns.** Registry files; `apps/web/src/features/share/**`; `apps/web/public/**` (manifest, service worker); `e2e/ui/share.spec.ts`.
 - **Required tests.** E2E-3, AC-7.
-- **Emits.** W11-Z prompt.
+- **Emits.** W11-D.2 prompt (split up front, plan.md 2.8; W10-Z, Oct 26, 2026): W11-D merges A, B, C and W10-F1, registers them and builds the share sheet, the teaser share, the manifest and embed meta, the service worker and "Remind me"; **W11-D.2** builds `e2e/ui/share.spec.ts` (E2E-3, AC-7's unfurl half) and any other remaining e2e, and emits the W11-Z prompt.
 
 ## W11-Z checklist
 

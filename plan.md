@@ -544,7 +544,8 @@ Legend: ⬜ not started · 🟡 in progress · ✅ complete · ⛔ blocked. Z se
 | W11-B | Watcher II (Free, paging, dead-man) | M | ⬜ |
 | W11-C | Web: round, archive, verify, profiles, boards | M | ⬜ |
 | W11-D | Share sheet, mini app, push + e2e | M | ⬜ |
-| W11-Z | Consolidate wave 11 | S | ⬜ |
+| W11-D.2 | Share e2e (E2E-3, AC-7 unfurl), W11-Z prompt | M | ⬜ |
+| W11-Z | Consolidate wave 11 | M | ⬜ |
 | W12-A | Web: submit, queue, rooms | M | ⬜ |
 | W12-B | Web: settings and responsible play | M | ⬜ |
 | W12-C | Web: admin console | M | ⬜ |
