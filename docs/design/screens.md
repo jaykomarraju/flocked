@@ -558,7 +558,20 @@ The page stays frozen (OA-D4); these are the owner's Oct 16 changes only.
   as the body) and the note ("The body is the admin's reason ({reason}), cut to 128 characters with "…" if longer.
   Push only: no email."). Each sheet grows by 237 (exports 760×7928 and 760×8224, were 760×7454 and 760×7750).
 - Not in this pass: the `security_notice` kind `identity_unlinked` (decision B6, W9-A) is in `SECURITY_NOTICE_KINDS`
-  but not on the all-events sheets, which still show four kinds.
+  but not on the all-events sheets, which still show four kinds. Added by W10-Z (below).
+- Re-exported: `exports/notifications/{farcaster,webpush}__all-events__mobile.png`.
+
+### Cards and notifications fixes (W10-Z, Oct 26, 2026)
+
+- **`identity_unlinked` on the all-events sheets** (decision B6):
+  `notifications/{farcaster,webpush}/all-events/mobile` now show five `security_notice` kinds, with
+  `identity_unlinked` right after `identity_linked` in `SECURITY_NOTICE_KINDS` order. Each new row is a clone of
+  that sheet's `identity_linked` row with only the text changed: the "security_notice · identity_unlinked" caption,
+  title "Sign-in method removed", body "A sign-in method was removed from your account. If that wasn't you, check
+  Settings." (`NOTIFICATION_COPY`). Each sheet grows by 186 (the row and the 16 gap; exports 760×8300 and 760×8596,
+  were 760×7928 and 760×8224).
+- **Email:** `notifications/email/security-notice/{mobile,desktop}` show one sample kind (`email_sign_in`) and list
+  no kinds, so they're unchanged. `identity_unlinked`'s email copy lives in `NOTIFICATION_COPY` only.
 - Re-exported: `exports/notifications/{farcaster,webpush}__all-events__mobile.png`.
 
 ## Admin
