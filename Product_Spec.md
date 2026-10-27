@@ -189,8 +189,8 @@ Picks are encrypted in the client to a future drand beacon round, so no one, inc
   - At lock, the full `RoundConfig` (every field), the author's handle and payout address (`payoutAddress`, frozen into the locked config at lock, not derived at read time), and any non-default value with its audit-log ID are published on `/rounds/:id` and `/rounds/today`.
   - The client compares every onchain field against that record and refuses to build `enter` on any mismatch.
   - `beaconDelay` is not in `RoundConfig`. The client checks that `beaconRound` is the first quicknet round at or after `closesAt + beaconDelay`, using the `beaconDelay` in the published locked config.
-  - It also checks the values against the launch defaults (stake 5 USDC, 500/100 bps, cap 10, `minEntrants` 20 for daily rounds and 3 for Stakes rooms) and shows any non-default value prominently.
-  - The watcher snapshots the published config at lock and checks it independently of the backend.
+  - It also checks the values against the launch defaults (stake 5 USDC, 500/100 bps, cap 10, `minEntrants` 20 for daily rounds and 3 for Stakes rooms) and shows any non-default value prominently. Its "See the change log" is an in-place disclosure that lists each non-default value with its audit-log ID.
+  - The watcher snapshots the published config at open, before any entry, records when it took the snapshot, and checks it independently of the backend. It takes it at open, not lock, because no public route shows a round between lock and open.
 - Server stores the ciphertext and `commitment = keccak256(ciphertext)`. It cannot read the option.
 - After the beacon is published, the settlement job fetches its signature and verifies it with BLS against the pinned quicknet public key for exactly `beaconRound` before any decryption. A signature that fails is discarded and fetched again. Relays are used only for availability. The backend reads beacons from `DRAND_RELAYS` (comma-separated URLs); for quicknet it defaults to drand's public relays (api.drand.sh, api2.drand.sh, api3.drand.sh and drand.cloudflare.com).
 - Every ciphertext is decrypted with that one verified signature. Settlement never uses tlock-js's own beacon lookup, so the result does not depend on when decryption runs.
@@ -407,7 +407,8 @@ A user is a person. A person can sign in several ways, and Stakes needs proof th
   - the lower of the two daily stake caps in force, and only a pending cap increase from the side whose cap is in force, with its original timer. With equal caps, the lower pending increase survives with its own timer; on a tie, the later timer;
   - the losing account's sign-in identities;
   - its point balances, per scope, through paired `merge` ledger rows;
-  - its room memberships (room balances summed) and any room ownership.
+  - its room memberships (room balances summed) and any room ownership;
+  - its push subscriptions (an upsert on the subscription's unique endpoint), and its notification prefs only for (channel, event) pairs the kept account hasn't set, so the kept account's own choices win.
 - The losing account is marked `status = merged` with `merged_into`, and its sessions are revoked. Its unclaimed Stakes payouts and refunds stay visible in the kept account's Claims. Pending and confirmed merges are tracked in `merges`.
 - Competitive history is not moved. Entries, payouts, cards, stats (`user_stats` and the `stats_*` tables) and referrals stay under the losing account's ID, which is excluded from boards and streaks and never shown. The kept account's stats and referrals are only its own.
 - Every merge is written to `audit_log`.
@@ -417,6 +418,7 @@ A user is a person. A person can sign in several ways, and Stakes needs proof th
 - Coinbase Verifications puts an onchain attestation on up to three wallets per Coinbase account, with nothing linking those wallets to each other. On its own, it cannot enforce one entry per person. The person ID therefore comes from the Coinbase account itself, and the account must be ID-verified.
 - **Flow.** The user signs in with Coinbase (OAuth 2.0 with PKCE where supported) with scopes `wallet:user:read` and `identity:user:address:read`.
 - **State.** The OAuth state is single-use, expires after 10 minutes, and is bound in `AuthDO` to the user who started the flow. The callback attributes the result only to that user, never to whatever cookie arrives. A callback that carries a session for a different user is refused and binds nothing.
+- **Return.** `POST /me/personhood` carries where the flow began (Today or Settings) through the OAuth state. The callback returns there, and that screen shows the outcome, including a failure and its reason.
 - **Verification.** The server reads the Coinbase user ID from `GET /v2/user`, and the primary address from `GET /v2/user/personal-details` (Coinbase's ID verification provides it).
 - **What's stored.**
   - `person_id` = HMAC-SHA256(`PERSON_ID_KEY`, Coinbase user ID). The raw Coinbase ID, legal name and address are never stored.
@@ -644,18 +646,21 @@ interface IFlockedAnchor {
 **Challenge window, watcher and guardian**
 
 - Stakes outcomes become final, and Stakes claims open, 2 hours after the proposal.
-- An independent watcher runs on separate infrastructure under a separate account. It publishes a signed verdict (match, mismatch, or unable to verify) for every:
-  - Stakes `RoundCreated`, checked against the config published at lock and against rules that don't depend on the backend:
+- An independent watcher runs on separate infrastructure under a separate account, on Workers Paid. It publishes a signed verdict (match, mismatch, or unable to verify) for every:
+  - Stakes `RoundCreated`, checked against its snapshot of the published config, taken at open (see Sealed picks, Round config check), and against rules that don't depend on the backend:
     - for house questions, creator = treasury;
     - otherwise, creator holds unrevoked Verified Account and allowed Verified Country attestations;
-    - the stake, fees, cap and `minEntrants` are the defaults unless a matching override was published before lock.
+    - the stake, fees, cap and `minEntrants` are the defaults unless the published config lists a matching override with its audit-log ID.
 
     A mismatch pages the guardian to `voidRound` before close.
   - Stakes proposal, by full recompute from chain data, drand and the bundle. This includes a check that the payout leaves match the derived amounts and the tally, and that every VOID reason can be recomputed from public data.
   - Stakes void and `refundTooFew`;
   - Free lock, commitment and manifest anchor;
   - Free settlement and refund. A rule-8 refund is a match only if the watcher's own drand monitoring saw the beacon missing at beacon time + 24 h; otherwise the verdict is unable to verify.
-- Guardian signers are paged on any mismatch, unable-to-verify, or missing verdict 30 minutes after a proposal. The missing-verdict check runs as a dead-man's switch outside both the watcher and the operator.
+- Stakes room rounds are outside the watcher's scope until room rounds publish their config and bundles publicly. Stakes rooms (`rooms.stakes.enabled`) stay off until then.
+- The watcher keeps its own allowed-country list (`COUNTRY_ALLOW`, country codes). A region entry in `geo.stakes.allow`, such as `US-NJ`, matches at country level. The owner keeps the list in step with `geo.stakes.allow` and checks it at each deploy.
+- A check the watcher cannot run (an unset attestation RPC or allowed-country list, a failed read) is unable to verify and pages. It is never a pass.
+- Guardian signers are paged on any mismatch, unable-to-verify, or missing verdict 30 minutes after a proposal. The watcher checks for its own missing verdict, and so does an independently hosted dead-man's switch, outside both the watcher and the operator.
 - **Guardian policy:**
   - veto any settlement proposal still unverified 30 minutes before `claimsOpenAt`;
   - keep a veto-capable signing quorum reachable whenever any challenge window is open (normally 21:00–23:30 ET, but proposals can come later);
@@ -664,9 +669,9 @@ interface IFlockedAnchor {
 
 **Gas and UX**
 
-- Target smart wallets (Coinbase Smart Wallet) with a paymaster, so entering costs the user zero ETH. Batch approve (or permit) and `enter` in one user operation.
+- Target smart wallets (Coinbase Smart Wallet) with a paymaster, so entering costs the user zero ETH. A smart wallet sends `approve` then `enter` in one batch (one user operation). `enterWithPermit` is for EOA callers, because USDC's `permit` recovers an ECDSA signer.
 - Claims, refund claims and `finalize` can be gasless the same way. Provide a "Claim all" UI that batches multiple rounds.
-- The paymaster sponsors only: `enter` or `enterWithPermit` with a valid ticket, plus a USDC `approve(FlockedEscrow, stake)` only as the call right before that entry in the same user operation; and `claim`, `claimRefund`, `finalize` and `withdraw`. The cap is 10 sponsored user operations per user per day, so one "Claim all" batch counts once.
+- The paymaster sponsors only: `enter` or `enterWithPermit` with a valid ticket, plus a USDC `approve(FlockedEscrow, stake)` only as the call right before that entry in the same user operation; and `claim`, `claimRefund`, `finalize` and `withdraw`. The cap is 10 sponsored user operations per smart-wallet sender per UTC day, because the wallet calls the paymaster endpoint unauthenticated. One "Claim all" batch counts once.
 - Operator and anchor transactions never pay more than a per-environment fee cap (`TX_MAX_FEE_GWEI`). An abandoned operator transaction (a `createRound` still pending at `opensAt`, a `voidRound` abandoned at close) is cancelled with a 0-value self-send at its nonce.
 
 ## Architecture
@@ -801,7 +806,7 @@ A single Worker serves a JSON REST API under `/api/v1`. The standalone web app u
 | POST | /auth/email/start | none | {email, turnstileToken?}. Send a sign-in code, only to a verified email already linked to an account. The reply is the same whether or not the address is linked. Turnstile is optional and verified when sent |
 | POST | /auth/email/verify | none | Verify the code, create session |
 | POST | /auth/logout | user | End session |
-| GET | /me | user | Profile, balances, limits, flags, verification status, Stakes eligibility |
+| GET | /me | user | Profile, balances, limits, flags, verification status, Stakes eligibility, and `stakes.net30d` (signed, USDC base units: the user's Stakes net over the last 30 days) |
 | PATCH | /me | user | Handle, display name, notification prefs, card and profile prefs, creator payout wallet |
 | POST | /me/tos | user | Accept the current ToS version and age attestation |
 | POST | /me/identities/link | user | Link a wallet, Farcaster account or email; returns a pending merge if the identity belongs to another account |
@@ -809,8 +814,8 @@ A single Worker serves a JSON REST API under `/api/v1`. The standalone web app u
 | DELETE | /me/identities/:id | user | Unlink an identity (see Identities for limits) |
 | POST | /me/email | user | Add an email address and send a verification code |
 | POST | /me/email/verify | user | Verify the email code |
-| POST | /me/personhood | user | Start Coinbase sign-in; returns the authorize URL |
-| GET | /me/personhood/callback | state | OAuth callback: authenticated by the single-use state; sets verification or creates a pending merge |
+| POST | /me/personhood | user | Start Coinbase sign-in from Today or Settings, carried in the OAuth state; returns the authorize URL |
+| GET | /me/personhood/callback | state | OAuth callback: authenticated by the single-use state; sets verification or creates a pending merge, then returns to the screen the flow began on with the outcome |
 | GET | /me/referrals | user | Referral status and rewards |
 | GET | /rounds/today | none | Current daily round: question, options, opensAt, closesAt, beaconRound, beacon time, entrant counts, pools, and the full locked config (Stakes: every `RoundConfig` field, chain round ID, author handle and payout address) |
 | GET | /rounds/:id | none | Round detail; per-mode settlement once that mode has revealed. Past beacon time, a closed round's `pending` mode shows `revealing`, as in the WebSocket `state` |
@@ -821,7 +826,7 @@ A single Worker serves a JSON REST API under `/api/v1`. The standalone web app u
 | GET | /rounds/:id/verify | none | Bundle manifest and chunk URLs |
 | GET | /rounds/:id/bundles/:mode/:file | none | One verification bundle object (manifest or chunk), byte for byte; 404 until the mode has revealed; room rounds are for members only |
 | GET | /rounds/:id/ws | none | WebSocket upgrade to a viewer shard for the round |
-| GET | /claims | user or wallet | Unclaimed Stakes payouts and refunds with proofs and claim-open times, including accounts merged into the caller. During the challenge window it lists the live proposal's payouts too; the escrow refuses a claim until the result is final, so clients show "claimable at". With `?wallet=`, served from public bundle data without sign-in, plus the wallet's own room-round payouts in a separate `roomClaims` array, each `{chainRoundId, kind, account, amount, proof, claimsOpenAt}` (no question, room or other members' data) |
+| GET | /claims | user or wallet | Unclaimed Stakes payouts and refunds with proofs and claim-open times, including accounts merged into the caller. Each `claims` item also carries the round's `gameDay` and question `prompt`. During the challenge window it lists the live proposal's payouts too; the escrow refuses a claim until the result is final, so clients show "claimable at". With `?wallet=`, served from public bundle data without sign-in, plus the wallet's own room-round payouts in a separate `roomClaims` array, each `{chainRoundId, kind, account, amount, proof, claimsOpenAt}` (no question, room or other members' data) |
 | GET | /questions?status=queued&sort=top | none | Questions in the voting queue: `submitted` and `queued` questions not waiting for review (votes count until Assign). `?status=scheduled` lists only the caller's own |
 | POST | /questions | user | Submit a question (runs moderation synchronously); 3 per game day |
 | POST | /questions/:id/vote | user | {value: 1 or −1} |
@@ -833,7 +838,7 @@ A single Worker serves a JSON REST API under `/api/v1`. The standalone web app u
 | POST | /rooms/:id/questions | owner | Set a custom question for the next room round (before its question lock). Moderated like POST /questions and sharing its allowance; 201 for every moderation outcome |
 | GET | /s/:shareId | none | HTML page with OG and Farcaster embed tags pointing to the card images |
 | GET | /cards/:shareId/:variant.png | none | Share card image from R2 (variant: og, embed, square) |
-| GET | /rounds/:id/card/:variant.png | none | Generic round card (split only); 404 until the mode has revealed |
+| GET | /rounds/:id/card/:variant.png | none | Generic round card (split only); 404 until a mode has revealed. The path names no mode: it shows Free once Free has revealed, else Stakes. A room round's card is served only behind room access |
 | DELETE | /me | user | Delete the account (see Identities) |
 | POST | /push/subscribe | user | Register web push subscription |
 | POST | /farcaster/webhook | none | Farcaster mini app events (`miniapp_added`, `miniapp_removed`, `notifications_enabled`, `notifications_disabled`) as a JSON Farcaster Signature `{header, payload, signature}`, checked against the app key on a hub: stores, re-enables or disables the user's notification token; answers `{ok, result}` |
@@ -845,7 +850,7 @@ A single Worker serves a JSON REST API under `/api/v1`. The standalone web app u
 
 **Paths and formats.**
 
-- `/s/:shareId` and the card images (`/cards/…`, `/rounds/:id/card/…`) are served at the site root, not under `/api/v1`. The Worker runs before static assets for these paths.
+- `/s/:shareId` and the player card images (`/cards/…`) are served at the site root as well as under `/api/v1`. The Worker runs before static assets for these paths. The round card (`/rounds/:id/card/…`) is served only under `/api/v1`, behind the same room-round access check as `/rounds/:id`.
 - Handles match `^[a-z0-9_-]{3,20}$`. A handle is null until the user picks one. `PATCH /me` refuses reserved handles: a short, case-insensitive blocklist kept in `packages/shared` (for example admin, flocked, support, official, mod, guardian, api, help, root and system).
 - The `/admin/*` endpoints are as drafted in `packages/shared` (`src/api/admin.ts`); they may change when the admin console is built.
 - The `/rounds?before=` cursor, the `/claims` refund proof and the WebSocket `state` payload are as defined in `packages/shared`.
@@ -901,7 +906,7 @@ Each round has one `RoundDO` (Durable Object). It owns live counters, accepts Fr
 **Reveal choreography**
 
 - Between close and the beacon (2 minutes), clients show a countdown: "Unsealing in 1:42". Countdowns are hh:mm:ss, except this one, which is m:ss because it never exceeds 10 minutes.
-- After the beacon, clients show "Counting the flock…" until `revealed` arrives for their mode, and for at least 1.5 seconds: a result that arrives sooner is held back until then, so every player sees the state before the bars grow.
+- After the beacon, clients show "Counting the flock…" until `revealed` arrives for their mode, and for at least 1.5 seconds: a result that arrives sooner is held back until then, so every player sees the state before the bars grow. The 1.5-second minimum applies to a revealed result: a refunded mode shows its result at once, without "Counting the flock…".
   - Small rounds reveal within seconds of the beacon.
   - At full scale, the target is p95 under 2 minutes after the beacon. For Stakes it is measured from the later of the beacon and the safe head passing the close block.
 - The coordinator broadcasts `revealed` as soon as the settlement record, payout root, manifest and chunks are durable in R2. Per-entry D1 writes follow in idempotent chunked jobs.
@@ -951,7 +956,7 @@ One responsive web app (React + Vite + TypeScript) serves both the browser and t
 | Submit | `/submit` | Question form with live format validation; result of moderation |
 | Queue | `/queue` | Voting list with up/down arrows |
 | Rooms | `/rooms`, `/rooms/:id` | Create, invite link, room round, room points, room leaderboard |
-| Claims | `/claims` | Unclaimed Stakes payouts and refunds, claim-open times, "Claim all" |
+| Claims | `/claims` | Unclaimed Stakes payouts and refunds, claim-open times, "Claim all". Whether a payout is ready is decided by server time (the clock skew the WebSocket measures), not the device clock. "Claim all" sends only the connected wallet's payouts, because the escrow builds the leaf from `msg.sender`; payouts of merged accounts held by other wallets are listed with a line naming the wallet to connect |
 | Settings | `/settings` | Linked identities and pending merges, Coinbase verification, creator payout wallet, card and profile privacy, notifications, stake cap, self-exclusion, sign out |
 | Onboarding | modal | Three-card explainer: "Pick the side fewer people pick", "Picks stay sealed until just after 9pm ET", "The Flock loses. Strays win." Then sign-in |
 
@@ -965,13 +970,13 @@ One responsive web app (React + Vite + TypeScript) serves both the browser and t
 
 **Entry flow (Stakes)**
 
-1. Same option UI with the round's fixed stake shown. Eligibility (verified Coinbase sign-in, geo, age, ToS, limits) has already been checked via `/me`, which reads the age and ToS acceptance stored from the verification sheet. Unverified users see Stakes with "Verify with Coinbase", which opens the verification sheet; inside the mini app this opens an external browser, and the app polls `/me` until verification completes.
-2. The client runs the round config check (see Sealed picks), encrypts, and requests a ticket from `/entries/stakes/prepare`. It then builds and sends a single sponsored user operation (approve or permit + `enter` with the ticket) through the smart wallet.
+1. Same option UI with the round's fixed stake shown. Eligibility (verified Coinbase sign-in, geo, age, ToS, limits) has already been checked via `/me`, which reads the age and ToS acceptance stored from the verification sheet. Unverified users see Stakes with "Verify with Coinbase", which opens the verification sheet; inside the mini app this opens an external browser, and the app polls `/me` until verification completes. A verified user whose only `/me` eligibility reasons are `tos_not_accepted` and/or `age_unattested` (the terms version changed, or the age attestation is missing) still sees Stakes, and the verification sheet opens for just the missing step (terms or age), not the Coinbase flow.
+2. The client runs the round config check (see Sealed picks), encrypts, and requests a ticket from `/entries/stakes/prepare`. It then builds and sends a single sponsored user operation (`approve` + `enter` with the ticket) through the smart wallet.
 3. Show pending until the transaction is included. The RoundDO counter updates when the indexer sees `Entered`.
 
 ## Share cards and distribution
 
-Every player gets a personal result card the moment their mode reveals, and sharing is one tap. The card is the main growth surface. Card visuals follow Design\_Language.md. The domain is `flocked.xyz`: the cards' wordmark and URL, emails and share URLs show it.
+Every player in a daily round gets a personal result card the moment their mode reveals, and sharing is one tap. The card is the main growth surface. Card visuals follow Design\_Language.md. The domain is `flocked.xyz`: the cards' wordmark and URL, emails and share URLs show it.
 
 **Card content** (three PNG variants: 1200×630 for OG, 1200×800 (3:2) for Farcaster mini app embeds, 1080×1080 square for stories)
 
@@ -985,6 +990,7 @@ Every player gets a personal result card the moment their mode reveals, and shar
 **Generation**
 
 - Cards are rendered in the settlement fan-out (a Queue consumer) with satori + resvg-wasm in a Worker. They are stored in R2 at `cards/{roundId}/{mode}/{userId}/{kind}/{variant}.png` and cached at the edge. After a veto, cards are re-rendered at the same keys and the edge cache purged.
+- Card images are cached for at most an hour (`max-age=300, s-maxage=3600`), so a replaced card (a vetoed result, a deleted account's handle) can be stale for that long. Third-party unfurl caches are outside the app's control.
 - Also a generic round card (split only, no player) for `/r/:id`, stored at `cards/{roundId}/{mode}/round/{variant}.png`.
 - Target: all cards for a round rendered within 5 minutes of the reveal. A player's own card is rendered on demand if missing.
 
@@ -993,7 +999,8 @@ Every player gets a personal result card the moment their mode reveals, and shar
 - `/s/:shareId` serves OG tags and Farcaster mini app embed meta, so a cast shows the card with a "Play today's Flocked" button. Share IDs are opaque and stable: changing or freeing a handle never breaks or redirects an old link.
 - Share sheet: Farcaster cast composer (in mini app), native Web Share API, copy link, download image.
 - Pre-filled share text varies by result: "got flocked again" / "unflocked, 3 day stray streak" + link.
-- A pre-reveal share: "I sealed my pick. Can you out-think the flock?" with a teaser card that shows the question but not the pick. The teaser is a `share_cards` row with kind = teaser and its own share ID; it never reads the pick, and its page links to the round after the reveal.
+- A pre-reveal share: "I sealed my pick. Can you out-think the flock?" with a teaser card that shows the question but not the pick. The teaser is a `share_cards` row with kind = teaser and its own share ID, created when a Free entry is sealed and when a Stakes `Entered` event is indexed. It never reads the pick, and its page links to the round after the reveal.
+- Share pages (`/s/:shareId`) and per-player cards exist for daily rounds only. A room round's round card is served only behind room access.
 
 **Distribution hooks**
 
@@ -1059,7 +1066,7 @@ Social features give players something to protect (streaks) and someone to beat 
   - For Stakes room rounds, tickets go only to members whose accounts meet the age rule, and `minEntrants` = 3 onchain, so every onchain entry qualifies.
   - Qualification is recorded per entry in the (members-only) bundle.
   - An unverified person with several accounts can still meet the minimum alone. That is accepted, because the only reward is room points.
-  - Stakes rooms stay behind flag `rooms.stakes.enabled` (off by default) and require verified users plus the usual geo and age checks. A room round gets a Stakes mode at lock only with `rooms.stakes.enabled` and `mode.stakes.enabled` on and a Stakes section in the round's admin draft config, which carries the treasury creator. `rooms.stakes.enabled` is also a kill switch: while it is off, `/prepare` refuses Stakes tickets for room rounds.
+  - Stakes rooms stay behind flag `rooms.stakes.enabled` (off by default) and require verified users plus the usual geo and age checks. The flag stays off until room rounds publish their config and bundles publicly, because until then the watcher can't check them (see Smart contract, Challenge window). A room round gets a Stakes mode at lock only with `rooms.stakes.enabled` and `mode.stakes.enabled` on and a Stakes section in the round's admin draft config, which carries the treasury creator. `rooms.stakes.enabled` is also a kill switch: while it is off, `/prepare` refuses Stakes tickets for room rounds.
 - The room page shows the room split, member picks after the reveal, and a room leaderboard (room points, wins this week, streaks).
   - "Wins this week" counts settled room-round wins in the ISO week of the current game day.
   - "Streak" is consecutive settled room-round wins over the last 120 final room rounds: refunded and voided rounds are neutral, and absence ends it.
@@ -1075,7 +1082,7 @@ Three moments matter: the question drops, the round is about to close, and the r
 | `closing_soon` | On, only if not yet entered | 60 min before `closesAt` | Farcaster, web push |
 | `outcome` | On, only if entered | At the user's first mode outcome at the reveal, whether it revealed or was refunded. One combined message: their result plus "the next question is live". Other modes' and room rounds' results appear in the app only | Farcaster, web push, email (if verified) |
 | `payout_claimable` | On (Stakes) | When the result is final and claims open (2 h after the proposal) | Web push, email |
-| `refunded` | On, only if entered | For later events only: a veto, a Stakes refund becoming final, or a rule-7/8 refund after the outcome was sent | Farcaster, web push, email |
+| `refunded` | On, only if entered | A guardian void before the round's beacon time, and later events: a veto, a Stakes refund becoming final, or a rule-7/8 refund after the outcome was sent | Farcaster, web push, email |
 | `question_used` | On | When the user's question is scheduled and when it settles | Farcaster, web push |
 | `streak_at_risk` | Off | 3 hours before close, if stray streak ≥ 3 and not entered | Farcaster, web push |
 | `question_edited` | On | When an admin edits the wording of the user's question | Farcaster, web push |
@@ -1089,6 +1096,7 @@ Three moments matter: the question drops, the round is about to close, and the r
   - `{event}:{roundId}:{userId}` for the rest.
 - Respect Farcaster notification token rate limits; batch where the API allows.
 - A Stakes refund with no proposal (reason 1 from `refundTooFew`, or 6, the timeout) is final when it happens: it is the combined `outcome` when it is the user's first mode outcome of the game day, and `refunded` after another mode's outcome. A proposed Stakes refund (reasons 1, 2 or 3; VOID entries can leave too few valid ones for rule 1) is the `outcome` at the proposal only when it is the first, and is told as `refunded` when it becomes final.
+- A guardian void before the round's beacon time is told under the `refunded` key (`refunded:{roundId}:{mode}:{userId}`), never `outcome`. The day's `outcome` key stays for the reveal, so a player in both modes still hears the Free result.
 - A Free refund under rules 1–3 after the user's Stakes outcome was sent appears in the app only.
 - The `identity_unlinked` email's subject, preheader, heading and button follow `identity_linked`'s.
 - Self-excluded users receive no game notifications. `question_used`, `question_edited` and `question_rejected` count as game notifications.
@@ -1147,7 +1155,7 @@ Stakes mode is likely to be treated as gambling in many jurisdictions. It is geo
   - A timed exclusion can't be ended early.
   - A permanent exclusion can be lifted only on request after 6 months, and the lift takes effect after a 7-day cooling-off period.
   - Changing a timed exclusion to permanent restarts the 6-month clock. Choosing permanent again during the cooling-off cancels the lift. Months are calendar months.
-- The Stakes UI always shows the user's net result for the last 30 days. `prefs.showStakesNet` controls only public display (profile and share cards, off by default); the user always sees their own 30-day net.
+- The Stakes UI shows the user's net result for the last 30 days whenever Stakes is selected, from `GET /me`'s `stakes.net30d` (signed, USDC base units). `prefs.showStakesNet` controls only public display (profile and share cards, off by default); the user always sees their own 30-day net.
 - A persistent link to responsible gambling resources appears in Settings and in the Stakes onboarding.
 
 ## Anti-abuse
@@ -1319,8 +1327,8 @@ The settlement engine is the riskiest code. It is a pure, shared TypeScript pack
   - no round can be both settled and refunded;
   - claims cannot exceed a round's derived totals.
 - [ ] Every Free round that is locked and not voided before close has exactly one lock leaf onchain, and exactly one commitment if it has any entries. In normal operation the commitment lands before the beacon; rule 7 is the backstop. Every Free receipt verifies against that commitment.
-- [ ] Every settled player has a share card, and the share URL unfurls correctly on Farcaster and standard OG consumers.
-- [ ] Stakes UI is absent for users who are not verified, are outside the geo allow list, are under the age requirement, or are self-excluded.
+- [ ] Every settled player in a daily round has a share card, and the share URL unfurls correctly on Farcaster and standard OG consumers.
+- [ ] Stakes UI is absent only for users who are outside the geo allow list, are under the age requirement, or are self-excluded. A user who isn't verified sees Stakes with "Verify with Coinbase" instead of entry.
 - [ ] A submitted question flows through moderation, voting, approval and scheduling, and its author receives the creator fee or award after settlement.
 
 ## Out of scope, launch gates and decision log
@@ -1421,3 +1429,9 @@ The settlement engine is the riskiest code. It is a pure, shared TypeScript pack
 | Oct 16, 2026 | Web play (W9-Z): "Counting the flock…" shows for at least 1.5 seconds before the bars grow (the client holds an earlier result back). The Today, Sealed and Reveal copy is approved as drafted in `apps/web/src/features/{today,sealed,reveal}/copy.ts` (the crowd-hint lines per category, the three refusals, the entry errors, the receipt-mismatch line, "Reconnecting…", "Clocks go forward tonight"). "Remind me" opens Settings until the client subscribes to web push; a Free win's amount waits for `GET /rounds/:id/me`'s payouts. The win motion, the slider and the type notes are decided in Paper. See Real-time and the reveal (Reveal choreography) and Client app |
 | Oct 16, 2026 | Rooms and the archive (W9-Z, from W8-F1): a room passes only to an active member, else a suspended one; a merged or deleted account never takes a room, and a room with neither closes. The room view's `memberCount` is the cap's count (non-deleted members). `GET /rounds` shows `revealing` for a closed round's pending mode past beacon time, as `GET /rounds/:id` does. See Identity and personhood (Account deletion), Profiles, leaderboards and rooms (Rooms) and API |
 | Oct 16, 2026 | API (W9-Z): `POST /farcaster/webhook` joins the API table (auth none; the JSON Farcaster Signature `{header, payload, signature}` in, `{ok, result}` out). See API |
+| Oct 26, 2026 | Stakes entry, verification and Claims (W10-Z): the Stakes-UI acceptance criterion now matches the Today row: Stakes is hidden only by region, age or self-exclusion, and a user who isn't verified sees Stakes with "Verify with Coinbase" instead of entry. A verified user whose only `/me` eligibility reasons are `tos_not_accepted` and/or `age_unattested` (the terms version changed, or the age attestation is missing) still sees Stakes, and the verification sheet opens for just the missing step, not the Coinbase flow. `POST /me/personhood` carries where the flow began (Today or Settings) through the OAuth state; the callback returns there, and that screen shows the outcome, a failure and its reason included. Claims decides whether a payout is ready by server time (the clock skew the WebSocket measures), not the device clock. "Claim all" sends only the connected wallet's payouts, because the escrow builds the leaf from `msg.sender`; merged accounts' payouts held by other wallets are listed with a line naming the wallet to connect. "See the change log" on a non-default Stakes config is an in-place disclosure listing each non-default value with its audit-log ID. A refunded mode shows its result at once, without "Counting the flock…"; the 1.5-second minimum applies to a revealed result. See Testing and acceptance criteria, Client app, Identity and personhood (Personhood), API, Sealed picks (Round config check) and Real-time and the reveal (Reveal choreography) |
+| Oct 26, 2026 | Sponsored entry and the paymaster cap (W10-Z): `enterWithPermit` is for EOA callers; a smart wallet (Coinbase Smart Wallet) sends `approve` then `enter` in one batch, because USDC's `permit` recovers an ECDSA signer. The cap of 10 sponsored user operations is counted per smart-wallet sender per UTC day, because the wallet calls the paymaster endpoint unauthenticated. See Smart contract (Gas and UX) and Client app (Entry flow (Stakes)) |
+| Oct 26, 2026 | Notifications and merges (W10-Z, from W9-F1): a merge moves the merged-away account's push subscriptions to the kept account (an upsert on the subscription's unique endpoint) and its notification prefs only for (channel, event) pairs the kept account hasn't set, so the kept account's own choices win. A guardian void before the round's beacon time is told under the `refunded` key (`refunded:{roundId}:{mode}:{userId}`), leaving the day's `outcome` key for the reveal, so a player in both modes still hears the Free result. See Identity and personhood (Merging accounts) and Notifications |
+| Oct 26, 2026 | Watcher (W10-Z): the watcher snapshots the published config at open, not lock (no public route shows a round between lock and open), before any entry, and records when it took it; a non-default value passes only if that config lists a matching override with its audit-log ID. Stakes room rounds are outside its scope until room rounds publish their config and bundles publicly, and `rooms.stakes.enabled` stays off until then. It keeps its own allowed-country list (`COUNTRY_ALLOW`, country codes; region entries such as `US-NJ` in `geo.stakes.allow` match at country level), which the owner keeps in step with `geo.stakes.allow`, checked at each deploy. Both the watcher's 30-minute missing-verdict rule and the independently hosted dead-man's switch exist. A check the watcher cannot run (an unset attestation RPC or allowed-country list, a failed read) is unable to verify and pages; it is never a pass. The watcher's account is on Workers Paid. The published override list is built with the admin config edits (W11-A). See Sealed picks (Round config check), Smart contract (Challenge window, watcher and guardian) and Profiles, leaderboards and rooms (Rooms) |
+| Oct 26, 2026 | Share cards (W10-Z): teaser share rows are created when a Free entry is sealed and when a Stakes `Entered` event is indexed. Share pages (`/s/:shareId`) and per-player cards exist for daily rounds only; a room round's round card is served only behind room access. `/rounds/:id/card/:variant.png` names no mode: it shows Free once Free has revealed, else Stakes. Card images are cached for at most an hour (`max-age=300, s-maxage=3600`), so a replaced card (a vetoed result, a deleted account's handle) can be stale that long; third-party unfurl caches are outside the app's control. The round card is served only under `/api/v1`, behind the room-round access check; only `/s/:shareId` and `/cards/…` are site-root paths (the root mount had skipped the check). See Share cards and distribution (Generation, Share surfaces), API and Testing and acceptance criteria |
+| Oct 26, 2026 | API additions (W10-Z): `GET /me` gains `stakes.net30d` (signed, USDC base units), the user's Stakes net over the last 30 days, which the Stakes UI shows whenever Stakes is selected. Each `GET /claims` item gains the round's `gameDay` and the question `prompt`. No endpoint is added or renamed. See API and Compliance and responsible play (Responsible play) |
