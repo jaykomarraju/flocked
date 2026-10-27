@@ -1,7 +1,8 @@
 # Local stack
 
-The `local` environment from plan 4.4 on one machine: a drand network in Docker, anvil, the contracts, and
-`wrangler dev` for `apps/api` with the ticket signer (`apps/signer`) beside it. The e2e tests run against it.
+The `local` environment from plan 4.4 on one machine: a drand network in Docker, anvil, the contracts,
+`wrangler dev` for `apps/api` with the ticket signer (`apps/signer`) beside it, and the independent
+watcher in a second `wrangler dev` with its own D1. The e2e tests run against it.
 
 ```bash
 nvm use                      # Node 22.23
@@ -44,7 +45,9 @@ Needs Docker (OrbStack on the owner's Mac, OA-01), Foundry 1.7.1 (`anvil`, `forg
    app notification endpoint, hub and Neynar cast API (`e2e/mocks/farcaster-notify`, `:8795`; `FARCASTER_HUB_URL` and
    `FARCASTER_CAST_API_URL`, with placeholder Neynar values; `POST /jfs` signs a webhook event, `GET /sent?token=` and
    `GET /casts` read back) and email (`e2e/mocks/email`, `:8796`; `EMAIL_MOCK_URL`, honoured only locally;
-   `GET /sent?to=` and `GET /last?to=`). Each `up` appends a fresh VAPID pair to `.dev.vars`
+   `GET /sent?to=` and `GET /last?to=`), and the combined ERC-4337 bundler / ERC-7677 paymaster
+   provider (`e2e/mocks/bundler`, `:8797`; both `BUNDLER_URL` and `PAYMASTER_URL`, with `GET /calls`
+   exposing accepted forwarded requests). Each `up` appends a fresh VAPID pair to `.dev.vars`
    (`scripts/gen-vapid.mjs`). Settlement fetches beacons from the local drand network (`DRAND_RELAYS`).
    - **Ticket signer** (`apps/signer`, W6-B): the same `wrangler dev` runs it as a second Worker
      (`--config apps/api/wrangler.jsonc --config e2e/stack/.run/signer/wrangler.json`). The API's `SIGNER` service
@@ -55,20 +58,28 @@ Needs Docker (OrbStack on the owner's Mac, OA-01), Foundry 1.7.1 (`anvil`, `forg
      `apps/signer/wrangler.jsonc` in `.run/signer/` (`main` points back at `apps/signer/src`), whose `.dev.vars` is
      a link to `.run/ticket-signer.dev.vars`: `TICKET_SIGNER_KEY` and `LOCAL_DEPLOYMENT`. The API never gets the key
      (NFR-7). A developer's own `apps/signer/.dev.vars` is not read.
+   - **Independent watcher** (`apps/watcher`, W10-B): a separate `wrangler dev` on `:8798`, with
+     its own migrations, persistence and `.dev.vars`; it reaches the API and chain only over their
+     public URLs. The stack generates its signing key and points its paging secret at the pager mock
+     (`e2e/mocks/pager`, `:8799`; `GET /sent`, `DELETE /sent`). Nothing is bound into the API Worker.
    - **Config seeds** (the `config` table): `mode.stakes.enabled` is `true` and `geo.stakes.allow` is `["US"]`.
      `wrangler dev` runs with `CLOUDFLARE_CF_FETCH_ENABLED=false`, so every request's `request.cf` is wrangler's
      placeholder (US, TX) on every machine, and a verified US player is eligible for Stakes.
 5. **Crons** (`cron.mjs`): `wrangler dev` never fires the Worker's cron triggers, so a driver process runs them
    through the seam (`POST /__test/cron`): the minute cron (scheduler tick and indexer kick) every 5 s
-   (`STACK_CRON_INTERVAL_MS`) and the hourly one every 10 minutes (`STACK_CRON_HOURLY_MS`). Passes never
-   overlap, and each writes a heartbeat to `.run/cron.json` that `stack:status` checks. The scheduler logs
+   (`STACK_CRON_INTERVAL_MS`) and the hourly one every 10 minutes (`STACK_CRON_HOURLY_MS`). It also
+   proves the watcher's local tick route at startup and every `STACK_WATCHER_INTERVAL_MS` (10 minutes
+   by default; proposal E2E drives it explicitly). Passes never overlap, and each writes a heartbeat
+   to `.run/cron.json` that `stack:status` checks. The scheduler logs
    `ALERT_SCHEDULE_GAP` for today's real daily round, which has no house question on the stack; that is
    expected.
 
 `up` is idempotent: a healthy stack is left as it is, and anything else (a half-started or stale stack) is torn
 down and started fresh. Ports can be moved with `STACK_API_PORT`, `STACK_ANVIL_PORT`, `STACK_DRAND_PORT`,
 `STACK_FARCASTER_PORT`, `STACK_COINBASE_PORT`, `STACK_EAS_PORT`, `STACK_TURNSTILE_PORT`, `STACK_ANTHROPIC_PORT`,
-`STACK_PUSH_PORT`, `STACK_FARCASTER_NOTIFY_PORT`, `STACK_EMAIL_PORT` and `STACK_INSPECTOR_PORT`.
+`STACK_PUSH_PORT`, `STACK_FARCASTER_NOTIFY_PORT`, `STACK_EMAIL_PORT`, `STACK_BUNDLER_PORT`,
+`STACK_WATCHER_PORT`, `STACK_PAGER_PORT`, `STACK_INSPECTOR_PORT` and
+`STACK_WATCHER_INSPECTOR_PORT`.
 
 ## Files (all gitignored, rewritten on every `up`)
 
@@ -80,6 +91,7 @@ down and started fresh. Ports can be moved with `STACK_API_PORT`, `STACK_ANVIL_P
 | `e2e/stack/.run/wrangler/`              | `wrangler dev`'s persistence: D1, KV, Durable Object storage                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `e2e/stack/.run/ticket-signer.dev.vars` | The signer's env (mode 0600): `TICKET_SIGNER_KEY`, the escrow's ticket signer key (W5-Z), and `LOCAL_DEPLOYMENT`. Stack tests read the key from it. Never in `.dev.vars`: the API must not hold it (NFR-7)                                                                                                                                                                                                                                                   |
 | `e2e/stack/.run/signer/`                | The signer's config as the stack runs it (`wrangler.json`, a copy of `apps/signer/wrangler.jsonc`), and its `.dev.vars`, a link to `ticket-signer.dev.vars`                                                                                                                                                                                                                                                                                                  |
+| `e2e/stack/.run/watcher/`               | The watcher's generated local config and private `.dev.vars` (`WATCHER_KEY`, pager URL, local deployment and drand facts); its D1 persists separately under `.run/watcher-wrangler/`                                                                                                                                                                                                                                                                         |
 
 The other role keys (admin, guardian, pauser, treasury) are generated and dropped; only their addresses are
 kept. Email sign-in codes sent locally land as files under `apps/api/.wrangler/tmp/email/`.
@@ -88,16 +100,19 @@ kept. Email sign-in codes sent locally land as files under `apps/api/.wrangler/t
 
 One row per part; any `FAIL` (or a half-finished `up`) exits 1, and `up` starts a stack afresh instead of reusing it.
 
-| Row      | Checks                                                                                                                                                                                                                                                                                                                                         |
-| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `drand`  | HTTP serves this run's chain and a beacon                                                                                                                                                                                                                                                                                                      |
-| `anvil`  | The process, and `FlockedAnchor` has code                                                                                                                                                                                                                                                                                                      |
-| `api`    | The `wrangler dev` process, `.dev.vars`, and `GET /api/v1/me` answers 401                                                                                                                                                                                                                                                                      |
-| `signer` | wrangler's Local Explorer API (`/cdn-cgi/local/explorer/api/local/workers`) lists the Worker that the API's `SIGNER` binding names (`apps/api/wrangler.jsonc`) as running in this `wrangler dev`, with the API's D1 and persistence. `.dev.vars` has no `TICKET_SIGNER_KEY`, and the signer's `.dev.vars` links to the key file, which has one |
-| mocks    | `farcaster`, `coinbase`, `eas`, `turnstile`, `anthropic`, `push`, `farcaster-notify`, `email`: the process and `GET /health`                                                                                                                                                                                                                   |
-| `cron`   | The driver process, and a heartbeat in the last few intervals                                                                                                                                                                                                                                                                                  |
+| Row       | Checks                                                                                                                                                                                                                                                                                                                                         |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `drand`   | HTTP serves this run's chain and a beacon                                                                                                                                                                                                                                                                                                      |
+| `anvil`   | The process, and `FlockedAnchor` has code                                                                                                                                                                                                                                                                                                      |
+| `api`     | The `wrangler dev` process, `.dev.vars`, and `GET /api/v1/me` answers 401                                                                                                                                                                                                                                                                      |
+| `signer`  | wrangler's Local Explorer API (`/cdn-cgi/local/explorer/api/local/workers`) lists the Worker that the API's `SIGNER` binding names (`apps/api/wrangler.jsonc`) as running in this `wrangler dev`, with the API's D1 and persistence. `.dev.vars` has no `TICKET_SIGNER_KEY`, and the signer's `.dev.vars` links to the key file, which has one |
+| `watcher` | Its separate process and `GET /health`, including a signer address and configured pager                                                                                                                                                                                                                                                        |
+| mocks     | `farcaster`, `coinbase`, `eas`, `turnstile`, `anthropic`, `push`, `farcaster-notify`, `email`, `bundler`, `pager`: the process and `GET /health`                                                                                                                                                                                               |
+| `cron`    | The driver process, and a heartbeat in the last few intervals                                                                                                                                                                                                                                                                                  |
 
 `stakes-ticket` exercises the binding itself: the API's prepare route has the signer sign a ticket.
+`watcher.spec.ts` exercises PIPE-5 against anvil: one honest proposal matches; a vetoed refund is
+re-proposed with an incompatible tally/root, mismatches, and reaches the pager mock.
 
 ## The test seam
 

@@ -12,9 +12,10 @@
 // - The round socket sends `state` on connect; `push` sends any later message.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { flockedAnchorAbi } from '@flocked/abi';
+import { flockedAnchorAbi, flockedEscrowAbi } from '@flocked/abi';
 import {
   RoundViewSchema,
+  StakesPrepareRequestSchema,
   freeConfigHash,
   questionHash,
   receiptTypedData,
@@ -51,7 +52,15 @@ const ME = (
 
 const RPC_URL = 'http://rpc.flocked.test/';
 const ANCHOR: Address = '0x00000000000000000000000000000000000a1c40';
+const ESCROW: Address = '0x00000000000000000000000000000000000e5c20';
+const USDC: Address = '0x000000000000000000000000000000000005dc00';
+const TREASURY: Address = '0x00000000000000000000000000000000000c0ffe';
+/** The smart wallet the Stakes world enters from. */
+const WALLET: Address = '0x00000000000000000000000000000000000a11e7';
 const CHAIN_ID = 31337;
+/** The round's chain ID onchain, and its fixed stake at the launch default (5 USDC). */
+const CHAIN_ROUND_ID = 7n;
+const STAKE = 5_000_000n;
 
 const FREE = {
   stakeMin: '10',
@@ -63,6 +72,30 @@ const FREE = {
   minEntrants: 1,
   creatorAwardBps: 100,
   awardRecipient: null,
+};
+
+/** The Stakes mode's locked config at the launch defaults (spec "Sealed picks" › Round config check). */
+const STAKES_DEFAULTS = {
+  stake: String(STAKE),
+  feeBps: 500 as const,
+  creatorBps: 100 as const,
+  capMultiple: 10,
+  minEntrants: 20,
+  creator: TREASURY,
+  authorHandle: null,
+  payoutAddress: null,
+};
+
+/** Paper's example question as a round carries it (the question hash is taken from this). */
+const QUESTION_VIEW = {
+  id: '01JA0000000000000000000QST',
+  prompt: 'Would you rather fight one horse-sized duck or 100 duck-sized horses?',
+  options: [
+    { label: 'One horse-sized duck', emoji: '' },
+    { label: '100 duck-sized horses', emoji: '' },
+  ] as const,
+  category: 'hypothetical' as const,
+  author: null,
 };
 
 /** Paper's example question (docs/design: "Would you rather fight…"). */
@@ -110,12 +143,46 @@ export interface World {
   onConnect: Record<string, unknown>[];
   /** The server's clock, Unix seconds (`setPageTime` moves it with the page's). */
   nowSec: number;
+  /** Stakes (W10-C); undefined unless `mockWorld` was asked for a Stakes round. */
+  stakes?: StakesWorld;
+}
+
+/** The Stakes half of the world: eligibility, the chain's config, the wallet and the paymaster. */
+export interface StakesWorld {
+  /** The escrow's `RoundConfig`, as the RPC serves it; edit a field to make the check refuse. */
+  config: Record<string, bigint | number | Hex>;
+  /** `wallet_sendCalls` batches the app sent, newest last. */
+  sent: { calls: { to: string; data: string }[]; capabilities: unknown }[];
+  /** ERC-7677 requests the wallet made to the paymaster URL the app asked it to use. */
+  paymasterCalls: { method: string; url: string }[];
+  /** What `wallet_getCallsStatus` answers: the batch reverts instead of landing. */
+  revert: boolean;
+  /** `POST /rounds/:id/entries/stakes/prepare` answers this; edit it to break the ticket. */
+  ticketFor: (wallet: string) => Record<string, unknown>;
+  /** The wallet that enters. */
+  wallet: Address;
 }
 
 /** Installs the mocked world on `page`. Call before `page.goto`. */
 export async function mockWorld(
   page: Page,
-  opts: { signedIn?: boolean; storedPick?: 0 | 1 } = {},
+  opts: {
+    signedIn?: boolean;
+    storedPick?: 0 | 1;
+    /**
+     * Stakes (W10-C): adds a Stakes mode to the round, answers `/me` with this eligibility, serves
+     * the escrow's `RoundConfig` over the RPC, and installs a smart-wallet stand-in that batches
+     * calls through the app's own paymaster URL.
+     */
+    stakes?: {
+      eligible?: boolean;
+      reasons?: string[];
+      /** Overrides on the locked config the API publishes (a non-default round). */
+      published?: Record<string, string | number>;
+      /** Overrides on what the chain answers (a config mismatch). */
+      onchain?: Record<string, bigint | number | string>;
+    };
+  } = {},
 ): Promise<World> {
   const signer = privateKeyToAccount(generatePrivateKey());
   const beaconDelay = 120;
@@ -140,7 +207,24 @@ export async function mockWorld(
     beaconRound: RECORDED_ROUND,
     beaconTime: bt,
     lockedAt: (closesAt - 90_000) * 1000,
-    config: { beaconDelay, free: { ...FREE, configHash }, overrides: [] },
+    config: {
+      beaconDelay,
+      free: { ...FREE, configHash },
+      overrides: stakesOverrides(opts.stakes?.published),
+      ...(opts.stakes
+        ? {
+            stakes: {
+              ...STAKES_DEFAULTS,
+              chainRoundId: String(CHAIN_ROUND_ID),
+              opensAt: closesAt - 86_400,
+              closesAt,
+              beaconRound: RECORDED_ROUND,
+              questionHash: questionHash(QUESTION_VIEW),
+              ...opts.stakes.published,
+            },
+          }
+        : {}),
+    },
     modes: {
       free: {
         status: 'pending',
@@ -153,8 +237,70 @@ export async function mockWorld(
         refundReason: null,
         settlement: null,
       },
+      ...(opts.stakes
+        ? {
+            stakes: {
+              status: 'pending',
+              entrantCount: 212,
+              pool: '1060000000',
+              chainRoundId: String(CHAIN_ROUND_ID),
+              revealedAt: null,
+              claimsOpenAt: null,
+              finalAt: null,
+              refundReason: null,
+              settlement: null,
+            },
+          }
+        : {}),
     },
   });
+  const stakesConfig: StakesWorld['config'] = {
+    opensAt: BigInt(closesAt - 86_400),
+    closesAt: BigInt(closesAt),
+    beaconRound: BigInt(RECORDED_ROUND),
+    stake: STAKE,
+    feeBps: STAKES_DEFAULTS.feeBps,
+    creatorBps: STAKES_DEFAULTS.creatorBps,
+    capMultiple: STAKES_DEFAULTS.capMultiple,
+    minEntrants: STAKES_DEFAULTS.minEntrants,
+    creator: TREASURY,
+    questionHash: questionHash(QUESTION_VIEW),
+  };
+  // The published values the API serves are the chain's unless the test moves one of them.
+  for (const [key, value] of Object.entries(opts.stakes?.published ?? {})) {
+    if (key in stakesConfig) {
+      stakesConfig[key] = typeof value === 'number' ? value : BigInt(value);
+    }
+  }
+  for (const [key, value] of Object.entries(opts.stakes?.onchain ?? {})) {
+    stakesConfig[key] =
+      typeof value === 'string' && value.startsWith('0x')
+        ? (value as Hex)
+        : typeof value === 'number'
+          ? value
+          : BigInt(value);
+  }
+  const stakes: StakesWorld = {
+    config: stakesConfig,
+    sent: [],
+    paymasterCalls: [],
+    revert: false,
+    wallet: WALLET,
+    ticketFor: (wallet) => ({
+      ticket: {
+        roundId: String(CHAIN_ROUND_ID),
+        wallet: wallet.toLowerCase(),
+        personTag: `0x${'ab'.repeat(32)}`,
+        expiry: closesAt + 600,
+      },
+      signature: `0x${'cd'.repeat(65)}`,
+      chainId: CHAIN_ID,
+      verifyingContract: ESCROW,
+      stake: String(STAKE),
+      beaconRound: RECORDED_ROUND,
+    }),
+  };
+
   let socket: WebSocketRoute | null = null;
   const world: World = {
     round,
@@ -201,6 +347,7 @@ export async function mockWorld(
     resync: async () => {
       if (socket) await world.push(world.state());
     },
+    ...(opts.stakes ? { stakes } : {}),
   };
 
   await page.clock.install({ time: (closesAt - 3600) * 1000 });
@@ -219,7 +366,14 @@ export async function mockWorld(
       }
     },
     {
-      local: { rpcUrl: RPC_URL, anchor: ANCHOR, drand: QUICKNET, skipDailyClose: true },
+      local: {
+        rpcUrl: RPC_URL,
+        anchor: ANCHOR,
+        escrow: ESCROW,
+        usdc: USDC,
+        drand: QUICKNET,
+        skipDailyClose: true,
+      },
       pick:
         opts.storedPick === undefined
           ? null
@@ -237,7 +391,7 @@ export async function mockWorld(
       )})); return "w"; }, remove() {} };`,
     }),
   );
-  await page.route(RPC_URL, (route) => answerRpc(route, world, signer.address));
+  await page.route(RPC_URL, (route) => answerRpc(route, world, signer.address, stakes));
   await page.routeWebSocket(/\/api\/v1\/rounds\/[^/]+\/ws$/, (ws) => {
     socket = ws;
     ws.onMessage((m) => {
@@ -253,9 +407,38 @@ export async function mockWorld(
     const json = (status: number, body: unknown) =>
       route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
     if (key === 'GET /me') {
-      return opts.signedIn === false
-        ? json(401, { error: { code: 'unauthorized', message: 'Sign in' } })
-        : json(200, ME);
+      if (opts.signedIn === false) {
+        return json(401, { error: { code: 'unauthorized', message: 'Sign in' } });
+      }
+      const s = opts.stakes;
+      return json(
+        200,
+        s
+          ? {
+              ...ME,
+              stakes: {
+                eligible: s.eligible ?? true,
+                reasons: s.eligible ? [] : (s.reasons ?? []),
+              },
+            }
+          : ME,
+      );
+    }
+    if (key === `POST /rounds/${round.id}/entries/stakes/prepare`) {
+      // The real API's schema (a lowercase wallet, nothing else), so a body it would refuse with a
+      // 400 can't pass here: W10-D.2 found the client sending a checksummed wallet.
+      const body = StakesPrepareRequestSchema.safeParse(req.postDataJSON());
+      if (!body.success) {
+        return json(400, { error: { code: 'bad_request', message: body.error.message } });
+      }
+      return json(200, stakes.ticketFor(body.data.wallet));
+    }
+    if (key === 'POST /me/tos') {
+      const tos = (ME as unknown as { tos: Record<string, unknown> }).tos;
+      return json(200, { tos: { ...tos, acceptedVersion: tos.currentVersion } });
+    }
+    if (key === 'POST /me/personhood') {
+      return json(200, { authorizeUrl: 'https://coinbase.test/oauth/authorize?state=x' });
     }
     if (key === 'GET /rounds/today') {
       return json(200, {
@@ -280,6 +463,9 @@ export async function mockWorld(
     }
     return json(404, { error: { code: 'not_found', message: 'Not found' } });
   });
+  // After the `/api/v1/` catch-all, so its own `/paymaster` route wins (Playwright takes the most
+  // recently added handler first).
+  if (opts.stakes) await installSmartWallet(page, stakes);
   return world;
 }
 
@@ -316,7 +502,7 @@ function myRound(world: World) {
   };
 }
 
-async function answerRpc(route: Route, world: World, signer: Address) {
+async function answerRpc(route: Route, world: World, signer: Address, stakes: StakesWorld) {
   const body = route.request().postDataJSON() as {
     id: number;
     method: string;
@@ -329,6 +515,40 @@ async function answerRpc(route: Route, world: World, signer: Address) {
       body: JSON.stringify({ jsonrpc: '2.0', id: body.id, result }),
     });
   if (body.method !== 'eth_call') return reply(null);
+  // FlockedEscrow's `getRound`, for the Stakes round config check (W10-C).
+  if (body.params[0].to?.toLowerCase() === ESCROW) {
+    const escrowCall = decodeFunctionData({ abi: flockedEscrowAbi, data: body.params[0].data });
+    if (escrowCall.functionName !== 'getRound') return reply(null);
+    return reply(
+      encodeFunctionResult({
+        abi: flockedEscrowAbi,
+        functionName: 'getRound',
+        result: {
+          cfg: stakes.config,
+          status: 1,
+          refundReason: 0,
+          winner: 0,
+          entryCount: 212,
+          claimsOpenAt: 0n,
+          roundBalance: 0n,
+          n0: 0,
+          n1: 0,
+          nVoid: 0,
+          winClaims: 0,
+          rebateClaims: 0,
+          voidClaims: 0,
+          refundClaims: 0,
+          winPayout: 0n,
+          rebatePayout: 0n,
+          fee: 0n,
+          creatorFee: 0n,
+          dust: 0n,
+          payoutRoot: `0x${'00'.repeat(32)}`,
+          bundleHash: `0x${'00'.repeat(32)}`,
+        } as never,
+      }),
+    );
+  }
   const call = decodeFunctionData({ abi: flockedAnchorAbi, data: body.params[0].data });
   if (call.functionName === 'receiptSigner') {
     return reply(
@@ -484,4 +704,166 @@ export async function setPageTime(page: Page, world: World, unixSec: number): Pr
   await page.clock.setSystemTime(unixSec * 1000);
   await world.resync();
   await page.clock.runFor(1100);
+}
+
+/**
+ * A Coinbase-Smart-Wallet stand-in for the Stakes specs: it speaks EIP-5792 (`wallet_sendCalls`,
+ * `wallet_getCallsStatus`) and, for every batch, asks the ERC-7677 paymaster service the app named
+ * in `capabilities.paymasterService.url` — the app's own `POST /api/v1/paymaster` proxy, which
+ * W10-D builds. Until then a mock in this file answers it, so the user operation is still sent the
+ * way a sponsored one is, and the spec can see that the proxy was asked.
+ *
+ * It does not sign or broadcast anything: the batch is recorded and reported as included (or, with
+ * `world.stakes.revert`, as reverted).
+ */
+async function installSmartWallet(page: Page, stakes: StakesWorld): Promise<void> {
+  await page.route(/\/api\/v1\/paymaster$/, async (route) => {
+    const body = route.request().postDataJSON() as { id: number | string; method: string };
+    stakes.paymasterCalls.push({ method: body.method, url: route.request().url() });
+    return route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: body.id,
+        result: {
+          paymaster: '0x0000000000000000000000000000000000000pay'.slice(0, 42),
+          paymasterData: '0x',
+          isFinal: true,
+        },
+      }),
+    });
+  });
+
+  await page.exposeFunction(
+    '__flockedSendCalls',
+    (batch: { calls: { to: string; data: string }[]; capabilities: unknown }) => {
+      stakes.sent.push(batch);
+      return `0x${stakes.sent.length.toString(16).padStart(64, '0')}`;
+    },
+  );
+  await page.exposeFunction('__flockedCallsReverted', () => stakes.revert);
+
+  await page.addInitScript(
+    ({ address }) => {
+      interface RequestArgs {
+        method: string;
+        params?: unknown[];
+      }
+      const g = globalThis as unknown as {
+        ethereum?: unknown;
+        __flockedSendCalls: (batch: unknown) => Promise<string>;
+        __flockedCallsReverted: () => Promise<boolean>;
+        fetch: (url: string, init: unknown) => Promise<unknown>;
+        addEventListener: (type: string, fn: () => void) => void;
+        dispatchEvent: (event: unknown) => boolean;
+        CustomEvent: new (type: string, init: { detail: unknown }) => unknown;
+        crypto: { randomUUID: () => string };
+      };
+      const rpcError = (code: number, message: string) =>
+        Object.assign(new Error(message), { code });
+      const provider = {
+        isFlockedTest: true,
+        request: async ({ method, params = [] }: RequestArgs): Promise<unknown> => {
+          switch (method) {
+            case 'eth_requestAccounts':
+            case 'eth_accounts':
+              return [address];
+            case 'eth_chainId':
+              return '0x7a69';
+            case 'net_version':
+              return '31337';
+            case 'wallet_switchEthereumChain':
+              return null;
+            case 'wallet_getPermissions':
+            case 'wallet_requestPermissions':
+              return [{ parentCapability: 'eth_accounts' }];
+            case 'wallet_getCapabilities':
+              return {
+                '0x7a69': {
+                  atomic: { status: 'supported' },
+                  paymasterService: { supported: true },
+                },
+              };
+            case 'wallet_sendCalls': {
+              const p = params[0] as { calls: unknown; capabilities?: unknown };
+              const id = await g.__flockedSendCalls({
+                calls: p.calls,
+                capabilities: p.capabilities,
+              });
+              // A sponsored operation is the wallet asking the paymaster service the app named.
+              // From the page, so the spec's route answers it as the real proxy would.
+              const url = (p.capabilities as { paymasterService?: { url?: string } } | undefined)
+                ?.paymasterService?.url;
+              for (const method of url ? ['pm_getPaymasterStubData', 'pm_getPaymasterData'] : []) {
+                await g.fetch(url as string, {
+                  method: 'POST',
+                  headers: { 'content-type': 'application/json' },
+                  body: JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: 1,
+                    method,
+                    params: [{}, '0x', '0x7a69', null],
+                  }),
+                });
+              }
+              return { id };
+            }
+            case 'wallet_getCallsStatus': {
+              const reverted = await g.__flockedCallsReverted();
+              return {
+                version: '2.0.0',
+                id: params[0] as string,
+                chainId: '0x7a69',
+                atomic: true,
+                status: reverted ? 400 : 200,
+                receipts: reverted
+                  ? []
+                  : [
+                      {
+                        status: '0x1',
+                        blockHash: `0x${'11'.repeat(32)}`,
+                        blockNumber: '0x1',
+                        gasUsed: '0x1',
+                        transactionHash: `0x${'77'.repeat(32)}`,
+                        logs: [],
+                      },
+                    ],
+              };
+            }
+            default:
+              throw rpcError(4200, `The test wallet does not support ${method}`);
+          }
+        },
+        on: () => provider,
+        removeListener: () => provider,
+      };
+      g.ethereum = provider;
+      const detail = Object.freeze({
+        info: {
+          uuid: g.crypto.randomUUID(),
+          name: 'Flocked test smart wallet',
+          icon: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"/%3E',
+          rdns: 'test.flocked.smartwallet',
+        },
+        provider,
+      });
+      const announce = () =>
+        g.dispatchEvent(new g.CustomEvent('eip6963:announceProvider', { detail }));
+      g.addEventListener('eip6963:requestProvider', announce);
+      announce();
+    },
+    { address: stakes.wallet },
+  );
+}
+
+/** The `overrides` rows the API publishes for the non-default values a test asked for. */
+function stakesOverrides(
+  published: Record<string, string | number> | undefined,
+): { field: string; value: string | number; auditId: string }[] {
+  if (!published) return [];
+  return Object.entries(published).map(([field, value], i) => ({
+    field: `stakes.${field}`,
+    value,
+    auditId: `A1F${i + 3}`,
+  }));
 }

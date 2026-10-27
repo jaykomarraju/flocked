@@ -140,3 +140,10 @@
   - notification fan-out: the outcome producers and the alarm bodies enqueue one message per user, in 100-message batches from one invocation, and `question_live` reaches every reachable non-entrant; at about 50k users page them through chunked jobs;
   - W9-F1's guardian-void sweep is a step of the tick: include it in the tick under load;
   - W8-F1's H1 residual: mirror rounds refused `awaiting_daily` stay first in the room lock batch while their daily round's lock is refused, and past about 18,000 live room rounds a page cycle exceeds the 6 hours before opening.
+
+## Carry-over from W10-Z (Oct 26, 2026)
+
+- **W13-A:** `notification_log.source` has no index, so each tick's void sweep scans the table while a void is in its window (W9-F1): add the index with the pruning migration. `notify_lease_lost` (a batch that ran past its 60 s lease, so a duplicate was sent) is a warn log with no alert. The watcher's page delivery and the paymaster's refusals (W10-F1) have no dashboards yet.
+- **W13-B:** benchmark card rendering at 30 and 1,200 players on real infrastructure (W10-A: 150–350 ms a card, a 30-render batch is about 10 s of the 60 s `cpu_ms`; the five-minute target is unmeasured), and the watcher's Stakes recompute at size (W11-B splits it). W10-F1 replaces the void sweep's stateless window with a cursor.
+- **W13-C:** review the paymaster proxy as W10-F1 leaves it (smart-wallet checks, the replay key, the rate limit) and the card routes' access (W10-Z found the round card mounted at the site root without `requireRoundAccess`).
+- **W13-D:** the watcher's secrets and vars and the paymaster's `PAYMASTER_URL` / `BUNDLER_URL` go in `docs/runbooks/secrets.md` (plan.md 4.5); the watcher deploys from its own wrangler project to the second account (OA-05).

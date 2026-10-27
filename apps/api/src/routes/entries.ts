@@ -24,6 +24,7 @@ import { Hono, type Context } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { authDeps } from '../auth/deps.js';
 import { clientIp, limitUser } from '../auth/rate-limit.js';
+import { enqueueTeaserCard } from '../cards/enqueue.js';
 import { getUser, requireUser, type AppEnv } from '../lib/auth-context.js';
 import { now } from '../lib/clock.js';
 import { HttpError } from '../lib/errors.js';
@@ -130,6 +131,30 @@ app.post(
         result.message,
         ERROR_STATUS[result.code] as ContentfulStatusCode,
       );
+    }
+    // A daily pick can be shared while it is still sealed. Queue only after the RoundDO confirms
+    // the commit, and after the response where the runtime allows (it never delays the entry);
+    // room rounds never have public, pre-rendered cards.
+    if (round?.kind === 'daily') {
+      const teaser = enqueueTeaserCard(c.env, roundId, 'free', user.id).catch((err: unknown) => {
+        // The RoundDO commit is already durable. A failed enqueue costs only the teaser (the
+        // reveal's fan-out still writes the result cards) and must not turn a successful entry
+        // into a retry that can only answer `already_entered`.
+        log.error('card_enqueue_failed', {
+          roundId,
+          mode: 'free',
+          how: 'teaser',
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+      let ctx: Pick<ExecutionContext, 'waitUntil'> | undefined;
+      try {
+        ctx = c.executionCtx;
+      } catch {
+        ctx = undefined; // app.request() in tests has no ExecutionContext
+      }
+      if (ctx) ctx.waitUntil(teaser);
+      else await teaser;
     }
     return c.json(result.value, 201);
   },

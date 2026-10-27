@@ -13,7 +13,8 @@
 //      the RoundDO opens it at `opensAt` (a repeated init is how a stalled alarm chain restarts);
 //      then step 2 runs once more if step 4 abandoned a createRound, to replace it at its nonce now;
 //   6. applies a bounded share of the Stakes stats days a Stakes final's hook left (W8-F1 L5:
-//      src/stats/apply.ts bounds each Stakes call, so the backlog drains here, a minute at a time).
+//      src/stats/apply.ts bounds each Stakes call, so the backlog drains here, a minute at a time);
+//   7. tells the entrants of a Stakes mode a guardian voided (W9-F1: see sweepGuardianVoids).
 // The tick is one invocation, and D1 allows 1,000 queries per invocation (W8-F1 H1), so the room
 // rounds are bounded: steps 1–3 run before any room round, the daily rounds go first in steps 3–5,
 // step 3 locks at most ROOM_LOCKS_PER_TICK room rounds (the rest lock on the next ticks, hours before
@@ -35,6 +36,7 @@ import type { AnchorLockItem } from '../do/types.js';
 import type { Env } from '../env.js';
 import { now } from '../lib/clock.js';
 import { log } from '../lib/log.js';
+import { enqueueVoidOutcomes } from '../notify/outcomes.js';
 import { drainStakesStats } from '../stats/apply.js';
 import { insertDailyRound, slotsAhead } from './create.js';
 import {
@@ -66,6 +68,8 @@ export interface TickReport {
   initialized: string[];
   /** Operator cancellations moved this tick, by purpose (T4). */
   cancellations: Record<string, string>;
+  /** Voided Stakes modes whose entrants were told this tick (step 7), with the messages enqueued. */
+  voidsNotified: Record<string, number>;
 }
 
 export type SchedulerEnv = Env;
@@ -78,6 +82,11 @@ export function drandChainOf(env: Env): DrandChain {
     DRAND_PERIOD: env.DRAND_PERIOD,
   });
 }
+
+/** How far back step 7 looks for a Stakes mode that became `voided` (it overlaps the last pass). */
+export const VOID_SWEEP_WINDOW_MS = 10 * 60_000;
+/** Voided Stakes modes one tick tells (about 5 D1 queries and one queue batch each). */
+export const VOID_SWEEP_PER_TICK = 5;
 
 /** Room rounds one tick locks at most (about 4 D1 queries each). */
 export const ROOM_LOCKS_PER_TICK = 50;
@@ -205,6 +214,36 @@ async function liveRoomPage(db: D1Database, t: number): Promise<RoundRow[]> {
   return results;
 }
 
+/**
+ * Step 7: a guardian void (`RoundRefunded` reason 4) tells the Stakes entrants their stake came back
+ * (spec "Round lifecycle": `pending → voided`; W4-Z). It can't be an indexer handler, because any
+ * handler on that event puts a whole poll over its D1 budget (W9-D open issue 1: 619 > 500), so the
+ * tick sweeps it instead (owner decision, Oct 16, 2026).
+ *
+ * It takes the daily rounds whose Stakes mode became `voided` within the last VOID_SWEEP_WINDOW_MS
+ * (`round_modes.final_at`) and calls `enqueueVoidOutcomes`, which covers every voided mode of the
+ * round. The window overlaps the last pass on purpose: nothing records how far the sweep has come,
+ * and the consumer's dedupe drops the repeats. A round whose Stakes outcomes already reached
+ * `notification_log` is left out, so a void costs one query a tick once its entrants were told.
+ */
+async function sweepGuardianVoids(env: Env, t: number, report: TickReport): Promise<void> {
+  const { results } = await env.DB.prepare(
+    `SELECT r.id FROM rounds r JOIN round_modes m ON m.round_id = r.id AND m.mode = 'stakes'
+     WHERE r.kind = 'daily' AND m.status = 'voided' AND m.final_at > ?1
+       AND NOT EXISTS (SELECT 1 FROM notification_log n WHERE n.source = r.id || ':stakes')
+     ORDER BY m.final_at LIMIT ?2`,
+  )
+    .bind(t - VOID_SWEEP_WINDOW_MS, VOID_SWEEP_PER_TICK)
+    .all<{ id: string }>();
+  for (const { id } of results) {
+    try {
+      report.voidsNotified[id] = await enqueueVoidOutcomes(env, id);
+    } catch (err) {
+      log.error('void_sweep_failed', { roundId: id, error: message(err) });
+    }
+  }
+}
+
 /** One scheduler tick (see the header). Never throws for one round's failure. */
 export async function schedulerTick(env: Env, deps: SchedulerDeps = {}): Promise<TickReport> {
   const t = now(env);
@@ -216,6 +255,7 @@ export async function schedulerTick(env: Env, deps: SchedulerDeps = {}): Promise
     lockLeaves: [],
     initialized: [],
     cancellations: {},
+    voidsNotified: {},
   };
   await ensureDueRounds(env, t, report);
 
@@ -317,6 +357,13 @@ export async function schedulerTick(env: Env, deps: SchedulerDeps = {}): Promise
     await drainStakesStats(env, t);
   } catch (err) {
     log.error('stakes_stats_drain_failed', { error: message(err) });
+  }
+
+  // Step 7.
+  try {
+    await sweepGuardianVoids(env, t, report);
+  } catch (err) {
+    log.error('void_sweep_failed', { error: message(err) });
   }
   return report;
 }

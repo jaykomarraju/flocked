@@ -107,3 +107,63 @@
   line-height: 20px;
   font-variation-settings: 'opsz' 28;
 }
+
+/* The round's non-default rules (Paper `config-warning`): the loudest thing after the question, so a
+   2px ink border, no accent. A refusal (`stakes-entry/mismatch`) uses the same box with the error
+   mark; the CTA under it is disabled. */
+.notice[data-variant='strong'],
+.notice[data-variant='refusal'] {
+  border: var(--border-strong) solid var(--color-ink);
+}
+
+/* Paper sets the loud notices' lines 6 apart, not 4: the body and the link each sit a little lower
+   than in the read-only DST notice (W10-C measured `config-warning` and `stakes-entry/mismatch`). */
+.notice[data-variant='strong'] .noticeText,
+.notice[data-variant='refusal'] .noticeText {
+  gap: 6px;
+}
+
+/* "See the change log (#A1F3, #A1F4)" / "See what doesn't match": the body role, underlined. */
+.noticeLink {
+  align-self: flex-start;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-family: var(--font-body);
+  font-size: var(--text-label);
+  line-height: 20px;
+  font-variation-settings: 'opsz' 28;
+  text-align: left;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* The self-exclusion break notice (Paper `core/global/self-excluded`), between the question and the
+   two disabled options: the read-only box without a mark — a break is the player's own choice, not a
+   warning — padded 20, with the title, body and the link to Claims all at the body size in ink, 6
+   and 12 apart as Paper draws them. The screen that will own this state is not built yet, so only
+   the design sheet draws it (docs/sessions/W10-C.md). */
+.break {
+  display: flex;
+  flex-direction: column;
+  padding: var(--spacing-5);
+  border: var(--border-default) solid var(--color-line);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+}
+
+.breakBody {
+  margin-top: 6px;
+}
+
+/* "Claims and refunds still work": the body-strong role, underlined like the other inline links. */
+.breakLink {
+  align-self: flex-start;
+  margin-top: var(--spacing-3);
+  color: inherit;
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-underline-position: from-font;
+}

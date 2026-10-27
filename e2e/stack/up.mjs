@@ -40,6 +40,10 @@ import {
   STACK_DIR,
   TOS_VERSION,
   TURNSTILE_TEST_SECRET,
+  WATCHER_DIR,
+  WATCHER_PERSIST_DIR,
+  WATCHER_RUN_DIR,
+  WATCHER_VARS_FILE,
   ANTHROPIC_MOCK_KEY,
   NEYNAR_MOCK,
   WEB_DIST_DIR,
@@ -73,6 +77,9 @@ const urls = {
   push: `http://127.0.0.1:${PORTS.push}`,
   'farcaster-notify': `http://127.0.0.1:${PORTS.farcasterNotify}`,
   email: `http://127.0.0.1:${PORTS.email}`,
+  bundler: `http://127.0.0.1:${PORTS.bundler}`,
+  watcher: `http://127.0.0.1:${PORTS.watcher}`,
+  pager: `http://127.0.0.1:${PORTS.pager}`,
 };
 
 /**
@@ -89,6 +96,8 @@ const MOCKS = [
   ['push', 'MOCK_PUSH_PORT', PORTS.push],
   ['farcaster-notify', 'MOCK_FARCASTER_NOTIFY_PORT', PORTS.farcasterNotify],
   ['email', 'MOCK_EMAIL_PORT', PORTS.email],
+  ['bundler', 'MOCK_BUNDLER_PORT', PORTS.bundler],
+  ['pager', 'MOCK_PAGER_PORT', PORTS.pager],
 ];
 
 /** Runs a command to completion, output to `.run/logs/<name>.log`; rejects with the log's tail. */
@@ -273,6 +282,44 @@ function writeSigner(keys, deploymentJson) {
   return { name: config.name, configFile };
 }
 
+/** A second, wholly separate wrangler process for the independent watcher and its own D1. */
+function writeWatcher(deploymentJson, chain) {
+  const config = parseJsonc(readFileSync(join(WATCHER_DIR, 'wrangler.jsonc'), 'utf8'));
+  delete config.$schema;
+  config.main = join(WATCHER_DIR, config.main);
+  config.vars = {
+    ...config.vars,
+    ENVIRONMENT: 'local',
+    CHAIN_ID: String(LOCAL_CHAIN_ID),
+    API_BASE_URL: `${urls.api}/api/v1`,
+    BASE_RPC_URL: urls.anvil,
+    ATTESTATION_RPC_URL: urls.eas,
+    ATTESTATION_NETWORK: 'base',
+    COUNTRY_ALLOW: 'US',
+  };
+  config.d1_databases = config.d1_databases?.map((db) => ({
+    ...db,
+    migrations_dir: join(WATCHER_DIR, 'migrations'),
+  }));
+  ensureDir(WATCHER_RUN_DIR);
+  const configFile = join(WATCHER_RUN_DIR, 'wrangler.json');
+  writeFileSync(configFile, `${JSON.stringify(config, null, 2)}\n`);
+  writeDevVars(
+    {
+      LOCAL_DEPLOYMENT: deploymentJson,
+      DRAND_INFO_URL: `${urls.drand}/info`,
+      DRAND_CHAIN_HASH: chain.chainHash,
+      DRAND_PUBLIC_KEY: chain.publicKey,
+      DRAND_GENESIS: chain.genesis,
+      DRAND_PERIOD: chain.period,
+      WATCHER_KEY: generatePrivateKey(),
+      PAGER_WEBHOOK_URL: `${urls.pager}/page`,
+    },
+    WATCHER_VARS_FILE,
+  );
+  return { name: config.name, configFile };
+}
+
 /**
  * Local config the API and the signer read (the `config` table; seeds have no `updated_by`):
  * Stakes is on and allowed in the US, the location `wrangler dev` gives every request (its
@@ -337,6 +384,22 @@ async function main() {
     WRANGLER,
     ['d1', 'migrations', 'apply', 'DB', '--local', '--persist-to', PERSIST_DIR],
     { cwd: API_DIR, env: { ...process.env, WRANGLER_SEND_METRICS: 'false', CI: 'true' } },
+  );
+  const watcherMigrations = run(
+    'watcher-migrations',
+    WRANGLER,
+    [
+      'd1',
+      'migrations',
+      'apply',
+      'DB',
+      '--local',
+      '--persist-to',
+      WATCHER_PERSIST_DIR,
+      '--config',
+      join(WATCHER_DIR, 'wrangler.jsonc'),
+    ],
+    { cwd: WATCHER_DIR, env: { ...process.env, WRANGLER_SEND_METRICS: 'false', CI: 'true' } },
   );
 
   log('running the drand DKG');
@@ -410,6 +473,9 @@ async function main() {
   state.signer = writeSigner(keys, raw);
   state.signer.configFile = rel(state.signer.configFile);
   save();
+  state.watcher = writeWatcher(raw, chain);
+  state.watcher.configFile = rel(state.watcher.configFile);
+  save();
 
   const seamKey = randomBytes(32).toString('hex');
   writeDevVars({
@@ -445,6 +511,10 @@ async function main() {
     COINBASE_API_ORIGIN: urls.coinbase,
     ATTESTATION_NETWORK: 'base',
     ATTESTATION_RPC_URL: urls.eas,
+    // Sponsorship stays local: one service stands in for both the provider's ERC-7677 endpoint and
+    // its ERC-4337 bundler. The values are origins with a JSON-RPC POST at `/`.
+    PAYMASTER_URL: urls.bundler,
+    BUNDLER_URL: urls.bundler,
     // Notifications (W9-A): every channel goes to its mock. Web push needs no override (the test
     // subscribes with a loopback endpoint on the push mock, accepted only locally); the VAPID pair is
     // added below. The hub also answers wallet offers (W7-B) with nothing to offer.
@@ -472,6 +542,7 @@ async function main() {
   }
 
   await migrations;
+  await watcherMigrations;
   const seededAt = Date.now();
   await run(
     'config-seeds',
@@ -533,6 +604,7 @@ async function main() {
   state.pushUrl = urls.push;
   state.farcasterNotifyUrl = urls['farcaster-notify'];
   state.emailUrl = urls.email;
+  state.bundlerUrl = urls.bundler;
   state.devVars = rel(DEV_VARS_FILE);
   state.logs = rel(LOG_DIR);
   save();
@@ -541,6 +613,44 @@ async function main() {
     state.pids.wrangler,
     'wrangler dev',
     async () => (await fetch(`${urls.api}/api/v1/me`)).status === 401,
+    { timeoutMs: 90_000, intervalMs: 500 },
+  );
+  log('starting the independent watcher');
+  state.pids.watcher = start(
+    'watcher',
+    WRANGLER,
+    [
+      'dev',
+      '--config',
+      join(ROOT, state.watcher.configFile),
+      '--local',
+      '--ip',
+      '127.0.0.1',
+      '--port',
+      String(PORTS.watcher),
+      '--inspector-port',
+      String(PORTS.watcherInspector),
+      '--persist-to',
+      WATCHER_PERSIST_DIR,
+      '--env-file',
+      WATCHER_VARS_FILE,
+      '--show-interactive-dev-session=false',
+      '--log-level',
+      'info',
+    ],
+    {
+      cwd: WATCHER_DIR,
+      env: { ...process.env, WRANGLER_SEND_METRICS: 'false', CLOUDFLARE_CF_FETCH_ENABLED: 'false' },
+    },
+  );
+  state.watcherUrl = urls.watcher;
+  state.pagerUrl = urls.pager;
+  save();
+  await waitForProcess(
+    'watcher',
+    state.pids.watcher,
+    'watcher dev',
+    async () => (await getJson(`${urls.watcher}/health`)).ok === true,
     { timeoutMs: 90_000, intervalMs: 500 },
   );
   for (const [name] of MOCKS) {
@@ -552,7 +662,12 @@ async function main() {
   // wrangler dev fires no cron triggers; the driver runs them through the seam (cron.mjs).
   log('starting the cron driver');
   state.pids.cron = start('cron', process.execPath, [join(STACK_DIR, 'cron.mjs')], {
-    env: { ...process.env, STACK_CRON_API: urls.api, STACK_CRON_KEY: seamKey },
+    env: {
+      ...process.env,
+      STACK_CRON_API: urls.api,
+      STACK_CRON_KEY: seamKey,
+      STACK_CRON_WATCHER: urls.watcher,
+    },
   });
   save();
   await waitForProcess('cron', state.pids.cron, 'the first cron pass', () =>

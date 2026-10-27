@@ -9,11 +9,8 @@
 //
 // The tests run in order and share the round and the three pages. Each page records the Reveal phases
 // it draws (`[data-phase]`, with the text it drew them with), and the spec checks the record.
-// "Counting the flock…" lasts from the page's first 1 s tick past beacon time to the `revealed` event,
-// which on the stack lands within about a second of beacon time (61 ms after the tick in one run), so
-// a page could go from unsealing straight to the reveal. Each page's round socket therefore goes
-// through a proxy (`holdRevealed`) that passes the server's messages on in order but holds `revealed`
-// for 2 s: counting is always drawn, and every message is still the server's own.
+// The client holds "Counting the flock…" long enough to make the phase observable even when the
+// stack's `revealed` event follows the beacon immediately.
 import { randomInt } from 'node:crypto';
 import { VOICE, lossLine, winLine, type RoundView } from '@flocked/shared';
 import { commitment, fromBase64Url } from '@flocked/tlock';
@@ -107,34 +104,6 @@ async function phasesSeen(page: Page): Promise<PhaseSeen[]> {
   return first < 0 ? [] : seen.slice(first);
 }
 
-function messageType(msg: string): unknown {
-  try {
-    return (JSON.parse(msg) as { type?: unknown }).type;
-  } catch {
-    return null; // "pong"
-  }
-}
-
-/** How long the proxy holds a `revealed` message: longer than the page's 1 s clock tick. */
-const HOLD_REVEALED_MS = 2000;
-
-/**
- * Proxies the page's round sockets to the stack: every message both ways, in order, with each
- * `revealed` from the server held `HOLD_REVEALED_MS` (and the messages after it queued behind it).
- */
-async function holdRevealed(page: Page): Promise<void> {
-  await page.routeWebSocket(/\/api\/v1\/rounds\/[^/]+\/ws$/, (ws) => {
-    const server = ws.connectToServer();
-    let queue = Promise.resolve();
-    server.onMessage((msg) => {
-      const held = typeof msg === 'string' && messageType(msg) === 'revealed';
-      queue = queue
-        .then(() => (held ? new Promise<void>((r) => setTimeout(r, HOLD_REVEALED_MS)) : undefined))
-        .then(() => ws.send(msg));
-    });
-  });
-}
-
 /** The pick this device stored for the round (apps/web/src/crypto/picks.ts). */
 async function storedPick(page: Page, userId: string, roundId: string) {
   const raw = await page.evaluate(
@@ -187,7 +156,6 @@ test('E2E-1 Free UI: three players sign in in the browser with a wallet while th
       await preparePage(p.page, stack);
       await installWallet(p.page);
       await recordPhases(p.page);
-      await holdRevealed(p.page);
       p.userId = await signInWithWallet(p.page);
     }),
   );

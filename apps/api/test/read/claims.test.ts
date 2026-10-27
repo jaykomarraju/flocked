@@ -409,3 +409,43 @@ describe('claims seen onchain', () => {
     expect(await claims({ wallet: w })).toMatchObject([{ roundId: E.roundId, kind: 'refund' }]);
   });
 });
+
+describe('GET /claims after a guardian veto', () => {
+  // A vetoed settlement is Refunded onchain in the same transaction, so `claimRefund` works at once;
+  // the row still carries the vetoed proposal's `claims_open_at` (two hours on). Listing that as the
+  // refund's open time made Claims say "Opens …" for a refund the escrow already pays (W10-D.2).
+  it('lists the refund as claimable from the veto, not from the vetoed window’s end', async () => {
+    const V = await insertUser();
+    const F = await seed([0, 1, 1], [V]);
+    await propose(F);
+    F.chain.veto(F.chainRoundId);
+    const txHash: Hex = `0x${'f5'.repeat(32)}`;
+    const at = { txHash, block: F.chain.head };
+    await index([
+      chainEventOf(
+        F.chain,
+        'ProposalVetoed',
+        { roundId: F.chainRoundId, evidenceHash: `0x${'f6'.repeat(32)}` },
+        at,
+      ),
+      chainEventOf(
+        F.chain,
+        'RoundRefunded',
+        { roundId: F.chainRoundId, reason: 5 },
+        { ...at, logIndex: 1 },
+      ),
+    ]);
+    const f = await modeTimes(F.roundId);
+    expect(f.status).toBe('refunded');
+    expect(f.final_at).not.toBeNull();
+    expect(f.claims_open_at ?? 0).toBeGreaterThan(f.final_at ?? 0);
+    expect(await claims({ userId: V })).toEqual([
+      expect.objectContaining({
+        roundId: F.roundId,
+        kind: 'refund',
+        amount: F.stake.toString(),
+        claimsOpenAt: f.final_at,
+      }),
+    ]);
+  });
+});

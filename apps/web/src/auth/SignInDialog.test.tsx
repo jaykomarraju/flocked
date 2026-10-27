@@ -240,6 +240,7 @@ describe('SignInDialog', () => {
       user: { fid: 3, username: 'jay' },
       quickAuthToken: () => Promise.resolve('quick-auth-jwt'),
       ethereumProvider: () => Promise.resolve(undefined),
+      openExternal: () => Promise.resolve(),
     };
     const { bodyOf, onClose } = setup(
       { '/auth/farcaster': () => json(200, { ...SESSION, token: 'bearer-token' }) },

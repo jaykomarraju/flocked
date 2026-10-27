@@ -92,14 +92,15 @@ async function shareOf(
 }
 
 /**
- * The variant, values and path for `msg` sent to `userId`, or null when it can't be rendered (an
- * outcome whose entry or tally is gone, a round without its question): logged and dropped by the
- * consumer, since a retry can't fix it.
+ * The variant, values and path for `msg`, or null when it can't be rendered (an outcome whose entry
+ * or tally is gone, a round without its question): logged and dropped by the consumer, since a retry
+ * can't fix it. `entryUserId` is the account the message was enqueued for, which owns the entry the
+ * share is read from — not the account it is delivered to, which a merge may have changed (R4).
  */
 export async function prepare(
   db: D1Database,
   msg: NotifyMessage,
-  userId: string,
+  entryUserId: string,
 ): Promise<Prepared | null> {
   const base = { nextLive: false };
   switch (msg.event) {
@@ -125,7 +126,7 @@ export async function prepare(
         return { variant: 'refund', values, path, nextLive };
       }
       if (p.result === 'void') return { variant: 'void', values, path, nextLive };
-      const share = await shareOf(db, p.roundId, p.mode, userId, p.result);
+      const share = await shareOf(db, p.roundId, p.mode, entryUserId, p.result);
       if (share === null) return null;
       values.share = share;
       if (p.result === 'loss') return { variant: 'loss', values, path, nextLive };

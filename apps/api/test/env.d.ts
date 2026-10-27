@@ -14,6 +14,7 @@ export interface WranglerEnvSummary {
   vars: Record<string, unknown>;
   crons: string[];
   limits: { cpu_ms?: number } | null;
+  runWorkerFirst: string[];
   producers: { binding: string; queue: string }[];
   consumers: {
     queue: string;

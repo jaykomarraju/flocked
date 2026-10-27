@@ -1,6 +1,7 @@
 // GET /rounds?before=&limit= (spec "API"; W6-D): closed daily rounds, newest first, `before`
 // exclusive by game day, `limit`, the `nextBefore` cursor (null at the end), each mode's revealed
-// outcome and refund reason. Room rounds and open rounds are never listed.
+// outcome and refund reason, and `revealing` for a pending mode past beacon time (owner decision,
+// Oct 16, 2026; W9-F1). Room rounds and open rounds are never listed.
 import { env } from 'cloudflare:test';
 import {
   RoundsArchiveResponseSchema,
@@ -12,6 +13,7 @@ import {
   type RoundsArchiveResponse,
 } from '@flocked/shared';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { beaconRoundAtOrAfter } from '../helpers/index.js';
 import { OPTIONS, insertRound, request, setClock, type InsertedRound } from './helpers.js';
 
 const D = ['2026-03-01', '2026-03-02', '2026-03-03', '2026-03-04', '2026-03-05'] as const;
@@ -46,9 +48,11 @@ async function settlement(
 const rounds: InsertedRound[] = [];
 let room: InsertedRound;
 let open: InsertedRound;
+/** The clock every test runs at: an hour before the 2026-03-06 game day closes. */
+const NOW = dailyClosesAt('2026-03-06') * 1000 - 3_600_000;
 
 beforeAll(async () => {
-  setClock(dailyClosesAt('2026-03-06') * 1000 - 3_600_000);
+  setClock(NOW);
   const revealedAt = (i: number) => dailyClosesAt(day(i)) * 1000 + 300_000;
   // D1: Free settled, option 1 the minority.
   rounds.push(
@@ -225,11 +229,28 @@ describe('GET /rounds', () => {
       free: { status: 'voided', refundReason: 4, winningOption: null, tally: null },
       stakes: { status: 'voided', refundReason: 4, winningOption: null, tally: null },
     });
+    // Closed, still settling, past beacon time: `revealing` (the item below covers both sides).
     expect(item(4).modes.free).toMatchObject({
-      status: 'pending',
+      status: 'revealing',
       winningOption: null,
       tally: null,
     });
+  });
+
+  it('shows a closed round’s pending mode as revealing only past beacon time (W9-F1)', async () => {
+    // A closed round whose beacon is still 10 minutes away: settlement hasn't started.
+    const waiting = await daily('2026-02-28', {
+      beaconRound: beaconRoundAtOrAfter(NOW / 1000 + 600),
+      modes: { free: { status: 'pending' } },
+    });
+    const statusOf = async (id: string) =>
+      (await archive()).body.rounds.find((r) => r.id === id)?.modes.free?.status;
+    expect(await statusOf(waiting.id)).toBe('pending');
+    // Past its beacon time the same row reads `revealing`, as GET /rounds/:id does.
+    setClock(NOW + 11 * 60_000);
+    expect(await statusOf(waiting.id)).toBe('revealing');
+    expect(await statusOf(id(0))).toBe('settled');
+    setClock(NOW);
   });
 
   it.each([['?before=2026-02-30'], ['?before=yesterday'], ['?limit=0'], ['?limit=101']])(

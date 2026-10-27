@@ -14,6 +14,7 @@ import { writePick, type StoredPick } from '../../crypto/picks';
 import { apiFetch, renderApp, SIGNED_IN, TODAY } from '../../layout/testing';
 import { ONBOARDED_KEY } from '../../onboarding/OnboardingModal';
 import { json, ME } from '../../test/fixtures';
+import { MIN_COUNTING_MS } from '../reveal/countingHold';
 import { COUNTING_TITLE, UNSEALING_NOTE } from '../reveal/copy';
 import { revealPlayed } from '../reveal/played';
 import { PICK_LOST_LINE } from '../sealed/SealedView';
@@ -416,6 +417,11 @@ describe('the Free entry flow', () => {
   });
 });
 
+/** Moves the clock past the minimum the counting state is held for (`MIN_COUNTING_MS`). */
+function pastCounting() {
+  vi.setSystemTime(Date.now() + MIN_COUNTING_MS);
+}
+
 describe('the reveal', () => {
   it('runs Sealed → unsealing (m:ss) → counting → the result; reduced motion fades to the end state', async () => {
     reduceMotion(true);
@@ -438,6 +444,9 @@ describe('the reveal', () => {
     vi.setSystemTime((round.beaconTime + 1) * 1000);
     expect(await screen.findByText(COUNTING_TITLE, {}, { timeout: 2500 })).toBeVisible();
     push(round.id, revealed);
+    // Counting is held for its minimum before the bars grow.
+    vi.setSystemTime((round.beaconTime + 1) * 1000 + MIN_COUNTING_MS);
+    await screen.findByText(/Unflocked\. You and 37% of people/, {}, { timeout: 2500 });
     // Reduced motion: the end state at once, faded in; no 3 s growth.
     expect(revealEl()).toHaveAttribute('data-reveal-stage', 'done');
     expect(revealEl()).toHaveAttribute('data-motion', 'fade');
@@ -445,6 +454,50 @@ describe('the reveal', () => {
     expect(screen.getByText('63%')).toBeVisible();
     expect(await screen.findByText(/Unflocked\. You and 37% of people/)).toBeVisible();
     expect(revealPlayed(round.id, 'free')).toBe(true);
+  });
+
+  // Spec "Real-time and the reveal" › Reveal choreography (owner decision, Oct 16, 2026).
+  describe('"Counting the flock…" lasts at least 1.5 s', () => {
+    /** Sealed, closed, and one second past the beacon: the counting state. */
+    async function counting() {
+      reduceMotion(true);
+      writePick(storedPick());
+      renderApp({ fetch: apiFetch(signedIn(meEntry())) });
+      await screen.findByText(VOICE.sealed);
+      push(round.id, stateMsg());
+      vi.setSystemTime((round.beaconTime + 1) * 1000);
+      push(round.id, {
+        type: 'closed',
+        roundId: round.id,
+        closesAt: round.closesAt,
+        beaconRound: round.beaconRound,
+        beaconTime: round.beaconTime,
+      });
+      return await screen.findByText(COUNTING_TITLE, {}, { timeout: 2500 });
+    }
+
+    it('holds a result that arrives at once', async () => {
+      await counting();
+      push(round.id, revealed);
+      // Still counting: the bars have not grown and no result card is on screen.
+      expect(screen.getByText(COUNTING_TITLE)).toBeVisible();
+      expect(screen.queryByText(/Unflocked\. You and 37% of people/)).toBeNull();
+      vi.setSystemTime((round.beaconTime + 1) * 1000 + MIN_COUNTING_MS);
+      expect(
+        await screen.findByText(/Unflocked\. You and 37% of people/, {}, { timeout: 2500 }),
+      ).toBeVisible();
+      expect(screen.queryByText(COUNTING_TITLE)).toBeNull();
+    });
+
+    it('shows a result that arrives later as soon as it does', async () => {
+      await counting();
+      // Counting has already outlasted its minimum when the result lands.
+      vi.setSystemTime((round.beaconTime + 1) * 1000 + MIN_COUNTING_MS + 4000);
+      await waitFor(() => expect(screen.getByText(COUNTING_TITLE)).toBeVisible());
+      push(round.id, revealed);
+      expect(screen.queryByText(COUNTING_TITLE)).toBeNull();
+      expect(screen.getByText(/Unflocked\. You and 37% of people/)).toBeVisible();
+    });
   });
 
   it('keeps the same screen and socket when the closed round becomes previousRoundId', async () => {
@@ -484,7 +537,11 @@ describe('the reveal', () => {
     await screen.findByText(COUNTING_TITLE);
     push(round.id, stateMsg({ status: 'closed' }));
     push(round.id, revealed);
-    await waitFor(() => expect(revealEl()).toHaveAttribute('data-reveal-stage', 'grow'));
+    pastCounting();
+    // The counting hold runs on a real 1.5 s timer before the bars start.
+    await waitFor(() => expect(revealEl()).toHaveAttribute('data-reveal-stage', 'grow'), {
+      timeout: 4000,
+    });
     expect(revealEl()).toHaveAttribute('data-motion', 'full');
     expect(screen.queryByText(/Unflocked\. You and/)).toBeNull();
     // 3 s of real time, more under load.
@@ -499,7 +556,10 @@ describe('the reveal', () => {
     await screen.findByText(COUNTING_TITLE);
     push(round.id, stateMsg({ status: 'closed' }));
     push(round.id, revealed);
-    expect(revealEl()).toHaveAttribute('data-reveal-stage', 'done');
+    pastCounting();
+    await waitFor(() => expect(revealEl()).toHaveAttribute('data-reveal-stage', 'done'), {
+      timeout: 4000,
+    });
     expect(revealEl()).toHaveAttribute('data-motion', 'none');
   }, 15_000);
 

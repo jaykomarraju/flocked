@@ -14,6 +14,7 @@ const REVEAL_STATES = [
   'win',
   'loss',
   'refund',
+  'provisional',
   'mode-toggle',
   'next-live',
 ];

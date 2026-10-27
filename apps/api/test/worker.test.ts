@@ -69,22 +69,30 @@ describe('queue consumers', () => {
   it.each([
     ['decrypt-daily', { roundId: FIXTURE_IDS.round, mode: 'free', chunkKey: 'chunks/r/free/0' }],
     ['decrypt-rooms', { roundId: FIXTURE_IDS.round, mode: 'free', chunkKey: 'chunks/r/free/0' }],
-    [
-      'cards',
-      {
-        roundId: FIXTURE_IDS.round,
-        mode: 'free',
-        userId: FIXTURE_IDS.user,
-        kind: 'result',
-        variants: ['og'],
-      },
-    ],
   ])('%s validates with the shared schema and dispatches', async (name, body) => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     const batch = createMessageBatch(name, [msg('a', body)]);
     const ctx = createExecutionContext();
     await queue(batch, env, ctx);
     expect((await getQueueResult(batch, ctx)).retryMessages.map((m) => m.msgId)).toEqual(['a']);
+  });
+
+  it('dispatches cards to the registered consumer', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const batch = createMessageBatch('cards', [
+      msg('card', {
+        roundId: FIXTURE_IDS.round,
+        mode: 'free',
+        userId: FIXTURE_IDS.user,
+        kind: 'result',
+        variants: ['og'],
+      }),
+    ]);
+    const ctx = createExecutionContext();
+    await queue(batch, env, ctx);
+    const result = await getQueueResult(batch, ctx);
+    expect(result.explicitAcks).toEqual(['card']);
+    expect(result.retryMessages).toEqual([]);
   });
 
   it('retries a batch from a queue it does not know', async () => {
@@ -208,6 +216,12 @@ describe('wrangler.jsonc stays in step with the code', () => {
       expect(c.dead_letter_queue, c.queue).toBeTruthy();
       expect(c.max_retries, c.queue).toBeGreaterThan(0);
     }
+  });
+
+  it.each(envs)('%s: public card paths reach the Worker before SPA assets', (_name, w) => {
+    expect(w.runWorkerFirst).toEqual(
+      expect.arrayContaining(['/api/*', '/__test/*', '/s/*', '/cards/*']),
+    );
   });
 
   it.each(envs)('%s: decrypt consumers use the spec settings (Architecture)', (_name, w) => {

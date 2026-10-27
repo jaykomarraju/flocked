@@ -73,6 +73,7 @@ export async function postDailyCast(
   const t = clockNow(env);
   const claim = await claimKey(db, { key, userId: null, event: 'daily_cast', source: key }, t);
   if (claim.kind !== 'claimed') return 'already';
+  const { lease } = claim;
   try {
     const row = await db
       .prepare(
@@ -83,11 +84,11 @@ export async function postDailyCast(
     if (!row) throw new Error('round has no question');
     const embedUrl = new URL(`/r/${round.roundId}`, env.APP_ORIGIN ?? DEFAULT_ORIGIN).toString();
     await poster.post({ text: clip(row.prompt, CAST_TEXT_MAX), embedUrl, idem: key });
-    await finishKey(db, key, t);
+    await finishKey(db, key, t, lease);
     log.info('daily_cast_posted', { roundId: round.roundId });
     return 'posted';
   } catch (err) {
-    await releaseKey(db, key).catch(() => undefined);
+    await releaseKey(db, key, lease).catch(() => undefined);
     log.error('daily_cast_failed', {
       roundId: round.roundId,
       error: err instanceof Error ? err.message : String(err),

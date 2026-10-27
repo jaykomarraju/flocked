@@ -32,8 +32,22 @@ jobs:
   api:
     # ubuntu-latest moves to Ubuntu 26 from Oct 19, 2026; pin ubuntu-24.04 if the stack breaks there.
     runs-on: ubuntu-latest
-    # The specs take about 20 minutes on the owner's Mac (W7-D); rounds are kept to a minute open.
+    # W10-D pushed the formerly ~28-minute suite past the 35-minute safety line. Each group keeps
+    # every file's api/api-warp phases together on its own fresh stack.
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: core
+            files: >-
+              tests/lifecycle.spec.ts tests/notifications.spec.ts tests/paymaster.spec.ts
+              tests/rooms.spec.ts tests/stakes-copy.spec.ts tests/verify-cli.spec.ts
+              tests/watcher.spec.ts
+          - group: warp
+            files: >-
+              tests/drand-outage.spec.ts tests/stakes-claims.spec.ts
+              tests/stakes-timeout.spec.ts tests/stakes-veto.spec.ts
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -48,7 +62,7 @@ jobs:
       - run: forge soldeer install
         working-directory: contracts
       - run: pnpm stack:up
-      - run: pnpm e2e
+      - run: pnpm --filter @flocked/e2e exec playwright test ${{ matrix.files }} --project=api --project=api-warp --no-deps
         env:
           CI: 'true'
       - name: Stack status and drand logs
@@ -60,7 +74,7 @@ jobs:
         if: failure() || cancelled()
         uses: actions/upload-artifact@v7
         with:
-          name: e2e-report
+          name: e2e-${{ matrix.group }}-report
           path: |
             playwright-report
             test-results
@@ -92,8 +106,13 @@ jobs:
       # The app first, so the stack's API Worker serves it (and its design sheets) at APP_ORIGIN.
       - run: pnpm --filter @flocked/web build:e2e
       - run: pnpm stack:up
-      # The @screenshot tests run in the screens job, on macOS.
-      - run: pnpm --filter @flocked/e2e exec playwright test --project=ui --project=ui-warp --grep-invert @screenshot
+      # The @screenshot tests run in the screens job, on macOS. `ui` and `ui-warp` are two steps: once
+      # `ui-warp` selects a test, Playwright runs `ui` as its dependency, and a dependency project ignores
+      # CLI filters, so `--grep-invert` stopped keeping the screenshot tests out (W10-D.2).
+      - run: pnpm --filter @flocked/e2e exec playwright test --project=ui --grep-invert @screenshot
+        env:
+          CI: 'true'
+      - run: pnpm --filter @flocked/e2e exec playwright test --project=ui-warp --no-deps --grep-invert @screenshot
         env:
           CI: 'true'
       - name: Stack status and drand logs

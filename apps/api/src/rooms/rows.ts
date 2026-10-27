@@ -12,7 +12,7 @@ import { RoomSchema, type PublicUser, type Room, type RoomRole } from '@flocked/
 import { HttpError } from '../lib/errors.js';
 import { questionAuthor } from '../questions/rows.js';
 
-/** One `rooms` row with its member count. */
+/** One `rooms` row with its member count (the cap's: members whose account isn't deleted). */
 export interface RoomRow {
   id: string;
   name: string;
@@ -24,10 +24,16 @@ export interface RoomRow {
   member_count: number;
 }
 
-/** `SELECT` of a room (alias `r`) and its member count; append `WHERE …`. */
+/**
+ * `SELECT` of a room (alias `r`) and its member count; append `WHERE …`. The count is the cap's
+ * (`ROOM_MAX_MEMBERS` members whose account isn't deleted, as src/rooms/join.ts counts them), which
+ * is the count the room view serves (spec "Profiles, leaderboards and rooms" › Rooms; owner decision,
+ * Oct 16, 2026).
+ */
 export const ROOM_SELECT =
   'SELECT r.id, r.name, r.owner_user_id, r.invite_code, r.question_source, r.created_at, ' +
-  'r.closed_at, (SELECT COUNT(*) FROM room_members c WHERE c.room_id = r.id) AS member_count ' +
+  'r.closed_at, (SELECT COUNT(*) FROM room_members c JOIN users cu ON cu.id = c.user_id ' +
+  "WHERE c.room_id = r.id AND cu.status <> 'deleted') AS member_count " +
   'FROM rooms r';
 
 /** The wire `Room`, parsed (a bad stored value fails loudly instead of being served). */

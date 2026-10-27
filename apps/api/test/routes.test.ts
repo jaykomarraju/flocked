@@ -89,6 +89,7 @@ const IMPLEMENTED = new Set([
   'GET /rounds/:id/verify',
   'GET /rounds/:id/bundles/:mode/:file',
   'GET /claims',
+  'POST /paymaster',
   // W7-A (test/ws/)
   'GET /rounds/:id/ws',
   // W7-B (test/identity/, test/limits/, test/me/)
@@ -116,15 +117,17 @@ const IMPLEMENTED = new Set([
   // W9-A (test/notify/)
   'POST /push/subscribe',
   'POST /farcaster/webhook',
+  // W10-A (test/cards/)
+  'GET /s/:shareId',
+  `GET ${ENDPOINTS.find((e) => e.path.startsWith('/cards/:shareId/'))?.path ?? ''}`,
+  `GET ${ENDPOINTS.find((e) => e.path.startsWith('/rounds/:id/card/'))?.path ?? ''}`,
 ]);
 
 /**
  * Stubs behind the room-round gate (W6-D, src/read/access.ts): an unknown round answers 404 before
- * the stub's 501 (test/gating/ checks the 501 for a public round and the gate for room rounds).
+ * the stub's 501. Empty since W10-A implemented the round card, which answers the gate's own 404.
  */
-const GATED_STUBS = new Set([
-  `GET ${ENDPOINTS.find((e) => e.path.startsWith('/rounds/:id/card/'))?.path ?? ''}`,
-]);
+const GATED_STUBS = new Set<string>([]);
 
 const label = (ep: EndpointDef) => `${ep.method} ${ep.path}`;
 
@@ -139,6 +142,9 @@ describe.each(
       // handle: from its handler, not the router.
       const message = ErrorEnvelopeSchema.parse(await res.json()).error.message;
       if (ep.path === '/users/:handle') expect(message).toBe('No such user');
+      // A share page and a card image answer 404 for a share ID or round that has no card (W10-A).
+      else if (ep.module === 'cards' && !ep.path.startsWith('/rounds/'))
+        expect(['No such share', 'No such card']).toContain(message);
       else {
         expect(ep.path.startsWith('/rounds/:id')).toBe(true);
         expect(message).toBe('No such round');

@@ -10,6 +10,7 @@ export const STACK_DIR = dirname(fileURLToPath(import.meta.url));
 export const ROOT = join(STACK_DIR, '..', '..');
 export const API_DIR = join(ROOT, 'apps', 'api');
 export const SIGNER_DIR = join(ROOT, 'apps', 'signer');
+export const WATCHER_DIR = join(ROOT, 'apps', 'watcher');
 export const CONTRACTS_DIR = join(ROOT, 'contracts');
 export const COMPOSE_FILE = join(STACK_DIR, 'docker-compose.yml');
 export const STATE_FILE = join(STACK_DIR, '.state.json');
@@ -22,6 +23,10 @@ export const PERSIST_DIR = join(RUN_DIR, 'wrangler');
 export const SIGNER_VARS_FILE = join(RUN_DIR, 'ticket-signer.dev.vars');
 /** The signer's wrangler config as the stack runs it (a copy of apps/signer's; up.mjs). */
 export const SIGNER_RUN_DIR = join(RUN_DIR, 'signer');
+/** The independent watcher's generated local config and secrets (never shared with the API). */
+export const WATCHER_RUN_DIR = join(RUN_DIR, 'watcher');
+export const WATCHER_VARS_FILE = join(WATCHER_RUN_DIR, '.dev.vars');
+export const WATCHER_PERSIST_DIR = join(RUN_DIR, 'watcher-wrangler');
 /** Written by contracts/script/Deploy.s.sol on chain 31337 (gitignored). */
 export const DEPLOYMENT_FILE = join(CONTRACTS_DIR, 'deployments', '31337.json');
 /** `wrangler dev` needs the assets directory to exist; apps/web does not build into it yet. */
@@ -48,7 +53,11 @@ export const PORTS = Object.freeze({
   push: port('STACK_PUSH_PORT', 8794),
   farcasterNotify: port('STACK_FARCASTER_NOTIFY_PORT', 8795),
   email: port('STACK_EMAIL_PORT', 8796),
+  bundler: port('STACK_BUNDLER_PORT', 8797),
+  watcher: port('STACK_WATCHER_PORT', 8798),
+  pager: port('STACK_PAGER_PORT', 8799),
   inspector: port('STACK_INSPECTOR_PORT', 19229),
+  watcherInspector: port('STACK_WATCHER_INSPECTOR_PORT', 19230),
 });
 
 export const LOCAL_CHAIN_ID = 31337;

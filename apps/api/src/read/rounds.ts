@@ -310,8 +310,8 @@ async function roundRow(db: D1Database, roundId: string): Promise<RoundRow | nul
 /**
  * Past beacon time a closed round's settlement has started, so a mode D1 still shows `pending`
  * reads `revealing`, as in the WebSocket `state` (src/ws/snapshot.ts `asOfClock`; spec "API",
- * GET /rounds/:id; W8-F1). D1 moves it only when the SettlementDO (Free) or the indexer (Stakes)
- * gets to it.
+ * GET /rounds/:id and, since the owner's Oct 16, 2026 decision, GET /rounds; W8-F1). D1 moves it only
+ * when the SettlementDO (Free) or the indexer (Stakes) gets to it.
  */
 function asOfBeacon(view: RoundView, nowMs: number): RoundView {
   const closed = view.status === 'closed' || nowMs >= view.closesAt * 1000;
@@ -462,13 +462,19 @@ export async function readArchive(
     revealedSettlements(env.DB, ids),
     d1Counts(env.DB, ids),
   ]);
+  // Past beacon time a closed round's pending mode reads `revealing` here too (spec "API",
+  // GET /rounds; owner decision, Oct 16, 2026), as on GET /rounds/:id.
+  const nowMs = now(env);
   const rounds: RoundArchiveItem[] = page.map((r) => {
-    const v = roundView(
-      env,
-      r,
-      modes.filter((m) => m.round_id === r.id),
-      counts.get(r.id) ?? {},
-      settlements.filter((s) => s.round_id === r.id),
+    const v = asOfBeacon(
+      roundView(
+        env,
+        r,
+        modes.filter((m) => m.round_id === r.id),
+        counts.get(r.id) ?? {},
+        settlements.filter((s) => s.round_id === r.id),
+      ),
+      nowMs,
     );
     const item: RoundArchiveItem = {
       id: v.id,

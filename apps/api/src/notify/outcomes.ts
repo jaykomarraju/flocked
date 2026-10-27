@@ -4,11 +4,12 @@
 // sent, so these may run again (a retried settlement, a re-processed chain event) without repeats.
 //   * `outcome` (`outcome:{gameDay}:{userId}`): each mode's result at its reveal: Free at apply or
 //     refund (the post-final hook), Stakes at the confirmed `OutcomeProposed` (indexer), a void at
-//     `applyVoid`, and a Stakes `refundTooFew` / `refundTimeout` (reasons 1 and 6) at `RoundRefunded`.
-//     The first to reach the consumer is the user's combined message; later ones are app-only or,
-//     for a later-event refund, `refunded` (consumer.ts `laterRefund`);
-//   * `refunded` (`refunded:{roundId}:{mode}:{userId}`): a Stakes refund proposal finalized (reasons 2
-//     and 3) or a vetoed settlement refunded (5);
+//     `applyVoid` and in the scheduler tick's sweep (a guardian void), and a Stakes `refundTooFew` /
+//     `refundTimeout` at `RoundRefunded` when no proposal preceded it. The first to reach the consumer
+//     is the user's combined message; later ones are app-only or, for a later-event refund,
+//     `refunded` (consumer.ts `laterRefund`);
+//   * `refunded` (`refunded:{roundId}:{mode}:{userId}`): a Stakes refund proposal finalized (any of
+//     reasons 1, 2 and 3) or a vetoed settlement refunded (5);
 //   * `payout_claimable` (`payout_claimable:{roundId}:stakes:{userId}`): a Stakes settlement final and
 //     its claims open, to every account with a payout.
 // Enqueue failures throw, so the caller's own retry (the settlement coordinator, the indexer entry,
@@ -25,6 +26,8 @@ type NotifyQueueEnv = Pick<Env, 'DB' | 'QUEUE_NOTIFY'>;
 const SEND_BATCH_MAX = 100;
 
 const REFUNDED_STATUSES = new Set(['refund_proposed', 'refunded', 'voided']);
+/** Stakes states that mirror a proposal the contract hasn't finalized yet (spec "Round lifecycle"). */
+const PROPOSED_STATUSES = new Set(['settle_proposed', 'refund_proposed']);
 
 interface ModeRow {
   kind: 'daily' | 'room';
@@ -92,6 +95,9 @@ export async function modeOutcomeMessages(
   const refunded = REFUNDED_STATUSES.has(m.status);
   const settled = m.status === 'settled' || m.status === 'settle_proposed';
   if (!refunded && !settled) return [];
+  // A Stakes proposal is not final: `provisional` tells the consumer that a refund told here is the
+  // day's outcome only when it is the user's first, and `refunded` when it becomes final (R2).
+  const provisional = PROPOSED_STATUSES.has(m.status);
   let winner: 0 | 1 | null = null;
   if (settled) {
     const w = m.winners_json ? (JSON.parse(m.winners_json) as { winner?: 0 | 1 | null }) : null;
@@ -134,6 +140,7 @@ export async function modeOutcomeMessages(
         amount,
         nextRoundId,
         refundReason: result === 'refund' ? (m.refund_reason ?? 1) : null,
+        ...(provisional ? { provisional: true } : {}),
       },
     };
   });
@@ -218,7 +225,7 @@ export async function enqueuePayoutClaimable(
 /**
  * The post-final hook (src/settlement/hooks.ts): Free outcomes at apply and refund; for Stakes, which
  * is final at `RoundFinalized` / `RoundRefunded` after its outcome went out at the proposal, the
- * claim notice or the refund notice.
+ * claim notice or the refund notice (and the outcome itself for a refund with no proposal).
  */
 export async function notifyOnModeFinal(env: Env, event: ModeFinalEvent): Promise<void> {
   if (event.kind !== 'daily') return;
@@ -234,7 +241,13 @@ export async function notifyOnModeFinal(env: Env, event: ModeFinalEvent): Promis
   if (event.outcome !== 'refunded') return;
   const m = await modeRow(env.DB, event.roundId, 'stakes');
   const reason = (m?.refund_reason ?? 1) as RefundReason;
-  // Reasons 1 and 6 had no proposal, so they may be the user's first outcome of the day.
-  if (reason === 1 || reason === 6) await enqueueModeOutcome(env, event.roundId, 'stakes');
-  else await enqueueRefunded(env, event.roundId, 'stakes', reason);
+  // A refund the contract proposed first was already told at the proposal (the day's `outcome` when
+  // it was the user's first mode outcome), so its finalization is `refunded` (spec "Notifications",
+  // Oct 16, 2026; W9-F1 R2). A refund with no proposal is final when it happens, so it may still be
+  // the user's first outcome: `refundTimeout` (6) never has a proposal, reasons 2, 3 and 5 always
+  // have one, and only `refundTooFew` (1) is ambiguous, because VOID entries can leave too few valid
+  // ones for a rule-1 proposal. `claims_open_at` tells them apart: only a proposal sets it.
+  const proposed = reason !== 6 && (reason !== 1 || m?.claims_open_at != null);
+  if (proposed) await enqueueRefunded(env, event.roundId, 'stakes', reason);
+  else await enqueueModeOutcome(env, event.roundId, 'stakes');
 }

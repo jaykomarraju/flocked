@@ -300,6 +300,20 @@ const SPEC_COLUMNS: Record<string, readonly string[]> = {
   // 0017 (W8-A): split quality per settled mode of a daily round ("Question pipeline" step 5); not
   // yet a row in the spec's data model.
   question_splits: ['round_id', 'mode', 'question_id', 'split_quality', 'entrants', 'created_at'],
+  // 0024 (W10-D): final paymaster calls use fenced leases and retain successful responses so
+  // retries are idempotent while ten live/successful operations reserve the sender's UTC-day cap.
+  paymaster_sponsorships: [
+    'operation_key',
+    'sender',
+    'utc_day',
+    'status',
+    'lease_token',
+    'lease_expires_at',
+    'result_json',
+    'created_at',
+    'updated_at',
+    'succeeded_at',
+  ],
 };
 
 /** Primary keys the spec names ("PK (...)", or "(PK)" on a column). */
@@ -319,6 +333,7 @@ const SPEC_PRIMARY_KEYS: Record<string, readonly string[]> = {
   config: ['key'],
   person_tombstones: ['person_id'],
   question_splits: ['round_id', 'mode'],
+  paymaster_sponsorships: ['operation_key'],
 };
 
 interface KeySpec {
@@ -348,6 +363,7 @@ const SPEC_INDEXES: readonly KeySpec[] = [
   { table: 'stakes_tickets', columns: ['round_id', 'person_tag'] },
   // 0012 (W6-B).
   { table: 'stakes_tickets', columns: ['user_id', 'game_day'] },
+  { table: 'paymaster_sponsorships', columns: ['sender', 'utc_day', 'status', 'lease_expires_at'] },
 ];
 
 interface IndexInfo {
@@ -1302,5 +1318,30 @@ describe('0021 (W9-A)', () => {
       ).first(),
     ).toEqual({ enabled: 1 });
     await env.DB.prepare('DELETE FROM farcaster_notification_tokens').run();
+  });
+});
+
+describe('0024 (W10-D)', () => {
+  it('paymaster sponsorship leases are strict, fenced rows keyed by one operation', async () => {
+    const { results } = await env.DB.prepare('SELECT name FROM d1_migrations').all<{
+      name: string;
+    }>();
+    expect(results.map((r) => r.name)).toContain('0024_paymaster.sql');
+
+    const insert =
+      "INSERT INTO paymaster_sponsorships (operation_key, sender, utc_day, status, lease_token, lease_expires_at, created_at, updated_at) VALUES (?1, '0xabc', '2026-10-25', 'pending', 'lease', 2, 1, 1)";
+    await env.DB.prepare(insert).bind('op').run();
+    expect(await rejects(insert, 'op')).toContain('UNIQUE constraint failed');
+    expect(
+      await rejects(
+        "INSERT INTO paymaster_sponsorships (operation_key, sender, utc_day, status, lease_token, lease_expires_at, created_at, updated_at) VALUES ('bad-day', '0xabc', '25-10-2026', 'pending', 'lease', 2, 1, 1)",
+      ),
+    ).toContain('CHECK constraint failed');
+    expect(
+      await rejects(
+        "INSERT INTO paymaster_sponsorships (operation_key, sender, utc_day, status, lease_token, lease_expires_at, result_json, created_at, updated_at, succeeded_at) VALUES ('bad-state', '0xabc', '2026-10-25', 'succeeded', 'lease', 2, NULL, 1, 1, NULL)",
+      ),
+    ).toContain('CHECK constraint failed');
+    await env.DB.prepare('DELETE FROM paymaster_sponsorships').run();
   });
 });
