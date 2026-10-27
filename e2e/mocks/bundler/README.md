@@ -10,10 +10,10 @@ for smart-wallet stand-ins; no operation is broadcast.
 
 ```bash
 node e2e/mocks/bundler/server.mjs
-curl http://127.0.0.1:8798/health
-curl http://127.0.0.1:8798/calls
-curl -X DELETE http://127.0.0.1:8798/calls
+curl http://127.0.0.1:8797/health
+curl http://127.0.0.1:8797/calls
+curl -X DELETE http://127.0.0.1:8797/calls
 ```
 
-Set `MOCK_BUNDLER_PORT` to move its default `8798` port. `GET /calls` returns every JSON-RPC body
+Set `MOCK_BUNDLER_PORT` to move its default `8797` port. `GET /calls` returns every JSON-RPC body
 received at `POST /`, allowing E2E-11 to prove rejected operations never reached the provider.

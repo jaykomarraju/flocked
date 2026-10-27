@@ -15,6 +15,7 @@ import { join } from 'node:path';
 import { flockedAnchorAbi, flockedEscrowAbi } from '@flocked/abi';
 import {
   RoundViewSchema,
+  StakesPrepareRequestSchema,
   freeConfigHash,
   questionHash,
   receiptTypedData,
@@ -424,8 +425,13 @@ export async function mockWorld(
       );
     }
     if (key === `POST /rounds/${round.id}/entries/stakes/prepare`) {
-      const body = req.postDataJSON() as { wallet: string };
-      return json(200, stakes.ticketFor(body.wallet));
+      // The real API's schema (a lowercase wallet, nothing else), so a body it would refuse with a
+      // 400 can't pass here: W10-D.2 found the client sending a checksummed wallet.
+      const body = StakesPrepareRequestSchema.safeParse(req.postDataJSON());
+      if (!body.success) {
+        return json(400, { error: { code: 'bad_request', message: body.error.message } });
+      }
+      return json(200, stakes.ticketFor(body.data.wallet));
     }
     if (key === 'POST /me/tos') {
       const tos = (ME as unknown as { tos: Record<string, unknown> }).tos;
