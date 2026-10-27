@@ -7,6 +7,7 @@ import {
   CreateEntryResponseSchema,
   RoundDetailResponseSchema,
   RoundMeResponseSchema,
+  RoundsTodayResponseSchema,
   StakesPrepareResponseSchema,
   type CreateEntryResponse,
   type RoundMeResponse,
@@ -221,4 +222,21 @@ export async function enterStakes(
     }),
   );
   return { ciphertext, receipt };
+}
+
+/**
+ * Polls `GET /rounds/today` until it serves this round, so a browser that opens Today draws it and
+ * not a round another spec left open (W10-D.2).
+ */
+export function waitForToday(
+  stack: Stack,
+  roundId: string,
+  timeoutMs = 120_000,
+): Promise<RoundView> {
+  return poll(`GET /rounds/today to serve ${roundId}`, timeoutMs, async () => {
+    const res = await stack.api('/rounds/today');
+    if (res.status !== 200) return null;
+    const today = RoundsTodayResponseSchema.parse(res.body);
+    return today.round?.id === roundId ? today.round : null;
+  });
 }

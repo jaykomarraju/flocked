@@ -301,3 +301,21 @@ export async function asRole(
     await stack.testClient.stopImpersonatingAccount({ address });
   }
 }
+
+/**
+ * USDC a player arrives with: `amount` MockUSDC minted to `to` by one of anvil's dev accounts, so the
+ * player's own wallet sends nothing but what the app asks it to (W10-D.2: the smart-wallet stand-in's
+ * only transactions are its user operations' calls).
+ */
+export async function giveUsdc(stack: Stack, to: Address, amount: bigint): Promise<void> {
+  const faucet = anvilWallet(stack, 9);
+  await mined(
+    stack,
+    faucet.client.writeContract({
+      address: stack.contracts.usdc,
+      abi: mockUsdcAbi,
+      functionName: 'mint',
+      args: [to, amount],
+    }),
+  );
+}

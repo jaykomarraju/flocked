@@ -112,3 +112,23 @@ export class Clock {
     return at;
   }
 }
+
+/**
+ * Mines a block every 2 s, as Base would, while a step waits on the indexer (anvil mines no empty
+ * blocks, so a proposal, a veto or a claim would otherwise sit behind a stale head). Each block is
+ * stamped at wall time or one second past the head, so this never runs anvil's clock ahead. The
+ * returned function stops it and waits for the last block.
+ */
+export function produceBlocks(stack: Stack): () => Promise<void> {
+  let on = true;
+  const loop = (async () => {
+    while (on) {
+      await stack.testClient.mine({ blocks: 1 });
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+  })();
+  return async () => {
+    on = false;
+    await loop;
+  };
+}
