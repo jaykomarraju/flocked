@@ -106,8 +106,13 @@ jobs:
       # The app first, so the stack's API Worker serves it (and its design sheets) at APP_ORIGIN.
       - run: pnpm --filter @flocked/web build:e2e
       - run: pnpm stack:up
-      # The @screenshot tests run in the screens job, on macOS.
-      - run: pnpm --filter @flocked/e2e exec playwright test --project=ui --project=ui-warp --grep-invert @screenshot
+      # The @screenshot tests run in the screens job, on macOS. `ui` and `ui-warp` are two steps: once
+      # `ui-warp` selects a test, Playwright runs `ui` as its dependency, and a dependency project ignores
+      # CLI filters, so `--grep-invert` stopped keeping the screenshot tests out (W10-D.2).
+      - run: pnpm --filter @flocked/e2e exec playwright test --project=ui --grep-invert @screenshot
+        env:
+          CI: 'true'
+      - run: pnpm --filter @flocked/e2e exec playwright test --project=ui-warp --no-deps --grep-invert @screenshot
         env:
           CI: 'true'
       - name: Stack status and drand logs
