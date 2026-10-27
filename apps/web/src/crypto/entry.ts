@@ -13,6 +13,7 @@ import {
   ulidToHex,
   type CreateEntryRequest,
   type CreateEntryResponse,
+  type Mode,
   type RoundView,
 } from '@flocked/shared';
 import {
@@ -20,6 +21,7 @@ import {
   commitment,
   encodePlaintext,
   encryptPick,
+  roundRefFromChainId,
   roundRefFromUlid,
   toBase64Url,
   type TargetRoundError,
@@ -131,23 +133,37 @@ export async function checkFreeRound(i: {
   }
 }
 
+/** A plaintext's round reference: the round's ULID (Free) or its onchain round ID (Stakes). */
+function roundRef(round: RoundView, mode: Mode): Uint8Array {
+  if (mode === 'free') return roundRefFromUlid(round.id);
+  const chainRoundId = round.modes.stakes?.chainRoundId;
+  if (chainRoundId == null) throw new Error('a Stakes pick needs the onchain round ID');
+  return roundRefFromChainId(BigInt(chainRoundId));
+}
+
 export interface SealedPick {
   optionIndex: 0 | 1;
   nonce: Hex;
   ciphertext: Uint8Array;
 }
 
-/** Step 2: the plaintext (version, the round's binary ULID, the option, a fresh nonce), encrypted. */
+/**
+ * Step 2: the plaintext (version, the round reference, the option, a fresh nonce), encrypted. The
+ * round reference is the round's binary ULID for a Free pick and the onchain round ID for a Stakes
+ * pick (spec "Sealed picks (timelock encryption)"); any other makes the entry VOID (`bad_plaintext`).
+ */
 export async function sealPick(i: {
   round: RoundView;
   optionIndex: 0 | 1;
   chain: ClientChain;
+  /** Free when omitted. */
+  mode?: Mode;
   randomBytes?: (n: number) => Uint8Array;
 }): Promise<SealedPick> {
   const random = i.randomBytes ?? ((n) => crypto.getRandomValues(new Uint8Array(n)));
   const nonce = random(16);
   const plaintext = encodePlaintext({
-    roundRef: roundRefFromUlid(i.round.id),
+    roundRef: roundRef(i.round, i.mode ?? 'free'),
     optionIndex: i.optionIndex,
     nonce,
   });

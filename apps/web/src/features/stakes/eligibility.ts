@@ -23,6 +23,13 @@ export type StakesOffer =
 const VERIFIABLE: IneligibleReason = 'not_verified';
 
 /**
+ * What the verification sheet fixes on its way to Coinbase: it stores the age attestation and the
+ * terms (`POST /me/tos`) before the OAuth flow (spec "Client app" › Entry flow (Stakes) step 1), so
+ * beside `not_verified` they don't hide Stakes. A new account has all three (W10-D.2, on the stack).
+ */
+const FIXED_BY_THE_SHEET: readonly IneligibleReason[] = ['age_unattested', 'tos_not_accepted'];
+
+/**
  * What to offer, from `/me` and whether the round has a Stakes mode at all. `me` is null while the
  * session is loading or signed out: both hide Stakes.
  */
@@ -30,8 +37,11 @@ export function stakesOffer(me: MeResponse | null, roundHasStakes: boolean): Sta
   if (!me || !roundHasStakes) return { kind: 'hidden', reasons: [] };
   if (me.stakes.eligible) return { kind: 'play' };
   const reasons = me.stakes.reasons;
-  // `not_verified` alone is fixable here; with any other reason beside it, Stakes stays hidden.
-  if (reasons.length > 0 && reasons.every((r) => r === VERIFIABLE)) {
+  // `not_verified` is fixable here, with what the sheet also stores; any other reason hides Stakes.
+  if (
+    reasons.includes(VERIFIABLE) &&
+    reasons.every((r) => r === VERIFIABLE || FIXED_BY_THE_SHEET.includes(r))
+  ) {
     return { kind: 'verify', reasons: [...reasons] };
   }
   return { kind: 'hidden', reasons: [...reasons] };

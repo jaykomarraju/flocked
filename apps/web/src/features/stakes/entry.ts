@@ -75,11 +75,13 @@ export async function submitStakesEntry(
     round: i.round,
     optionIndex: i.optionIndex,
     chain: deps.chain,
+    mode: 'stakes',
     randomBytes: deps.randomBytes,
   });
   const ciphertext = toBase64Url(sealed.ciphertext);
 
-  const prepared = await deps.prepare(i.wallet);
+  // The API takes addresses lowercase (`AddressSchema`); the wallet answers them checksummed.
+  const prepared = await deps.prepare(i.wallet.toLowerCase() as Address);
   // The ticket has to be for this wallet, this chain and the escrow the client trusts; otherwise
   // the entry is not the one the player asked for, and it is not sent.
   const escrowMatches =

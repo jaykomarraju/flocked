@@ -6,10 +6,17 @@
 // anything is sent, the pick is encrypted before the ticket is asked for, and the entry goes out as
 // one sponsored user operation of `approve` then `enter`.
 import { questionHash, type RoundView, type StakesPrepareResponse } from '@flocked/shared';
-import { decryptWithSignature, firstRoundAtOrAfter, fromBase64Url, QUICKNET } from '@flocked/tlock';
+import {
+  decodePlaintext,
+  decryptWithSignature,
+  firstRoundAtOrAfter,
+  fromBase64Url,
+  QUICKNET,
+  roundRefFromChainId,
+} from '@flocked/tlock';
 import { flockedEscrowAbi, mockUsdcAbi } from '@flocked/abi';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { decodeFunctionData, type Address, type Hex } from 'viem';
+import { decodeFunctionData, getAddress, type Address, type Hex } from 'viem';
 import { TEST_CHAIN, testRound } from '../../crypto/testing';
 import { entryCalls } from '../../wallet/calls';
 import { WalletError } from '../../wallet/send';
@@ -25,8 +32,9 @@ const BEACON_DELAY = 120;
 const PERSON_TAG = `0x${'ab'.repeat(32)}`;
 const SIGNATURE = `0x${'cd'.repeat(65)}`;
 
-function stakesRound(): RoundView {
-  const base = testRound();
+function stakesRound(closesAt?: number): RoundView {
+  const base =
+    closesAt === undefined ? testRound() : testRound({ opensAt: closesAt - 86_400, closesAt });
   const beaconRound = firstRoundAtOrAfter(QUICKNET, base.closesAt + BEACON_DELAY);
   return {
     ...base,
@@ -136,6 +144,25 @@ describe('submitStakesEntry', () => {
     expect(enter.args?.[0]).toBe(7n);
   });
 
+  // A wallet answers `eth_accounts` checksummed (wagmi keeps it so) and the API's `AddressSchema` is
+  // lowercase only: on the stack the checksummed wallet was a 400 for every player (W10-D.2).
+  it('asks for the ticket with the wallet lowercased, as the API takes addresses', async () => {
+    const round = stakesRound();
+    const checksummed = getAddress(`0x${'ab'.repeat(20)}`);
+    const prepare = vi.fn().mockResolvedValue(
+      prepared(round, {
+        ticket: { ...prepared(round).ticket, wallet: checksummed.toLowerCase() },
+      }),
+    );
+    await submitStakesEntry(
+      { round, optionIndex: 0, wallet: checksummed },
+      { chain: TEST_CHAIN, reader: reader(round), prepare, wagmi, origin: ORIGIN },
+    );
+    expect(checksummed).not.toBe(checksummed.toLowerCase());
+    expect(prepare).toHaveBeenCalledWith(checksummed.toLowerCase());
+    expect(sendCalls.mock.calls[0]![1]).toMatchObject({ account: checksummed });
+  });
+
   it('refuses before the ticket when the chain disagrees with the published config', async () => {
     const round = stakesRound();
     const prepare = vi.fn();
@@ -207,6 +234,34 @@ describe('submitStakesEntry', () => {
         },
       ),
     ).rejects.toMatchObject({ name: 'WalletError', kind: 'reverted' });
+  });
+
+  // The settlement opens a Stakes plaintext against the onchain round ID; a ULID there made every
+  // browser entry VOID (`bad_plaintext`) on the stack (W10-D.2). The round closes so that its beacon
+  // is quicknet round 32,870,075, whose signature is recorded, so the test opens what was sealed.
+  it('seals the onchain round ID as the round reference of the plaintext', async () => {
+    const beacon = 32_870_075;
+    const round = stakesRound(QUICKNET.genesis + (beacon - 1) * QUICKNET.period - BEACON_DELAY);
+    expect(round.beaconRound).toBe(beacon);
+    const result = await submitStakesEntry(
+      { round, optionIndex: 1, wallet: WALLET },
+      {
+        chain: TEST_CHAIN,
+        reader: reader(round),
+        prepare: () => Promise.resolve(prepared(round)),
+        wagmi,
+        origin: ORIGIN,
+      },
+    );
+    const plaintext = decodePlaintext(
+      await decryptWithSignature(
+        QUICKNET,
+        fromBase64Url(result.ciphertext)!,
+        '85c653c4e0099d069e9f7f525d14239c5f2ffa496f02ad5daf4e4e240de575261d5248172ad543b351b236c838853d8e',
+      ),
+    );
+    expect(plaintext?.roundRef).toEqual(roundRefFromChainId(7n));
+    expect(plaintext?.optionIndex).toBe(1);
   });
 });
 
