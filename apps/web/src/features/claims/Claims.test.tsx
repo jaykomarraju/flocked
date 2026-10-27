@@ -11,7 +11,7 @@ import { connectWallet, createWagmiConfig } from '../../auth/wallet';
 import { apiFetch, setBreakpoint, SIGNED_IN, TODAY } from '../../layout/testing';
 import { json } from '../../test/fixtures';
 import { WalletError, sendSponsoredCalls } from '../../wallet/send';
-import { Claims } from './Claims';
+import { CLAIMED_POLL_MS, Claims } from './Claims';
 import { EMPTY_LINE, PENDING_NOTE } from './copy';
 
 vi.mock('../../auth/wallet', async (orig) => ({
@@ -252,6 +252,50 @@ describe('Claims', () => {
       expect(urls(fetch).filter((u) => u.includes('/claims')).length).toBeGreaterThan(before),
     );
   });
+
+  // `/claims` drops a payout only once the indexer has seen its `Claimed`, which trails the block:
+  // on the stack the claimed row came back as "Ready" after the one refetch (W10-D.2).
+  it('hides a claimed payout while /claims still lists it, and asks again until it is gone', async () => {
+    const user = userEvent.setup();
+    let landed = false;
+    let staleServed = 0;
+    let freshServed = 0;
+    send.mockImplementation(() => {
+      landed = true;
+      return Promise.resolve({ id: '0x1', txHashes: [] });
+    });
+    const fetch = apiFetch({
+      ...SIGNED_IN,
+      'GET /claims': () => {
+        if (!landed) return json(200, CLAIMS);
+        if (staleServed < 1) {
+          staleServed += 1;
+          return json(200, CLAIMS);
+        }
+        freshServed += 1;
+        return json(200, { claims: [CLAIMS.claims[2]!] });
+      },
+      ...ROUNDS,
+    });
+    renderClaims(fetch);
+
+    await user.click(await screen.findByRole('button', { name: 'Claim all' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Claim 17.67 USDC' }));
+
+    // Gone as soon as the batch lands, though `/claims` still lists it: nothing to claim twice.
+    await waitFor(() => expect(staleServed).toBe(1));
+    await waitFor(() =>
+      expect(screen.queryByText('Pineapple on pizza: yes or no?')).not.toBeInTheDocument(),
+    );
+    expect(screen.queryByText('Is cereal a soup?')).not.toBeInTheDocument();
+    expect(screen.getByText('One horse-sized duck or 100 duck-sized horses?')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Claim all' })).toBeDisabled();
+    // And asked again until the indexer has caught up.
+    await waitFor(() => expect(freshServed).toBeGreaterThan(0), {
+      timeout: CLAIMED_POLL_MS * 2,
+    });
+  }, 15_000);
 
   it('says what happened when the wallet turns the claim down', async () => {
     const user = userEvent.setup();

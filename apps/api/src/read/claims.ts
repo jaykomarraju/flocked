@@ -117,7 +117,10 @@ async function itemOf(
     kind: 'refund',
     amount: String(row.stake),
     proof: null,
-    claimsOpenAt: row.claims_open_at ?? row.final_at,
+    // A refund proposal pays at the end of its window; a round already Refunded (or voided) onchain
+    // pays at once, whatever window a vetoed settlement left on the row.
+    claimsOpenAt:
+      row.status === 'refund_proposed' ? row.claims_open_at : (row.final_at ?? row.claims_open_at),
   };
 }
 

@@ -54,6 +54,16 @@ interface Entry {
   ready: boolean;
 }
 
+/**
+ * A payout as the escrow knows it, whatever `/claims` lists it under: what one claim spends.
+ */
+function paidKey(claim: ClaimItem | RoomClaimItem): string {
+  return `${claim.chainRoundId}:${claim.kind}:${claim.account}`;
+}
+
+/** How often `/claims` is asked again while it still lists a payout whose claim has landed. */
+export const CLAIMED_POLL_MS = 3000;
+
 /** What the batch needs from an entry: `claimCalls` builds `claim`/`claimRefund` from it. */
 function claimable(claim: ClaimItem | RoomClaimItem): Claimable {
   return { chainRoundId: claim.chainRoundId, kind: claim.kind, proof: claim.proof };
@@ -100,6 +110,10 @@ export function Claims() {
   const [connecting, setConnecting] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [claim, setClaim] = useState<ClaimState>({ kind: 'idle' });
+  // Payouts whose claim has landed. `/claims` drops one only once the indexer has seen its `Claimed`,
+  // which trails the block that carried it (behind the safe head), so until then the page hides it
+  // and asks again, rather than offering it as ready a second time (W10-D.2, on the stack).
+  const [landed, setLanded] = useState<ReadonlySet<string>>(() => new Set());
   const now = useServerNow();
 
   const query = useQuery({
@@ -110,6 +124,12 @@ export function Claims() {
         signal,
       }),
     enabled: signedIn || wallet !== null,
+    refetchInterval: (q) =>
+      [...(q.state.data?.claims ?? []), ...(q.state.data?.roomClaims ?? [])].some((c) =>
+        landed.has(paidKey(c)),
+      )
+        ? CLAIMED_POLL_MS
+        : false,
   });
 
   // The question and the game day live on the round, not on `/claims`, so each listed round is read
@@ -128,7 +148,9 @@ export function Claims() {
     },
   });
 
-  const entries = claimEntries(query.data, rounds, now);
+  const entries = claimEntries(query.data, rounds, now).filter(
+    (e) => !landed.has(paidKey(e.claim)),
+  );
   const allReady = entries.filter((e) => e.ready);
   // `FlockedEscrow.claim` and `claimRefund` build their leaf from `msg.sender`, so one batch can
   // only claim what the wallet that sends it owns. `/claims` can list payouts belonging to a merged
@@ -156,7 +178,7 @@ export function Claims() {
   }, [wagmiConfig]);
 
   const claimAll = useCallback(
-    async (items: readonly Claimable[]) => {
+    async (items: readonly (ClaimItem | RoomClaimItem)[]) => {
       setConfirming(false);
       setClaim({ kind: 'claiming' });
       try {
@@ -165,8 +187,9 @@ export function Claims() {
         await sendSponsoredCalls(wagmiConfig, {
           account: account ?? (await connectWallet(wagmiConfig)).address,
           chainId: chain.chainId,
-          calls: claimCalls(chain.escrow, items),
+          calls: claimCalls(chain.escrow, items.map(claimable)),
         });
+        setLanded((prev) => new Set([...prev, ...items.map(paidKey)]));
         setClaim({ kind: 'idle' });
         await refetch();
       } catch (err) {
@@ -255,7 +278,7 @@ export function Claims() {
             : waitingNote({ count: waiting.length, opensAt: next.opensAt, gameDay: next.gameDay })
         }
         claiming={claiming}
-        onConfirm={() => void claimAll(ready.map((e) => claimable(e.claim)))}
+        onConfirm={() => void claimAll(ready.map((e) => e.claim))}
       />
     </ClaimsView>
   );
