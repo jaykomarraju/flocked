@@ -10,8 +10,9 @@
 //
 // Reveal gating ("API" › Reveal gating): a result card has no `share_cards` row before its mode's
 // reveal, and the round card is built only from a revealed mode, so neither can exist early. Room
-// rounds never get a share row (their cards are member-only); `/rounds/:id/card/*` is already behind
-// `requireRoundAccess` from the rounds module, which is mounted before this one.
+// rounds never get a share row (their cards are member-only); `/rounds/:id/card/*` is behind
+// `requireRoundAccess` from the rounds module, which is mounted before this one under /api/v1. The
+// site root mounts only `cardsSite` (the share page and player cards), never the round card.
 //
 // Images come from R2 and are rendered on demand when one is missing (a cold key, a new variant, or
 // a queue that has not caught up), then stored, so the next request is a read.
@@ -41,6 +42,8 @@ import { PRIVATE_CACHE_CONTROL } from '../read/cache.js';
 import { endpointsOf } from './stub.js';
 
 const app = new Hono<AppEnv>();
+/** The share page and the player cards: public, so also mounted at the site root (src/app.ts). */
+const site = new Hono<AppEnv>();
 
 /** This module's paths, from the pinned ENDPOINTS table, so they can never drift from it. */
 function path(prefix: string): string {
@@ -113,7 +116,7 @@ async function pngResponse(
   return res;
 }
 
-app.get(path('/s/'), validate('param', SharePageParamsSchema), async (c) => {
+site.get(path('/s/'), validate('param', SharePageParamsSchema), async (c) => {
   const { shareId } = c.req.valid('param');
   const row = await shareRow(c.env, shareId);
   if (!row) throw new HttpError('not_found', 'No such share');
@@ -156,7 +159,7 @@ app.get(path('/s/'), validate('param', SharePageParamsSchema), async (c) => {
   });
 });
 
-app.get(path('/cards/'), async (c) => {
+site.get(path('/cards/'), async (c) => {
   const parsed = CardImageParamsSchema.safeParse({
     shareId: c.req.param('shareId'),
     variant: c.req.param('variant'),
@@ -173,6 +176,8 @@ app.get(path('/cards/'), async (c) => {
   if (!body) throw new HttpError('not_found', 'No such card');
   return pngResponse(c.env, c.req.url, body, false);
 });
+
+app.route('/', site);
 
 app.get(path('/rounds/'), async (c) => {
   const parsed = RoundCardParamsSchema.safeParse({
@@ -201,3 +206,4 @@ app.get(path('/rounds/'), async (c) => {
 });
 
 export const cards = app;
+export const cardsSite = site;

@@ -133,20 +133,28 @@ app.post(
       );
     }
     // A daily pick can be shared while it is still sealed. Queue only after the RoundDO confirms
-    // the commit; room rounds never have public, pre-rendered cards.
+    // the commit, and after the response where the runtime allows (it never delays the entry);
+    // room rounds never have public, pre-rendered cards.
     if (round?.kind === 'daily') {
-      try {
-        await enqueueTeaserCard(c.env, roundId, 'free', user.id);
-      } catch (err) {
-        // The RoundDO commit is already durable. A card render is repairable and must not turn a
-        // successful entry into a retry that can only answer `already_entered`.
+      const teaser = enqueueTeaserCard(c.env, roundId, 'free', user.id).catch((err: unknown) => {
+        // The RoundDO commit is already durable. A failed enqueue costs only the teaser (the
+        // reveal's fan-out still writes the result cards) and must not turn a successful entry
+        // into a retry that can only answer `already_entered`.
         log.error('card_enqueue_failed', {
           roundId,
           mode: 'free',
           how: 'teaser',
           error: err instanceof Error ? err.message : String(err),
         });
+      });
+      let ctx: Pick<ExecutionContext, 'waitUntil'> | undefined;
+      try {
+        ctx = c.executionCtx;
+      } catch {
+        ctx = undefined; // app.request() in tests has no ExecutionContext
       }
+      if (ctx) ctx.waitUntil(teaser);
+      else await teaser;
     }
     return c.json(result.value, 201);
   },

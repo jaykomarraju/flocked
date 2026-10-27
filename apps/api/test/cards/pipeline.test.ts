@@ -259,6 +259,10 @@ describe('AC-7: every settled player has a card', () => {
     const roundRes = await get(`/rounds/${round}/card/embed.png`);
     expect(roundRes.status).toBe(200);
     expect(roundRes.headers.get('content-type')).toBe('image/png');
+
+    // The round card is not a site URL: at the root it would skip requireRoundAccess, which gates a
+    // room round's split under /api/v1.
+    expect((await getRoot(`/rounds/${round}/card/embed.png`)).status).toBe(404);
   });
 });
 
